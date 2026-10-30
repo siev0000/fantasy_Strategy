@@ -1,0 +1,2 @@
+PASS: per-disaster compact battle cards, summed per-unit name/damage details, next-turn separation, preserved diagnostic history, visibility/world/player filters and no combat side effects. No browser.
+PASS: facility-only/mixed disaster summaries, concise facility details and visibility filtering. No browser.

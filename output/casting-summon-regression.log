@@ -1,0 +1,5 @@
+320: grouped action, three previews, AP, count, army members, unique placement, save and expiry passed
+{ parser: true, atomic: true, independent: true, death: true }
+390: grouped action, three previews, AP, count, army members, unique placement, save and expiry passed
+1100: grouped action, three previews, AP, count, army members, unique placement, save and expiry passed
+cave: actual action button, same-world placement and native expiry passed

@@ -1,4 +1,5 @@
 import { V39_FOG_BALANCE } from "./v39-gameplay-balance.js";
+import {resolveV39RainScoutPenalty} from './v39-rain-rules.js';
 import {getV39ActiveHazardsAt,getV39HazardRule} from './v39-hazard-zones.js';
 import { v39HexRay } from "./v39-combat-ray.js";
 import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
@@ -134,10 +135,12 @@ export function advanceV39Fog(mapData,turn) {
 export function resolveV39FogPenalty(mapData, from, to) {
   if (!mapData?.grid || !from || !to || [from.x,from.y,to.x,to.y].some(value=>value==null||!Number.isFinite(Number(value)))) return {tiles:0,scout:0,vision:0};
   const tiles=[from,...v39HexRay(mapData,from,to)];
-  const fogKeys=new Set(tiles.filter(tile=>isV39FogTile(mapData,tile.x,tile.y))
+  const fields=(mapData.disasterFields||[]).filter(field=>tiles.some(tile=>field.tileKeys?.includes(`${tile.x},${tile.y}`)));
+  const fieldFogKeys=new Set(fields.filter(field=>field.fogPenalty===true).flatMap(field=>field.tileKeys||[]));
+  const fogKeys=new Set(tiles.filter(tile=>isV39FogTile(mapData,tile.x,tile.y)||fieldFogKeys.has(`${tile.x},${tile.y}`))
     .map(tile=>`${tile.x},${tile.y}`));
-  return {tiles:fogKeys.size,scout:fogKeys.size*V39_FOG_BALANCE.scoutPenaltyPerTile,
-    vision:fogKeys.size*V39_FOG_BALANCE.visionPenaltyPerTile};
+  return {tiles:fogKeys.size,scout:fogKeys.size*V39_FOG_BALANCE.scoutPenaltyPerTile+Math.max(0,...fields.map(field=>Number(field.scoutPenalty)||0))+resolveV39RainScoutPenalty(mapData,tiles),
+    vision:fogKeys.size*V39_FOG_BALANCE.visionPenaltyPerTile+Math.max(0,...fields.map(field=>Number(field.visionPenalty)||0))};
 }
 export function isV39FogVisionAllowed(mapData,from,to,range,distance) {
   return distance<=Math.max(1,range-resolveV39FogPenalty(mapData,from,to).vision);

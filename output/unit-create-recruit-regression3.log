@@ -1,0 +1,19 @@
+390: test barracks placed, warrior army generated with JSON stats/equipment/skills, population consumed, restrictions verified
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+false !== true
+
+    at file:///C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/scripts/check-v39-facility-recruitment.mjs:111:12 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v22.20.0

@@ -3,6 +3,18 @@
 このフォルダを別のVue 3 + Phaser 3プロジェクトへコピーして使用できます。
 既存の `fantasy_Strategy` 側のコードは参照しない独立版です。
 
+## コマ範囲とループ
+
+`play({ ..., frameStart:3, frameEnd:5, loop:true })` は0始まりの3〜5番（表示上4〜6コマ）を繰り返します。`totalDurationMs` はこの範囲を1巡する時間です。範囲はsourceオブジェクトにも指定でき、requestの明示値を優先します。未指定なら従来どおり全コマを1回再生します。
+
+ループ中の `play()` は停止まで完了しません。`stop()` / `destroy()` でタイマーと画像を破棄し、待機中のPromiseも完了します。Sceneの終了/休止時の呼出しは利用側で管理してください。共有テクスチャを使う場合はコンストラクタの `textureLoader: async (src,scene) => textureKey` を指定できます。このフックで渡すテクスチャの寿命は呼出側で管理します。
+
+## 威力倍率と拡大方向
+
+`play({ ..., powerScale:2, powerScaleAxis:"x" })` で横だけ2倍にできます。`powerScaleAxis` は `both`（既定）/ `x` / `y`。画像の回転前の軸を使い、`scalePercent` または `fitDiameterPx` から得たサイズに追加で乗算します。倍率未指定は1倍です。`showFrame` も同じ引数を使用します。
+
+`stretchLengthPx` を指定したビームでは、距離に合わせる長手方向は維持し、選択された短手方向だけへ威力倍率を適用します。`resolveEffectPowerAxes(request)` を使うと静止画や補助表示でも同じ軸倍率を取得できます。
+
 ## 含まれるもの
 
 - `phaser-effect-player.mjs`: Phaser上でスプライトシートを再生する本体

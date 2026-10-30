@@ -14,10 +14,10 @@ try{
     const initial=await page.evaluate(()=>{
       const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0],layer=scene.children.getByName('v39-atmosphere-fog-layer');
       const icons=scene.children.getByName('v39-disaster-icon-overlay').list.filter(item=>item.getData('disasterNames')?.some(name=>['瘴気','熱波','大寒波'].includes(name)));
-      return {meta:layer.getData('atmosphere'),icons:icons.length,alpha:layer.list.map(item=>item.alpha)};
+      return {meta:layer.getData('atmosphere'),icons:icons.length,coldImages:scene.children.getByName('v39-disaster-field-artwork').list.filter(item=>item.getData('disasterImageSlot')===7).length,alpha:layer.list.map(item=>item.alpha)};
     });
-    assert(initial.meta.combinations.includes('miasma'));assert(initial.meta.combinations.includes('heat'));assert(initial.meta.combinations.includes('cold'));
-    assert.equal(initial.icons,3);assert(initial.alpha.every(a=>a===.75));
+    assert(initial.meta.combinations.includes('miasma'));assert(initial.meta.combinations.includes('heat'));assert(initial.meta.combinations.includes('cold'));assert.equal(initial.coldImages,0);
+    assert.equal(initial.icons,2);assert(initial.alpha.every(a=>a===.75));
     await page.evaluate(()=>{window.forceV39Disaster('災害:熱波',{x:4,y:14});window.renderV39Visibility();});
     await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.getByName('v39-atmosphere-fog-layer').getData('atmosphere').combinations.includes('miasma|heat'));
     await page.locator('#v39-test-disaster-fixture').selectOption('災害:瘴気');

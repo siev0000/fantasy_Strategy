@@ -14,6 +14,7 @@ export const WAR_DECLARATION_DIPLOMACY_PENALTY = -20;
 export const WAR_DECLARATION_PENALTY_TURNS = 20;
 export const V39_TREATY_TYPES = Object.freeze({
   nonAggression:{ label:"不可侵条約", relationRequired:V39_DIPLOMACY_BALANCE.nonAggressionThreshold },
+  passage:{ label:"通行協定", relationRequired:V39_DIPLOMACY_BALANCE.nonAggressionThreshold },
   trade:{ label:"交易協定", relationRequired:V39_DIPLOMACY_BALANCE.tradeThreshold },
   alliance:{ label:"同盟", relationRequired:V39_DIPLOMACY_BALANCE.allianceThreshold }
 });
@@ -80,6 +81,7 @@ export function canV39FactionAttack(state, attackerPlayerId, targetPlayerId) {
   const attacker = players.find(player => player.id === attackerId);
   const target = players.find(player => player.id === targetId);
   if (!attacker || !target) return false;
+  if (hasV39ActiveTreaty(state, attackerId, targetId, "nonAggression") || hasV39ActiveTreaty(state, attackerId, targetId, "alliance")) return false;
   if (isV39DemonFactionPair(attacker, target)) return true;
   return getV39DiplomacyRelation(state, attackerId, targetId).status === "war";
 }
@@ -126,27 +128,86 @@ export function endV39War(state, firstPlayerId, secondPlayerId, turnNumber) {
   };
 }
 
-export function signV39Treaty(state, firstPlayerId, secondPlayerId, type, turnNumber) {
+export function signV39Treaty(state, firstPlayerId, secondPlayerId, type, turnNumber, durationTurns = V39_DIPLOMACY_BALANCE.treatyDurationTurns) {
   const definition = V39_TREATY_TYPES[type];
   const relation = getV39DiplomacyRelation(state, firstPlayerId, secondPlayerId);
   if (!definition || !relation.pairKey) return { ok:false, reason:"条約種別が不正です", state };
+  if (firstPlayerId === secondPlayerId || ![firstPlayerId, secondPlayerId].every(id => state.players?.some(p => p.id === id))) return { ok:false, reason:"締結相手が不正です", state };
+  const duration = Number(durationTurns);
+  if (!Number.isInteger(duration) || duration < 1 || duration > V39_DIPLOMACY_BALANCE.treatyMaximumTurns) return { ok:false, reason:`期間は1〜${V39_DIPLOMACY_BALANCE.treatyMaximumTurns}ターンです`, state };
   if (relation.status === "war") return { ok:false, reason:"戦争中は条約を締結できません", state };
   if (Number(relation.relationValue) < definition.relationRequired) return { ok:false, reason:`友好度${definition.relationRequired}以上が必要です`, state };
   const turn = Math.max(1, Math.floor(Number(turnNumber) || Number(state?.timeline?.turnNumber) || 1));
-  const treaty = { type, label:definition.label, active:true, startedAtTurn:turn, expiresAtTurn:turn + V39_DIPLOMACY_BALANCE.treatyDurationTurns };
+  const previous = relation.treaties?.[type];
+  const renewal = activeTreaty(relation, type, turn);
+  const treaty = { type, label:definition.label, active:true, startedAtTurn:renewal ? previous.startedAtTurn : turn, renewedAtTurn:renewal ? turn : undefined, expiresAtTurn:(renewal ? Number(previous.expiresAtTurn) : turn) + duration };
   const nextRelation = {
     ...relation,
-    relationValue:clampRelation(Number(relation.relationValue) + 5),
+    relationValue:clampRelation(Number(relation.relationValue) + (renewal ? 0 : 5)),
     treaties:{ ...(relation.treaties || {}), [type]:treaty }
   };
   return { ok:true, treaty, state:{ ...state, diplomacyRelations:{ ...(state.diplomacyRelations || {}), [relation.pairKey]:nextRelation } } };
 }
 
+export function proposeV39Treaty(state, fromId, toId, type, turnNumber, durationTurns = V39_DIPLOMACY_BALANCE.treatyDurationTurns) {
+  const check = signV39Treaty(state, fromId, toId, type, turnNumber, durationTurns);
+  if (!check.ok) return check;
+  const relation = getV39DiplomacyRelation(state, fromId, toId);
+  const turn = Number(turnNumber) || Number(state.timeline?.turnNumber) || 1;
+  if (relation.proposal && Number(relation.proposal.expiresAtTurn) > turn) return {ok:false, reason:"回答待ちの協定があります", state};
+  const proposal = {fromId, toId, type, durationTurns:Number(durationTurns), proposedAtTurn:turn, expiresAtTurn:turn + V39_DIPLOMACY_BALANCE.treatyProposalLifetimeTurns};
+  return {ok:true, state:{...state, diplomacyRelations:{...state.diplomacyRelations, [relation.pairKey]:{...relation, proposal}}}};
+}
+
+export function respondV39Treaty(state, responderId, otherId, accept, turnNumber) {
+  const relation = getV39DiplomacyRelation(state, responderId, otherId), proposal = relation.proposal;
+  const turn = Number(turnNumber) || Number(state.timeline?.turnNumber) || 1;
+  if (!proposal || proposal.toId !== responderId || Number(proposal.expiresAtTurn) <= turn) return {ok:false, reason:"有効な申し込みがありません", state};
+  const result = accept ? signV39Treaty(state, proposal.fromId, proposal.toId, proposal.type, turn, proposal.durationTurns) : {ok:true, state};
+  if (!result.ok) return result;
+  const next = getV39DiplomacyRelation(result.state, responderId, otherId);
+  return {...result, state:{...result.state, diplomacyRelations:{...result.state.diplomacyRelations, [relation.pairKey]:{...next, proposal:null, lastTreatyReply:{type:proposal.type, accepted:accept, turn}}}}};
+}
+
+export function getV39IncomingTreatyProposals(state,playerId=state?.activePlayerId){
+  const turn=Number(state?.timeline?.turnNumber)||1;
+  if(!playerId)return [];
+  return Object.values(state?.diplomacyRelations||{}).flatMap(relation=>{
+    const proposal=relation?.proposal,sender=state.players?.find(player=>player.id===proposal?.fromId);
+    if(!proposal||proposal.toId!==playerId||!sender||!(Number(proposal.expiresAtTurn)>turn)||!V39_TREATY_TYPES[proposal.type])return [];
+    return [{...proposal,senderLabel:sender.label||sender.name||sender.id,treatyLabel:V39_TREATY_TYPES[proposal.type].label,
+      notificationId:JSON.stringify([proposal.fromId,proposal.toId,proposal.type,proposal.proposedAtTurn,proposal.expiresAtTurn,proposal.durationTurns])}];
+  });
+}
+
+function passageExit(state, relation, turn) {
+  const ids = relationPlayerIds(relation.pairKey);
+  const unitIds = (state.players || []).filter(p => ids.includes(p.id)).flatMap(p => (p.factionState?.units || []).filter(u => (u.worldId || "surface") === "surface" && ids.some(id => id !== p.id && state.territoryOwnerByTile?.[`${u.x},${u.y}`] === id)).map(u => u.id));
+  return {exitGraceUntilTurn:turn + V39_DIPLOMACY_BALANCE.treatyExitGraceTurns, exitUnitIds:unitIds};
+}
+
+// Passage never transfers ownership or permits harvesting/building.
+export function canV39EnterFactionTerritory(state, playerId, ownerId, {unitId, fromKey, turnNumber = state?.timeline?.turnNumber || 1} = {}) {
+  if (!ownerId || ownerId === playerId || !state.players?.some(p => p.id === ownerId)) return true;
+  if (canV39FactionAttack(state, playerId, ownerId)) return true;
+  const relation = getV39DiplomacyRelation(state, playerId, ownerId);
+  if (activeTreaty(relation, "passage", turnNumber) || activeTreaty(relation, "alliance", turnNumber)) return true;
+  const player = state.players?.find(p => p.id === playerId);
+  const unit = player?.factionState?.units?.find(u => u.id === unitId);
+  const contractId = unit?.tradeAssignment?.contractId;
+  if (contractId && (state.players || []).some(p => p.factionState?.tradeContracts?.some(contract => contract.id === contractId && ["active", "cancelling", "interrupted"].includes(contract.status) && contract.sides?.some(side => side.partyId === ownerId) && contract.sides?.some(side => side.partyId === playerId && side.memberIds?.includes(unitId))))) return true;
+  return ["passage", "alliance"].some(type => {
+    const treaty = relation.treaties?.[type];
+    return Number(treaty?.exitGraceUntilTurn) > Number(turnNumber) && treaty?.exitUnitIds?.includes(unitId) && state.territoryOwnerByTile?.[fromKey] === ownerId;
+  });
+}
+
 export function cancelV39Treaty(state, firstPlayerId, secondPlayerId, type, turnNumber) {
   const relation = getV39DiplomacyRelation(state, firstPlayerId, secondPlayerId);
-  if (!activeTreaty(relation, type, turnNumber)) return { ok:false, reason:"有効な条約がありません", state };
-  const treaties = { ...(relation.treaties || {}), [type]:{ ...relation.treaties[type], active:false, endedAtTurn:Number(turnNumber) || 1 } };
-  const nextRelation = { ...relation, relationValue:clampRelation(Number(relation.relationValue) - 10), treaties };
+  const turn = Number(turnNumber) || Number(state.timeline?.turnNumber) || 1;
+  if (!activeTreaty(relation, type, turn)) return { ok:false, reason:"有効な条約がありません", state };
+  const treaties = { ...(relation.treaties || {}), [type]:{ ...relation.treaties[type], active:false, endedAtTurn:turn, ...(["passage", "alliance"].includes(type) ? passageExit(state, relation, turn) : {}) } };
+  const nextRelation = { ...relation, lastTreatyReply:{type, accepted:false, turn}, relationValue:clampRelation(Number(relation.relationValue) - V39_DIPLOMACY_BALANCE.treatyCancellationLoss), trustByPlayer:{...relation.trustByPlayer, [firstPlayerId]:clampRelation((Number(relation.trustByPlayer?.[firstPlayerId]) || 0) - V39_DIPLOMACY_BALANCE.treatyCancellationTrustLoss)}, treaties };
   return { ok:true, state:{ ...state, diplomacyRelations:{ ...(state.diplomacyRelations || {}), [relation.pairKey]:nextRelation } } };
 }
 
@@ -186,9 +247,17 @@ export function advanceV39DiplomacyTurn(state, turnNumber) {
     const relation = getV39DiplomacyRelation(state, ...relationPlayerIds(key));
     if (Number(relation.lastProcessedTurn) >= turn) return [key, { ...relation }];
     const expired = Number(relation?.penaltyUntilTurn) <= turn;
-    const treaties = Object.fromEntries(Object.entries(relation.treaties || {}).map(([type, treaty]) => [type,
-      treaty?.active && Number(treaty.expiresAtTurn) <= turn ? { ...treaty, active:false, endedAtTurn:turn } : { ...treaty }
-    ]));
+    const treaties = Object.fromEntries(Object.entries(relation.treaties || {}).map(([type, treaty]) => {
+      if (treaty?.active && Number(treaty.expiresAtTurn) <= turn) {
+        reports.push({type:"treaty-expired", pairKey:key, treatyType:type, message:`${treaty.label || type}が終了しました`});
+        return [type, {...treaty, active:false, endedAtTurn:turn, ...(["passage", "alliance"].includes(type) ? passageExit(state, relation, turn) : {})}];
+      }
+      if (treaty?.active && Number(treaty.expiresAtTurn) - turn <= V39_DIPLOMACY_BALANCE.treatyExpiryNoticeTurns && !treaty.expiryNotified) {
+        reports.push({type:"treaty-expiring", pairKey:key, treatyType:type, message:`${treaty.label || type}はあと${Number(treaty.expiresAtTurn) - turn}ターンで終了します`});
+        return [type, {...treaty, expiryNotified:true}];
+      }
+      return [type, {...treaty}];
+    }));
     let relationValue = Number(relation.relationValue) || 0;
     if (relation.status !== "war") relationValue += relationValue > 0 ? -V39_DIPLOMACY_BALANCE.relationDriftPerTurn : relationValue < 0 ? V39_DIPLOMACY_BALANCE.relationDriftPerTurn : 0;
     if (activeTreaty({ ...relation, treaties }, "trade", turn)) {
@@ -196,9 +265,20 @@ export function advanceV39DiplomacyTurn(state, turnNumber) {
       relationValue += V39_DIPLOMACY_BALANCE.tradeRelationPerTurn;
       reports.push({ type:"trade-income", pairKey:key, amount:V39_DIPLOMACY_BALANCE.tradeIncomePerTurn });
     }
-    return [key, { ...source, ...relation, treaties, relationValue:clampRelation(relationValue), lastProcessedTurn:turn, ...(expired ? { diplomacyPenalty:0 } : {}) }];
+    return [key, { ...source, ...relation, treaties, proposal:Number(relation.proposal?.expiresAtTurn) <= turn ? null : relation.proposal, relationValue:clampRelation(relationValue), lastProcessedTurn:turn, ...(expired ? { diplomacyPenalty:0 } : {}) }];
   }));
   working = { ...working, diplomacyRelations:relations };
+
+  for (const relation of Object.values(relations)) {
+    const proposal = relation.proposal;
+    if (!proposal || !working.players?.some(p => p.id === proposal.toId && p.isPlayer === false)) continue;
+    const accept = Number(relation.relationValue) + (Number(relation.trustByPlayer?.[proposal.fromId]) || 0) >= V39_TREATY_TYPES[proposal.type]?.relationRequired;
+    const result = respondV39Treaty(working, proposal.toId, proposal.fromId, accept, turn);
+    if (result.ok) {
+      working = result.state;
+      reports.push({type:accept ? "treaty-accepted" : "treaty-rejected", pairKey:relation.pairKey, message:`${V39_TREATY_TYPES[proposal.type]?.label}の申し込みが${accept ? "承諾" : "拒否"}されました`});
+    }
+  }
 
   // 人間操作ではない勢力だけをAI判断対象にする。
   for (const ai of working.players || []) {
@@ -213,14 +293,14 @@ export function advanceV39DiplomacyTurn(state, turnNumber) {
         reports.push({ type:"ai-war", playerId:ai.id, targetPlayerId:target.id });
         continue;
       }
-      const treatyType = Number(relation.relationValue) >= V39_DIPLOMACY_BALANCE.allianceThreshold ? "alliance"
-        : Number(relation.relationValue) >= V39_DIPLOMACY_BALANCE.tradeThreshold ? "trade"
-          : Number(relation.relationValue) >= V39_DIPLOMACY_BALANCE.nonAggressionThreshold ? "nonAggression" : "";
+      if (relation.lastTreatyReply?.accepted === false && turn - Number(relation.lastTreatyReply.turn) < V39_DIPLOMACY_BALANCE.treatyAiRetryTurns) continue;
+      const candidates = Number(relation.relationValue) >= V39_DIPLOMACY_BALANCE.allianceThreshold ? ["alliance"] : ["nonAggression", "passage", "trade"];
+      const treatyType = candidates.find(type => Number(relation.relationValue) >= V39_TREATY_TYPES[type].relationRequired && !activeTreaty(relation, type, turn));
       if (treatyType && !activeTreaty(relation, treatyType, turn)) {
-        const signed = signV39Treaty(working, ai.id, target.id, treatyType, turn);
+        const signed = proposeV39Treaty(working, ai.id, target.id, treatyType, turn);
         if (signed.ok) {
           working = signed.state;
-          reports.push({ type:"ai-treaty", playerId:ai.id, targetPlayerId:target.id, treatyType });
+          reports.push({ type:"ai-treaty", playerId:ai.id, targetPlayerId:target.id, pairKey:relation.pairKey, treatyType, message:`${ai.label || ai.id}が${V39_TREATY_TYPES[treatyType].label}を申し込みました` });
         }
       }
     }

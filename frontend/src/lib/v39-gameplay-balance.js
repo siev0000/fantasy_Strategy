@@ -1,7 +1,8 @@
+import {normalizeV39DamageMultiplier} from './v39-combat-settings.js';
 // 仕様未確定の調整値はここへ集約し、確定後に処理本体を変えず差し替える。
 export const V39_INITIAL_STOCK_BALANCE = Object.freeze({
   territoryIncomeTurns:3,
-  normalFoodMaintenanceTurns:10 // 通常食料のみ。魂・死体と人口増加用の消費は保証しない。
+  normalFoodMaintenanceTurns:10 // 魂・死体を含む維持食料。人口増加用の消費は保証しない。
 });
 
 export const V39_CORPSE_LIFETIME_BALANCE = Object.freeze({
@@ -111,7 +112,7 @@ export const V39_SURVEY_BALANCE = Object.freeze({
 });
 
 export const V39_GATHER_BALANCE = Object.freeze({
-  // 暫定: 採取1回のAP。採取量は地形の基礎産出1ターン分で、技能・人数補正はまだ掛けない。
+  // 基準採取量に必要なAP。残りAPに比例し、取得量は0.1単位。技能・人数補正はまだ掛けない。
   apCost:100
 });
 
@@ -151,7 +152,7 @@ export const V39_ENEMY_LEVEL_BALANCE = Object.freeze({
 // 戦闘ダメージの共通調整値。ダメージ式本体を変えずに全体バランスを調整する。
 export const V39_COMBAT_BALANCE = Object.freeze({
   // 1ヒットごとの最終ダメージへ掛ける倍率。
-  damageMultiplier:3
+  damageMultiplier:normalizeV39DamageMultiplier()
 });
 
 export const V39_COMBAT_DISPLAY_BALANCE = Object.freeze({
@@ -160,6 +161,7 @@ export const V39_COMBAT_DISPLAY_BALANCE = Object.freeze({
 
 // ユニット経験値の暫定調整値。必要EXP式は v39-unit-experience.js 側の確定式を使用する。
 export const V39_UNIT_EXP_BALANCE = Object.freeze({
+  armyExpPerAdditionalMember:0.5,
   // 活動ごとの基本EXP。各行動はこの値へ難易度倍率と成果率を掛ける。
   baseExpByAction:Object.freeze({
     combat:15,
@@ -243,18 +245,14 @@ export const V39_CONSUMABLE_BALANCE=Object.freeze({
   maximumProductionBonus:3 // 薬系Lv3/5/7で生成量+1/+2/+3。
 });
 
-export function resolveV39SizSpeedModifierPercent(siz = 170) {
-  const value = Number(siz);
-  if (!Number.isFinite(value) || value === 0) return 0;
-  if (value >= 180) return Math.round(value / 50 + 8);
-  if (value <= 150) return -Math.round((160 - value) / 3);
-  return 0;
-}
+export const V39_SIZ_STATUS_BALANCE=Object.freeze({
+  minimumSiz:10,neutralSiz:170,largeReferenceSiz:1000,
+  statusPercent:25,accuracyPercent:7.5,
+  minimumMultiplier:0.1
+});
 
 export function resolveV39MovementStatFromStatus(status = {}, options = {}) {
   const speed = Math.max(0, Number(status?.速度) || 0);
-  const sizModifierPercent = resolveV39SizSpeedModifierPercent(status?.SIZ);
-  const sizAdjustedSpeed = speed / Math.max(0.01, 1 + sizModifierPercent / 100);
 
   const legValue = Number(options?.legCount);
   const legCount = Number.isFinite(legValue)
@@ -262,7 +260,7 @@ export function resolveV39MovementStatFromStatus(status = {}, options = {}) {
     : V39_SQUAD_MOVEMENT_BALANCE.defaultLegCount;
   const baseMovement = V39_SQUAD_MOVEMENT_BALANCE.baseMovementStat
     + legCount * V39_SQUAD_MOVEMENT_BALANCE.movementPerLeg;
-  const speedMovement = sizAdjustedSpeed / V39_SQUAD_MOVEMENT_BALANCE.speedPerMovementStat;
+  const speedMovement = speed / V39_SQUAD_MOVEMENT_BALANCE.speedPerMovementStat;
   const additionalMovement = Number.isFinite(Number(options?.additionalMovement))
     ? Number(options.additionalMovement)
     : 0;
@@ -270,8 +268,12 @@ export function resolveV39MovementStatFromStatus(status = {}, options = {}) {
   return Math.max(1, Math.round(baseMovement + speedMovement + additionalMovement));
 }
 
-export function resolveV39BaseMoveApCost(movement = V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) {
-  const moveValue = Math.max(1, Number(movement) || V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile);
+export function resolveV39MovementMultiplier(mapData) {
+  return mapData?.isUnderground ? V39_CAVE_BALANCE.movementMultiplier : 1;
+}
+
+export function resolveV39BaseMoveApCost(movement = V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile, mapData = null) {
+  const moveValue = Math.max(1, Number(movement) || V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) * resolveV39MovementMultiplier(mapData);
   return (V39_SQUAD_MOVEMENT_BALANCE.moveApMax * V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) / moveValue;
 }
 
@@ -528,6 +530,7 @@ export const V39_CITY_SPECIALIZATION_BALANCE = Object.freeze({
 
 // 拠点人口の技能から算出する生産力の補正表。種族とクラスの対応は種族.json、技能値はクラス.jsonを正本にする。
 export const V39_SETTLEMENT_PRODUCTION_BALANCE = Object.freeze({
+  facilityProductionFixedDivisor:20, // 農業/林業/漁業/工業補正÷この値を、施設の固定産出資源へ均等分配。
   // 技能値と技能倍率の対応表。節点の間は直線補間し、範囲外は両端の倍率で固定する。
   skillMultiplierSteps:Object.freeze([
     Object.freeze({ skill:-25, multiplier:0.50 }),
@@ -729,6 +732,7 @@ export const V39_CAVE_BALANCE = Object.freeze({
   visionScoutStep:37.5, // 地下限定：この索敵値ごとに視界を1マス増やす。地上は75。
   // 地下限定: 正の射程の倍率。射程0・未記載は隣接1マスのまま。
   attackRangeMultiplier:2,
+  movementMultiplier:2, // 地下限定：移動能力の倍率。AP計算・表示・敵追跡で共用。
   surfaceEntranceLinkDistance:6, // 暫定：地上洞窟を同じ地下へ接続する中心からの距離。
   maxSurfaceEntrances:4, // テンプレートの出入口数上限。超える入口は別グループにする。
   undiscoveredEntranceTestAlpha:0.6, // テストモードの未調査洞窟入口の透明度。発見/入場許可は変更しない。
@@ -758,7 +762,7 @@ export const V39_CAVE_BALANCE = Object.freeze({
   recoveryUses:3, // 暫定：群生地1地点で休息できる回数。
   recoveryHpRate:0.25, // 暫定：1回の休息で生存者それぞれの最大HP25%を回復。
   recoveryApCost:20, // 暫定：休息時に生存者全員が消費するAP。
-  miningApCost:30, // 暫定：採取担当キャラが1回で消費するAP。
+  miningApCost:100, // 鉱石/宝石1個に必要な累計AP。端数進捗は地点・担当者ごとに保持。
   oreDeposit:3, // 暫定：鉱石1地点の埋蔵数。1回の採取で1個。
   gemDeposit:1, // 暫定：宝石1地点の埋蔵数。1回の採取で1個。
 });
@@ -799,7 +803,14 @@ export const V39_DIPLOMACY_BALANCE = Object.freeze({
   // 戦争中でない勢力間友好度が0へ戻る1ターンごとの量。
   relationDriftPerTurn:1,
   // 条約の有効期間。単位はターン。
-  treatyDurationTurns:20,
+  treatyDurationTurns:10,
+  treatyMaximumTurns:100,
+  treatyExitGraceTurns:3,
+  treatyExpiryNoticeTurns:2,
+  treatyCancellationLoss:10,
+  treatyCancellationTrustLoss:10,
+  treatyProposalLifetimeTurns:3,
+  treatyAiRetryTurns:5,
   // 交易協定中に各勢力が1ターンで得る金の量。
   tradeIncomePerTurn:5,
   // 交易協定中に1ターンで増える友好度。

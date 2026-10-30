@@ -1,0 +1,74 @@
+after settings {
+  settings: {
+    recoveryWaitHpPercent: 100,
+    detectionScoutBonus: 50,
+    npcFactionCount: 0,
+    fieldVisionBonusTiles: 2,
+    turnProgressionMode: 'standard',
+    maxCombatTurnsPerWorldTurn: 6
+  },
+  equal: {
+    enemyId: 'equal',
+    x: 5,
+    y: 4,
+    inCurrentVision: true,
+    detected: true,
+    observerScout: 50,
+    targetStealth: 50,
+    groupSize: 1,
+    stealthExposed: false,
+    stealthExposureReason: '',
+    reason: '発見済み（有効索敵50 >= 隠密50）'
+  },
+  higher: {
+    enemyId: 'higher',
+    x: 4,
+    y: 5,
+    inCurrentVision: true,
+    detected: false,
+    observerScout: 50,
+    targetStealth: 51,
+    groupSize: 1,
+    stealthExposed: false,
+    stealthExposureReason: '',
+    reason: '未発見（有効索敵50 < 隠密51）'
+  }
+}
+390: bonus boundaries, decay, fog, AI/faction parity, real settings control, live detection and save/load passed { world: 'cave:expedition-test:1' }
+after settings {
+  settings: {
+    recoveryWaitHpPercent: 100,
+    detectionScoutBonus: 50,
+    npcFactionCount: 0,
+    fieldVisionBonusTiles: 2,
+    turnProgressionMode: 'standard',
+    maxCombatTurnsPerWorldTurn: 6
+  },
+  equal: {
+    enemyId: 'equal',
+    x: 5,
+    y: 4,
+    inCurrentVision: true,
+    detected: true,
+    observerScout: 50,
+    targetStealth: 50,
+    groupSize: 1,
+    stealthExposed: false,
+    stealthExposureReason: '',
+    reason: '発見済み（有効索敵50 >= 隠密50）'
+  },
+  higher: {
+    enemyId: 'higher',
+    x: 4,
+    y: 5,
+    inCurrentVision: true,
+    detected: false,
+    observerScout: 50,
+    targetStealth: 51,
+    groupSize: 1,
+    stealthExposed: false,
+    stealthExposureReason: '',
+    reason: '未発見（有効索敵50 < 隠密51）'
+  }
+}
+1100: bonus boundaries, decay, fog, AI/faction parity, real settings control, live detection and save/load passed { world: 'cave:expedition-test:1' }

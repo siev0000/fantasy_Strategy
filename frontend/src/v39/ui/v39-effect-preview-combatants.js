@@ -1,13 +1,16 @@
 import { HEX_TILE_CONFIG } from '../../lib/phaser-map-panel-config.js';
-import { MAP_ENTITY_SIZE_RULES, tileRelativePx } from '../../lib/map-entity-size-rules.js';
+import { MAP_ENTITY_SIZE_RULES, tileRelativePx,resolveV39UnitImageScale } from '../../lib/map-entity-size-rules.js';
 import { resolveV39EffectTransform, resolveV39EffectBeam } from '../../lib/v39-effect-transform.js';
 import {resolveV39EffectAreaGeometry} from '../../lib/v39-effect-area-geometry.js';
 import {getHexDistance,getHexOffsetNeighbors} from '../../lib/hex-grid.js';
 import {v39HexRay} from '../../lib/v39-combat-ray.js';
+import {resolveV39PowerEffectScale} from '../../lib/v39-terrain-destruction.js';
+import {resolveV39PowerAreaScale} from '../../lib/v39-effect-power-scale.js';
+export const getV39PreviewPowerScale=()=>resolveV39PowerEffectScale(Number(document.getElementById('v39-effect-preview-power')?.value)||0);
 
 const fighter=new URL('../../../../assets/images/units/只人/ファイター.webp',import.meta.url).href;
 const knight=new URL('../../../../assets/images/units/只人/ホーリーナイト.webp',import.meta.url).href;
-export const V39_EFFECT_PREVIEW_LIMITS=Object.freeze({maximumDistance:8,maximumAreaRadius:4,minimumGridRadius:2,defaultZoomPercent:50,minimumZoomPercent:5,maximumZoomPercent:200});
+export const V39_EFFECT_PREVIEW_LIMITS=Object.freeze({maximumDistance:8,maximumAreaRadius:4,minimumGridRadius:2,defaultZoomPercent:100,minimumZoomPercent:5,maximumZoomPercent:200});
 const origin={x:20,y:20},key=tile=>`${tile.x},${tile.y}`;
 const directions={'0':{x:1,y:0},'60':{x:0,y:1},'120':{x:-1,y:1},'180':{x:-1,y:0},'240':{x:-1,y:-1},'300':{x:0,y:-1}};
 const previewMap={w:64,h:64,grid:Array.from({length:64},()=>Array(64).fill('平地')),worldWrapEnabled:false};
@@ -57,14 +60,14 @@ function previewLayout(stage){
     attacker:{x:(stage.clientWidth-(right-left)*zoom)/2-left*zoom,y:cameraToolbarHeight+(viewHeight-(bottom-top)*zoom)/2-top*zoom}};
 }
 export function effectPreviewGeometry(stage,setting={}){
-  const layout=previewLayout(stage),{attacker,zoom,tile,areaTiles}=layout;
+  const layout={...previewLayout(stage),powerScale:getV39PreviewPowerScale(),powerScaleAxis:setting.powerScaleAxis}, {attacker,zoom,tile,areaTiles}=layout;
   const center=areaTiles.length>1?resolveV39EffectAreaGeometry(areaTiles,MAP_ENTITY_SIZE_RULES.defenseField.coverageScale):null;
   const targetOffset=pixel(tile),offset=center?{x:center.x-HEX_TILE_CONFIG.width/2,y:center.y-HEX_TILE_CONFIG.height/2}:targetOffset;
   const beam=resolveV39EffectBeam(setting,{x:0,y:0},targetOffset);
   if(beam)return {...layout,...beam,x:attacker.x+beam.x*zoom,y:attacker.y+beam.y*zoom,
     stretchLengthPx:beam.stretchLengthPx*zoom,target:{x:attacker.x+targetOffset.x*zoom,y:attacker.y+targetOffset.y*zoom},self:false};
   const transformed=resolveV39EffectTransform(center?{...setting,offsetX:0,offsetY:0}:setting,offset,Math.atan2(offset.y,offset.x)*180/Math.PI);
-  const fitDiameterPx=center?center.diameter*zoom*Math.max(1,Number(setting.scaleMultiplierPercent||100)/100):undefined;
+  const fitDiameterPx=center?center.diameter*zoom*resolveV39PowerAreaScale(Number(setting.scaleMultiplierPercent||100)/100,1):undefined;
   return {...layout,x:attacker.x+transformed.x*zoom,y:attacker.y+transformed.y*zoom,fitDiameterPx,
     angleDeg:transformed.angleDeg,target:{x:attacker.x+targetOffset.x*zoom,y:attacker.y+targetOffset.y*zoom},self:tile.x===0&&tile.y===0};
 }
@@ -74,7 +77,7 @@ export function getV39EffectPreviewMapRequest(map){
   const translate=point=>({x:attackerTile.x+point.x,y:attackerTile.y+point.y});
   const inMap=point=>point.x>=0&&point.y>=0&&point.x<map.w&&point.y<map.h;
   const target=translate(tile);if(!inMap(target))return null;
-  return {attackerTile,tileX:target.x,tileY:target.y,areaTiles:area.map(translate).filter(inMap)};
+  return {attackerTile,tileX:target.x,tileY:target.y,areaTiles:area.map(translate).filter(inMap),power:Number(control('power')?.value)||0};
 }
 export function renderEffectPreviewCombatants(stage){
   if(!stage)return;
@@ -110,7 +113,8 @@ export function renderEffectPreviewCombatants(stage){
     node.setAttribute('aria-pressed',String(key(tile)===key(geometry.tile)));node.classList.toggle('is-attack-area',areaKeys.has(key(tile)));
   }
   for(const [selector,point] of [['[data-preview-attacker]',attacker],['[data-preview-target]',geometry.target]]){
-    const node=layer.querySelector(selector),size=tileRelativePx(MAP_ENTITY_SIZE_RULES.unit.diameterTiles)*MAP_ENTITY_SIZE_RULES.unit.imageFill*zoom;
+    const node=layer.querySelector(selector),size=tileRelativePx(MAP_ENTITY_SIZE_RULES.unit.diameterTiles)*MAP_ENTITY_SIZE_RULES.unit.imageFill*zoom
+      *resolveV39UnitImageScale({SIZ:MAP_ENTITY_SIZE_RULES.unit.previewSiz});
     Object.assign(node.style,{left:`${point.x}px`,top:`${point.y}px`,width:`${size}px`,height:`${size}px`});
   }
   layer.querySelector('[data-preview-target]').hidden=geometry.self;

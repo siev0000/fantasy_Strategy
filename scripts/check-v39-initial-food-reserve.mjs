@@ -24,7 +24,7 @@ try{
    const units=roster(race),initialUnits=units.slice(0,3),player={...template,race,factionState:{units,settlements:[],selectedSettlementId:''}};
    const base=create({x:4,y:4,race,state,player,mapData:map,random:()=>0});
    player.factionState.settlements=[base];player.factionState.selectedSettlementId=id;
-   const expected=maintenance(base.populationByRace,initialUnits,NORMAL_FOOD_RESOURCE_KEYS,balance.normalFoodMaintenanceTurns);
+   const expected=maintenance(base.populationByRace,initialUnits,FOOD_RESOURCE_KEYS,balance.normalFoodMaintenanceTurns,{roundUp:true});
    const income=collectV39TerritoryIncome(state,player,map);
    for(const key of FOOD_RESOURCE_KEYS){
     const produced=Math.round(income.food[key]*balance.territoryIncomeTurns*10)/10;
@@ -32,7 +32,8 @@ try{
     ok(Math.abs(base.foodStockByType[key]-target)<0.01,`${race} ${key}: initial food mismatch`);
    }
    for(const key of MATERIAL_RESOURCE_KEYS)ok(base.materialStockByType[key]===Math.round(income.material[key]*30)/10,'material grant changed');
-   ok(base.foodStockByType.魂===0&&base.foodStockByType.死体===0,'special resource guaranteed');
+   if(['悪魔','天使'].includes(race))ok(base.foodStockByType.魂>0,'soul upkeep omitted');
+   if(race==='ヴァンパイア')ok(base.foodStockByType.死体>0,'corpse upkeep omitted');
    const noArmies=create({x:4,y:4,race,state,player,mapData:map,initialUnits:[],random:()=>0});
    ok(NORMAL_FOOD_RESOURCE_KEYS.some(key=>base.foodStockByType[key]>noArmies.foodStockByType[key]),'initial armies omitted');
    snapshots.push({race,population:base.populationByRace,stock:base.foodStockByType,minimum:expected});

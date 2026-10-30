@@ -1,0 +1,11 @@
+320: grouped action, three previews, AP, count, army members, unique placement, save and expiry passed
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.evaluate: TypeError: Failed to fetch dynamically imported module: http://127.0.0.1:3000/src/lib/v39-summon-rules.js
+    at C:\Users\skkt3\ドキュメント\Github\fantasy_Strategy\scripts\check-v39-summon-ui.mjs:86:31 {
+  log: []
+}
+
+Node.js v22.20.0

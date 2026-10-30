@@ -5,6 +5,7 @@ import {getFactionSettlements,getSelectedSettlement,replaceFactionSettlement} fr
 
 const n=value=>Number(value)||0;
 const alive=unit=>n(unit?.hp??unit?.currentHp)>0&&unit.state!=='死亡';
+const foodIncome=metrics=>Object.fromEntries(NORMAL_FOOD_RESOURCE_KEYS.map(key=>[key,n(metrics.food[key])+n(metrics.facilityFixedIncome?.[key])]));
 export function inspectV39NpcFoodBalance(state,player,map){
   const selected=getSelectedSettlement(player?.factionState),fallback=selected?.settlementId||selected?.id;
   return getFactionSettlements(player?.factionState).filter(base=>base.placed&&(base.worldId||'surface')===(state.activeWorldId||'surface')).map(base=>{
@@ -12,7 +13,7 @@ export function inspectV39NpcFoodBalance(state,player,map){
     const current=(player.factionState.units||[]).filter(unit=>alive(unit)&&(unit.settlementId||fallback)===id);
     const queued=(player.factionState.unitTrainingQueue||[]).map(entry=>entry.unit).filter(unit=>unit&&(unit.settlementId||fallback)===id&&alive(unit));
     const scoped={...player,factionState:replaceFactionSettlement(player.factionState,base,{ownerPlayerId:player.id})};
-    const income=collectV39TerritoryIncome(state,scoped,map).food;
+    const income=foodIncome(collectV39TerritoryIncome(state,scoped,map));
     const maintenance=buildV39PopulationMaintenanceStock(base.populationByRace,[...current,...queued],NORMAL_FOOD_RESOURCE_KEYS);
     const supply=inspectV39NormalFoodSupply(income,maintenance,NORMAL_FOOD_RESOURCE_KEYS);
     const reserveDemand=Object.fromEntries(Object.entries(maintenance).map(([key,value])=>[key,value*config.resourceTeams.stockReserveTurns]));
@@ -48,6 +49,6 @@ export function inspectV39NpcFoodFacilityGain(state,player,base,definition,tile,
   const completed=advanceConstruction({...base,constructionQueue:[{facilityName:definition.name,tileKey:`${tile.x},${tile.y}`,remainingTurns:1}],
     territoryTileModeMap:{...base.territoryTileModeMap,[`${tile.x},${tile.y}`]:'resource'}}).village;
   const projected={...player,factionState:replaceFactionSettlement(player.factionState,completed,{ownerPlayerId:player.id})};
-  const after=collectV39TerritoryIncome(state,projected,map).food;
+  const after=foodIncome(collectV39TerritoryIncome(state,projected,map));
   return scoreV39NpcFoodIncome(food.income,after,food.maintenance);
 }

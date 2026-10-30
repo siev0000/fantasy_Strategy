@@ -500,8 +500,8 @@ function confirmRace() {
   border: 1px solid var(--picker-line);
   border-radius: 8px;
   background: #0d181c;
-  scrollbar-width: thin;
-  scrollbar-color: #405b63 transparent;
+
+
 }
 
 .race-item {
@@ -675,8 +675,8 @@ function confirmRace() {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #405b63 transparent;
+
+
 }
 
 .detail-block {

@@ -13,8 +13,6 @@ const BASE_TERRAIN_ICONS = Object.freeze({
 });
 
 const SPECIAL_TERRAIN_ICONS = Object.freeze({
-  "沼地": { symbol: "≈", imageCandidate: true, imageName:"沼" },
-  "湿地": { symbol: "≋", imageCandidate: false },
   "薬草の群生地": { symbol: "🌿", imageCandidate: false },
   "死の霧": { symbol: "☠", imageCandidate: false },
   "峡谷": { symbol: "峡", imageCandidate: true, imageName:"渓谷" },

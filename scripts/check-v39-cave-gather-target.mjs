@@ -38,7 +38,7 @@ try{
     assert.equal(await page.evaluate(()=>window.getV39SelectedSquadUnit().ap),100);
     await page.screenshot({path:`output/web-game/cave-gather-target/${width}.png`});
     await page.locator("#mobileBattleGatherUse").click();
-    assert.equal(await page.evaluate(()=>window.getV39SelectedSquadUnit().ap),70);
+    assert.equal(await page.evaluate(()=>window.getV39SelectedSquadUnit().ap),0);
     assert.equal(await page.evaluate(()=>window.__v39FieldRuntime.mapData.caveSites[0].remaining),1);
     const checks=await page.evaluate(()=>{
       const actor=window.getV39SelectedSquadUnit(),map=window.__v39FieldRuntime.mapData,site=map.caveSites[0];
@@ -50,7 +50,7 @@ try{
       site.remaining=1;
       window.dispatchEvent(new CustomEvent("v39:unit-selected",{detail:{unit:actor}}));
       results.push(!window.inspectV39CaveGather().site);
-      results.push(window.getV39SelectedSquadUnit().ap===70);
+      results.push(window.getV39SelectedSquadUnit().ap===0);
       return results;
     });
     assert.ok(checks.every(Boolean));

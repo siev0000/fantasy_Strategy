@@ -4,6 +4,7 @@ import '../dev/v39-guardian-trial-test.js';
 import "../unit/v39-character-modal.js";
 import "../unit/v39-summon-modal.js";
 import '../dev/v39-call-test.js';
+import '../dev/v39-teleport-test.js';
 import '../dev/v39-fusion-test.js';
 import '../dev/v39-animal-army-test.js';
 import '../dev/v39-disaster-test.js';
@@ -34,7 +35,7 @@ import "../ui/v39-effect-category-settings.js";
 import "../ui/v39-title-effect-settings.js";
 import "../ui/v39-text-input-modal.js";
 
-const V39_UI_BUILD_LABEL = "UI 2026.10.26-130";
+const V39_UI_BUILD_LABEL = "UI 2026.10.30-248";
 
 function applyV39UiBuildLabel() {
   const label = document.getElementById("uiBuildLabel");

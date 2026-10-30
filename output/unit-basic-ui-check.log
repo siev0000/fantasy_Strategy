@@ -1,0 +1,4 @@
+{"geometry":true,"pathAp":true,"partialParty":true,"independent":true,"caveWall":true,"immutable":true}
+320: native gather/AP, partial party move, independent movement, scatter, map target, cancel and save passed
+390: native gather/AP, partial party move, independent movement, scatter, map target, cancel and save passed
+1100: native gather/AP, partial party move, independent movement, scatter, map target, cancel and save passed

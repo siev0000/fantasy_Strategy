@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import { addV39FieldSymbol } from "../map/v39-field-symbols.js";
 
 const POPUP_DEPTH = 1000010;
 const BAR_DEPTH = 1000005;
@@ -77,9 +78,8 @@ function lungeMarker(attackerId, target) {
 }
 
 function showOutcomePopup(scene, center, message) {
-  const label = scene.add.text(center.x, center.y - 24, message, {
-    fontFamily:"Noto Sans JP, Meiryo, sans-serif", fontSize:"18px", fontStyle:"bold", color:"#bde8ff", stroke:"#102a38", strokeThickness:4
-  }).setOrigin(0.5).setDepth(POPUP_DEPTH);
+  const label = addV39FieldSymbol(scene,null,message==='Miss'?'miss':'blocked',center.x,center.y-24,22,
+    {color:0xbde8ff,name:'v39-combat-outcome-icon',label:message}).setDepth(POPUP_DEPTH);
   scene.tweens.add({ targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400, onComplete:() => label.destroy() });
 }
 
@@ -167,7 +167,7 @@ window.addEventListener("v39:combat-log", event => {
   showCombatFeedback(event?.detail);
 });
 window.addEventListener("v39:combat-presentation", event => showCombatFeedback(event?.detail));
-window.addEventListener("v39:cast-started", (event) => {if(!window.__v39BackgroundWorldTurn)startCastBlink(event?.detail?.unitId);});
+window.addEventListener("v39:cast-started", (event) => {if(!window.__v39BackgroundWorldTurn&&!event?.detail?.aimAfterCast)startCastBlink(event?.detail?.unitId);});
 window.addEventListener("v39:cast-ended", (event) => stopCastBlink(event?.detail?.unitId));
 
 function showHazardFeedback(entries,worldId) {

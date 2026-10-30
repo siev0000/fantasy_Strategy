@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
+import {build} from 'esbuild';
+process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-specialty-rules.js';export * from './frontend/src/lib/v39-economy-rules.js';export * from './frontend/src/lib/v39-settlement-resource-flow.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
+  builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+    const dir=resolve('data/source/export/json'),modules=Object.fromEntries(readdirSync(dir).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${dir}/${name}`,'utf8'))]));
+    return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
+  });
+  builder.onLoad({filter:/(?:icon-library|facility-icon-artwork|map-entity-artwork|monster-sheet-artwork|unit-sheet-artwork)\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/g,'{};'),resolveDir:dirname(args.path),loader:'js'}));
+}}]});
+globalThis.window={};
+const warn=console.warn;let m;try{console.warn=()=>{};m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);}finally{console.warn=warn;}
+const keys=['4,4','3,4','5,4','3,3','4,3','3,5','4,5'],id='village-4-4';
+const map={w:12,h:10,grid:Array.from({length:10},()=>Array(12).fill('平地')),specialMap:[],hazardZones:[]};
+const player={id:'p',race:'只人',factionState:{units:[],settlements:[],research:{},selectedSettlementId:id,exploration:{discoveredSpecialtiesByTile:{}}}};
+const state={activeWorldId:'surface',timeline:{turnNumber:1,phase:'resolution'},players:[player],settlements:[],enemies:[],neutralVillages:[],territoryOwnerByTile:Object.fromEntries(keys.map(key=>[key,'p'])),territoryStateByTile:Object.fromEntries(keys.map(key=>[key,{settlementId:id,hp:100,maxHp:100}])),facilitiesByTile:{}};
+const base=m.createInitialV39Village({x:4,y:4,race:'只人',state,player,mapData:map,populationByRace:{只人:30},random:()=>0});
+player.factionState.settlements=[base];
+const before=m.inspectV39SettlementResourceFlow(state,player,base,map);
+player.factionState.exploration.discoveredSpecialtiesByTile['3,4']={name:'キノコ',x:3,y:4};
+const bonuses=m.resolveV39SpecialtyFoodBonuses(state,'p',id);
+assert.equal(bonuses.byTile['3,4'].穀物,15);assert.equal(bonuses.fixedIncome.穀物,5);
+const after=m.inspectV39SettlementResourceFlow(state,player,base,map);
+assert(after.productionByType.穀物>before.productionByType.穀物+5,'base +15 scales normally, fixed +5 is extra');
+assert.equal(after.productionByType.野菜,before.productionByType.野菜,'mushrooms are grain, not vegetables');
+assert.equal(after.specialtyFoodFixedIncome.穀物,5);
+const actual=m.advanceV39EconomyTurn(state,map).state.players[0].factionState.settlements[0].lastEconomyDelta;
+assert.deepEqual(actual.productionByType,after.productionByType,'forecast and actual use the same separate fixed income');
+const built=m.advanceConstruction({...base,constructionQueue:[{facilityName:'農場',tileKey:'3,4',remainingTurns:1,totalTurns:1}]}).village;
+const farm=m.inspectV39SettlementResourceFlow(state,player,built,map);
+assert(farm.productionByType.穀物>after.productionByType.穀物);assert.equal(farm.specialtyFoodFixedIncome.穀物,5,'farm does not multiply fixed income');
+const raided={...state,territoryStateByTile:{...state.territoryStateByTile,'3,4':{settlementId:id,raided:true,hp:100}}};
+assert.deepEqual(m.resolveV39SpecialtyFoodBonuses(raided,'p',id).fixedIncome,{});
+const unowned={...state,territoryOwnerByTile:{...state.territoryOwnerByTile,'3,4':'q'}};
+assert.deepEqual(m.resolveV39SpecialtyFoodBonuses(unowned,'p',id).fixedIncome,{});
+const low={...base,population:1,populationByRace:{只人:1}};
+assert.equal(m.inspectV39SettlementResourceFlow(state,player,low,map).specialtyFoodFixedIncome.穀物,5);
+const loan={sides:[{partyId:'p',settlementId:id},{partyId:'q',settlementId:'qbase'}],specialtyLoans:[{name:'キノコ',count:1,from:0,startTurn:1,endTurn:5}]};
+const loanState={...state,players:[{...player,factionState:{...player.factionState,tradeContracts:[loan]}},{id:'q',factionState:{}}]};
+assert.deepEqual(m.resolveV39SpecialtyFoodBonuses(loanState,'p',id).fixedIncome,{});
+assert.equal(m.resolveV39SpecialtyFoodBonuses(loanState,'q','qbase').fixedIncome.穀物,5,'temporary access transfers fixed bonus');
+assert.deepEqual(m.resolveV39SpecialtyFoodBonuses(loanState,'q','qbase').byTile,{},'borrowed access does not invent a terrain tile');
+const village={id:'v',name:'一般村',x:3,y:4,race:'只人',population:30,populationByRace:{只人:30},territoryTileKeys:['3,4']};
+const villageState={...state,neutralVillages:[village],specialtiesByTile:{'3,4':{name:'キノコ',x:3,y:4}},territoryOwnerByTile:{'3,4':'v'},territoryStateByTile:{'3,4':{settlementId:'v',hp:100}}};
+assert(m.inspectV39NeutralVillageEconomy(village,map,villageState).income.food.穀物>=5,'neutral village economy uses specialty food bonuses too');
+console.log('PASS: data-driven +15 base/+5 fixed, mushroom grain, forecast/actual parity, farm interaction, low population, ownership/raid and temporary access. No browser.');

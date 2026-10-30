@@ -18,13 +18,13 @@
 #v39-fusion-modal .fusion-toolbar{display:flex;align-items:center;gap:5px;padding:4px 6px;background:#12232a;flex:none}
 #v39-fusion-modal .fusion-toolbar label{display:flex;align-items:center;gap:4px;min-width:0;flex:1}
 #v39-fusion-modal .fusion-toolbar label:first-child{flex:3}#v39-fusion-modal .fusion-toolbar label>span{font-size:.85em;color:#acc0c3;white-space:nowrap;flex:none}
-#v39-fusion-modal .fusion-slots{display:flex;overflow-x:auto;gap:4px;padding:3px 6px;flex:none;scrollbar-width:thin}
+#v39-fusion-modal .fusion-slots{display:flex;overflow-x:auto;gap:4px;padding:3px 6px;flex:none;}
 #v39-fusion-modal .fusion-slots button{white-space:nowrap;flex:none}
 #v39-fusion-modal .fusion-panes{display:grid;grid-template-columns:minmax(0,40%) minmax(0,1fr);gap:5px;padding:3px 6px;flex:1;min-height:0}
 #v39-fusion-modal .fusion-material-pane{display:flex;flex-direction:column;min-height:0;min-width:0}
 #v39-fusion-modal .fusion-list-heading{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:2px;padding:3px 2px;color:#c8dcda;flex:none}
 #v39-fusion-modal .fusion-list-heading small{color:#90afb5;font-size:.85em}
-#v39-fusion-modal .squad-member-list{overflow-y:auto;overflow-x:hidden;min-height:0;flex:1;overscroll-behavior:contain;scrollbar-width:thin}
+#v39-fusion-modal .squad-member-list{overflow-y:auto;overflow-x:hidden;min-height:0;flex:1;overscroll-behavior:contain;}
 #v39-fusion-modal .fusion-candidate{margin-bottom:3px;min-width:0}
 #v39-fusion-modal .fusion-candidate small{display:block;font-size:.85em;color:#e5b99b;padding:2px 4px}
 #v39-fusion-modal .fusion-candidate.unavailable .squad-card{opacity:.55}

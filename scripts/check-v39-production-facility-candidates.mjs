@@ -40,6 +40,15 @@ try{
     await start.click();
     const queue=await page.evaluate(()=>window.getV39ActiveFactionState().settlements[0].constructionQueue);
     assert(queue.some(row=>row.facilityName===name),'real construction did not start');
+    if(name==='港'){
+      assert.equal(queue[0].replacesFacilityName,'船着き場');
+      assert.equal(queue[0].remainingTurns,1,'dock upgrade must apply the sheet-defined build-time reduction');
+      const completed=await page.evaluate(async()=>{
+        await window.advanceV39Turn({skipUnactedFocus:true,presentation:false});
+        return window.getV39ActiveFactionState().settlements[0].tileFacilityMap['6,6'];
+      });
+      assert(completed.includes('港')&&!completed.includes('船着き場'),'port must replace the dock, not stack on it');
+    }
     results.push({name,terrain,scale,dock,queue});
   }
   // The source sheet still requires a town and dock; do not silently remove those rules.
@@ -49,6 +58,7 @@ try{
     window.openV39LandConstruction({x:6,y:6});
   });
   assert.equal(await page.locator('[data-land-build-facility="港"]').count(),0,'port must remain hidden without town/dock');
+  assert.equal(await page.evaluate(()=>window.startV39Construction('港',{x:6,y:6}).ok),false,'the construction API must also reject a missing port prerequisite');
   assert.deepEqual(errors,[]);writeFileSync(`${out}/report-${width}.json`,JSON.stringify(results,null,2));
   console.log(`${width}: 5 production facilities appear on matching terrain and start construction; port prerequisites preserved`);
   await page.close();

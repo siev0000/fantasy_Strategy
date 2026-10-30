@@ -550,11 +550,157 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
             else:
                 seen[key] = index
 
+    if sheet_name == "災害":
+        validate_terrain_disasters(result)
+        validate_dynamic_disasters(result)
+    if sheet_name == "都市基本データ":
+        for record in result.records:
+            if "維持食料" in record and type(record["維持食料"]) is not bool:
+                result.errors.append({"type": "invalid_maintenance_food_flag", "name": record.get("データ分類")})
     if sheet_name == "施設":
         validate_facility_references(result)
+        if any(record.get("固定産出資源") for record in result.records):
+            resources = convert_sheet(reader, "都市基本データ", "都市基本データ.json")
+            skills = {row.get("データ分類"): row.get("対応技能") for row in resources.records}
+            for record in result.records:
+                targets = [part.strip() for part in str(record.get("固定産出資源", "")).split("/") if part.strip()]
+                for target in targets:
+                    skill = skills.get(target)
+                    value = record.get(skill) if skill else None
+                    if skill not in ("農業", "林業", "漁業", "工業") or type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                        result.errors.append({"type": "invalid_facility_fixed_resource", "name": record.get("施設名"), "resource": target})
+    if sheet_name == "特産品":
+        for record in result.records:
+            for key in ("収穫量加算", "固定収入"):
+                value = record.get(key)
+                if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+                    result.errors.append({"type": "invalid_specialty_food_bonus", "name": record.get("名前"), "field": key})
+            if (record.get("収穫量加算") or record.get("固定収入")) and record.get("収穫資源") not in ("穀物", "野菜", "肉", "魚"):
+                result.errors.append({"type": "invalid_specialty_food_resource", "name": record.get("名前")})
     if sheet_name == "勝利対象土地":
         validate_guardian_landmarks(reader, result)
     return result
+
+
+def validate_dynamic_disasters(result):
+    for record in result.records:
+        detail = record.get("災害詳細設定")
+        if detail is None:
+            continue
+        def error(message):
+            result.errors.append({"type": "invalid_disaster_details", "id": record.get("ID"), "message": message})
+        if not isinstance(detail, dict):
+            error("災害詳細設定はJSONオブジェクトで指定してください")
+            continue
+        numeric = ("stepsPerTurn", "minimumHeight", "maximumHeight", "rubbleDurability", "triggerRadius", "visionPenalty", "scoutPenalty", "weatherHumidity", "rangedAccuracyMultiplier", "maximumRadius", "radiusGrowthPerTurn", "radiusDecayPerTurn", "windTurnSteps", "magicPower", "facilityDamageMultiplier")
+        allowed = set(numeric) | {"movement", "minimumClimateTemperature", "weather", "triggerDisaster", "powerRange", "damageComponents", "knockback", "fogPenalty", "movementImpediment", "followWind"}
+        if set(detail) - allowed:
+            error(f"未対応の災害詳細設定: {sorted(set(detail) - allowed)}")
+        if "fogPenalty" in detail and type(detail["fogPenalty"]) is not bool:
+            error("fogPenaltyは真偽値で指定してください")
+        if "followWind" in detail and type(detail["followWind"]) is not bool:
+            error("followWindは真偽値で指定してください")
+        if "windTurnSteps" in detail and (type(detail["windTurnSteps"]) is not int or not 0 <= detail["windTurnSteps"] <= 3):
+            error("windTurnStepsは0〜3の整数で指定してください")
+        if "movementImpediment" in detail:
+            effect = detail["movementImpediment"]
+            keys = {"power", "reductionPerPower", "edgeMultiplier", "flightMultiplier", "maximumReduction"}
+            if not isinstance(effect, dict) or set(effect) != keys or any(type(effect.get(key)) not in (int, float) or not math.isfinite(effect[key]) for key in keys):
+                error("movementImpedimentは威力・換算率・外縁倍率・飛行倍率・最大低下率の5項目を持つ数値オブジェクトで指定してください")
+            elif effect["power"] < 0 or effect["reductionPerPower"] < 0 or not 0 <= effect["edgeMultiplier"] <= 1 or effect["flightMultiplier"] < 1 or not 0 <= effect["maximumReduction"] < 1:
+                error("movementImpedimentの値が範囲外です")
+        for key in (*numeric, "minimumClimateTemperature"):
+            if key not in detail:
+                continue
+            value = detail[key]
+            if type(value) not in (int, float) or not math.isfinite(value) or key != "minimumClimateTemperature" and value < 0:
+                error(f"{key}は有限の数値で指定してください")
+            elif key == "rangedAccuracyMultiplier" and value > 1 or key == "weatherHumidity" and value > 100:
+                error(f"{key}の値が範囲外です")
+            elif key == "stepsPerTurn" and (not float(value).is_integer() or value > 10):
+                error("stepsPerTurnは0〜10の整数で指定してください")
+        if detail.get("movement") not in (None, "drift", "downhill", "coast"):
+            error("movementはdrift/downhill/coastから指定してください")
+        for key in ("maximumRadius", "radiusGrowthPerTurn", "radiusDecayPerTurn"):
+            value = detail.get(key)
+            if value is not None and (type(value) not in (int, float) or not float(value).is_integer() or not 0 <= value <= 10):
+                error(f"{key}は0〜10の整数で指定してください")
+        power_range = detail.get("powerRange")
+        if power_range is not None:
+            keys = {"minimum", "maximum", "humidityMinimum", "humidityMaximum"}
+            if not isinstance(power_range, dict) or set(power_range) != keys or any(type(power_range.get(key)) not in (int, float) or not math.isfinite(power_range[key]) for key in keys):
+                error("powerRangeは威力/湿度の上下限4項目を持つ数値オブジェクトで指定してください")
+            elif not (0 <= power_range["minimum"] <= power_range["maximum"] and 0 <= power_range["humidityMinimum"] < power_range["humidityMaximum"] <= 100):
+                error("powerRangeの威力または湿度の上下限が不正です")
+        components = detail.get("damageComponents")
+        if components is not None:
+            if not isinstance(components, list) or not 1 <= len(components) <= 4:
+                error("damageComponentsは1〜4件の属性/配分オブジェクト配列で指定してください")
+            else:
+                for component in components:
+                    if (not isinstance(component, dict) or set(component) != {"element", "weight"}
+                        or not isinstance(component.get("element"), str) or not component["element"].strip()
+                        or type(component.get("weight")) not in (int, float)
+                        or not math.isfinite(component["weight"]) or component["weight"] <= 0):
+                        error("damageComponentsはelement文字列と正のweightを指定してください")
+        knockback = detail.get("knockback")
+        if knockback is not None:
+            if (not isinstance(knockback, dict) or not {"resistanceKey", "powerPerTile", "maximumDistance"}.issubset(knockback)
+                or set(knockback) - {"resistanceKey", "powerPerTile", "maximumDistance", "direction"}
+                or knockback.get("direction", "away") not in ("away", "toward", "random")
+                or not isinstance(knockback.get("resistanceKey"), str) or not knockback["resistanceKey"].endswith("耐性")
+                or type(knockback.get("powerPerTile")) not in (int, float)
+                or not math.isfinite(knockback["powerPerTile"]) or knockback["powerPerTile"] <= 0
+                or type(knockback.get("maximumDistance")) is not int or not 0 <= knockback["maximumDistance"] <= 10):
+                error("knockbackはresistanceKey耐性名・正のpowerPerTile・0〜10のmaximumDistanceを指定してください")
+        for key in ("weather", "triggerDisaster"):
+            if key in detail and not isinstance(detail[key], str):
+                error(f"{key}は文字列で指定してください")
+
+
+def validate_terrain_disasters(result):
+    seen_terrain = set()
+    seen_special = set()
+    requirements = {
+        "地形破壊": {"威力軽減": 0, "地形耐久": 1, "地形被害倍率": 0, "高度低下": 0},
+        "落石": {"ダメージ威力": 0, "発生猶予ターン": 1},
+        "瓦礫": {"威力軽減": 0, "地形耐久": 1, "地形被害倍率": 0, "撤去AP": 0},
+    }
+    for record in result.records:
+        kind = record.get("地形災害処理")
+        if not kind:
+            continue
+        def error(message):
+            result.errors.append({"type": "invalid_terrain_disaster", "id": record.get("ID"), "message": message})
+        if kind not in requirements:
+            error("地形災害処理は地形破壊/落石/瓦礫から指定してください")
+            continue
+        if "攻撃" not in re.split(r"[、,，|/]", str(record.get("発生方法", ""))):
+            error("地形災害の発生方法には攻撃が必要です")
+        for header, minimum in requirements[kind].items():
+            value = record.get(header)
+            if type(value) not in (int, float) or not math.isfinite(value) or value < minimum:
+                error(f"{header}は{minimum}以上の数値が必要です")
+            elif header in ("高度低下", "発生猶予ターン") and not float(value).is_integer():
+                error(f"{header}は整数が必要です")
+        if kind != "落石" and not record.get("攻撃発生属性"):
+            error("攻撃発生属性が必要です")
+        if kind == "落石" and not record.get("ダメージ属性"):
+            error("落石のダメージ属性が必要です")
+        if record.get("有効") is False:
+            continue
+        if kind == "地形破壊":
+            terrains = [name.strip() for name in re.split(r"[、,，|/]", str(record.get("対象地形", ""))) if name.strip()]
+            if not terrains:
+                error("地形破壊には対象地形が必要です")
+            for terrain in terrains:
+                if terrain in seen_terrain:
+                    error(f"有効な地形破壊の対象地形が重複しています: {terrain}")
+                seen_terrain.add(terrain)
+        else:
+            if kind in seen_special:
+                error(f"有効な{kind}は1行のみ指定できます")
+            seen_special.add(kind)
 
 
 def validate_guardian_landmarks(reader, result):
@@ -606,6 +752,10 @@ def validate_facility_references(result):
     edges = {}
     for row in result.records:
         name = row["施設名"]
+        for field in ("味方通行AP増加率", "内壁幸福度低下", "内壁幸福度低下上限"):
+            value = row.get(field)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0):
+                result.errors.append({"type": "invalid_wall_effect", "name": name, "header": field, "value": value})
         if "/" in str(name):
             result.errors.append({"type": "invalid_facility_name", "name": name,
                                   "message": "施設名に条件区切りの / は使えません"})

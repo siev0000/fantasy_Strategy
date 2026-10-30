@@ -5,7 +5,7 @@ import { getV39EffectSettingsCatalog } from "./v39-effect-settings.js";
 
 const STORAGE_KEY = "v39-effect-category-settings-v1";
 const SCHEMA = "v39-effect-category-settings";
-const VERSION = 5;
+const VERSION = 6;
 let customCategories = [];
 
 function text(value, fallback = "") {
@@ -24,6 +24,7 @@ function defaults() {
       id:text(item?.id),
       group:item?.group === "support" ? "support" : "attack",
       name:text(item?.name),
+      aliases:Array.isArray(item?.aliases)?item.aliases.map(value=>text(value)).filter(Boolean):[],
       independent:item?.independent === true,
       defaultEffect:text(item?.defaultEffect)
     }))
@@ -69,7 +70,8 @@ function normalizeSetting(category, raw = {}) {
 function sameSetting(a, b) {
   return a.rotationDeg === b.rotationDeg && a.offsetX === b.offsetX && a.offsetY === b.offsetY
     && a.orientToAttack === b.orientToAttack && a.baseEffect === b.baseEffect
-    && a.scaleMultiplierPercent === b.scaleMultiplierPercent && a.placementMode === b.placementMode;
+    && a.scaleMultiplierPercent === b.scaleMultiplierPercent && a.placementMode === b.placementMode
+    && a.powerScaleAxis === b.powerScaleAxis;
 }
 
 function splitLegacyClawFang(settings) {

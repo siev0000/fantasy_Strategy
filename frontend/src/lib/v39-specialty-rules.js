@@ -31,6 +31,15 @@ export function v39SpecialtyDefinitions() {
   return (rows.length ? rows : provisionalDefinitions).filter(row => text(row?.名前));
 }
 
+export function resolveV39SpecialtyFoodAt(state,playerId,x,y){
+  const key=`${x},${y}`,site=state?.specialtiesByTile?.[key];
+  const discovered=state?.players?.find(p=>p.id===playerId)?.factionState?.exploration?.discoveredSpecialtiesByTile?.[key];
+  const name=text(site?.name||site?.名前||site);
+  if(!name||text(discovered?.name)!==name)return null;
+  const definition=v39SpecialtyDefinitions().find(row=>text(row.名前)===name);
+  return definition?.収穫資源?{name,key,resource:text(definition.収穫資源),amount:Math.max(0,Number(definition.収穫量加算)||0)}:null;
+}
+
 function hash(value) {
   let n = 2166136261;
   for (const c of String(value)) n = Math.imul(n ^ c.charCodeAt(0), 16777619);
@@ -106,7 +115,7 @@ export function getV39SpecialtyEntries(state, playerId, { settlementId = "", own
     if (!ownedOnly) return true;
     if (state?.territoryOwnerByTile?.[key] !== playerId) return false;
     const territory = state?.territoryStateByTile?.[key];
-    if (territory?.status === "襲撃中" || territory?.hp <= 0) return false;
+    if (territory?.raided || territory?.status === "襲撃中" || territory?.hp <= 0) return false;
     return !settlementId || territory?.settlementId === settlementId;
   }).map(([key, record]) => ({ ...record, key, owned:state?.territoryOwnerByTile?.[key] === playerId,
     ...resolveV39ResourceIcon(record.name) }));
@@ -154,6 +163,27 @@ export function resolveV39SpecialResourceHarvestRule(entry, research) {
   const level = category ? resolveCompletedResearchLevel(research, category) : 0;
   const speed = 1 + level * Math.max(0, Number(definition.研究速度補正 ?? V39_SPECIALTY_BALANCE.researchSpeedPerLevel) || 0);
   return { turns, amount, speed, category, level };
+}
+
+export function resolveV39SpecialtyFoodBonuses(state,playerId,settlementId=''){
+  const definitions=new Map(v39SpecialtyDefinitions().map(row=>[row.名前,row]));
+  const village=(state.neutralVillages||[]).find(row=>row.id===playerId);
+  const entries=village?(village.territoryTileKeys||[]).map(key=>({...state.specialtiesByTile?.[key],key})).filter(row=>row.name)
+    :getV39SpecialtyEntries(state,playerId,{settlementId,ownedOnly:true});
+  const available=new Map(getV39SpecialtyAccess(state,playerId,{settlementId,includeBorrowed:false}).map(row=>[row.name,row.count]));
+  const byTile={},fixedIncome={},sites=[];
+  for(const entry of [...entries].sort((a,b)=>a.key.localeCompare(b.key))){
+    const definition=definitions.get(entry.name),resource=definition?.収穫資源;
+    if(!resource||!(available.get(entry.name)>0)||state.territoryStateByTile?.[entry.key]?.raided)continue;
+    available.set(entry.name,available.get(entry.name)-1);
+    byTile[entry.key]={[resource]:Math.max(0,Number(definition.収穫量加算)||0)};
+    sites.push({key:entry.key,name:entry.name,resource,baseBonus:byTile[entry.key][resource]});
+  }
+  for(const entry of getV39SpecialtyAccess(state,playerId,{settlementId})){
+    const definition=definitions.get(entry.name),resource=definition?.収穫資源;
+    if(resource)fixedIncome[resource]=(fixedIncome[resource]||0)+Math.max(0,Number(definition.固定収入)||0)*entry.count;
+  }
+  return {byTile,fixedIncome,sites};
 }
 
 // 拠点ごと・マスごとの進捗。領土喪失時は破棄、襲撃中は保持して停止する。

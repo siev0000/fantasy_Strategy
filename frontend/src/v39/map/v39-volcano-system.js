@@ -16,6 +16,7 @@ import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from 
 import { resolveV39TerrainTurnDamageRule, resolveV39UnitCapabilityValue } from "../../lib/v39-terrain-traversal.js";
 import { V39_VOLCANO_DAMAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import {resolveV39CityHazardDamage} from '../../lib/v39-city-specialization-rules.js';
+import {damageV39FacilityHealth} from '../../lib/v39-facility-health.js';
 
 const asCount = value => Math.max(0, Math.floor(Number(value) || 0));
 const LAVA_DAMAGE_RULE = resolveV39TerrainTurnDamageRule("溶岩");
@@ -161,20 +162,9 @@ function applyInfrastructureDamage(settlement, target, turnNumber) {
   const tileStates = { ...(facilityStateByTile[target.key] || {}) };
   for (const facilityName of next?.tileFacilityMap?.[target.key] || []) {
     const source = tileStates[facilityName] || {};
-    const maxHp = Math.max(1, Number(source.maxHp) || V39_VOLCANO_DAMAGE_BALANCE.facilityMaxHp);
-    const beforeHp = Math.max(0, Math.min(maxHp, Number(source.hp ?? maxHp) || 0));
     const requestedDamage = Math.max(0, target.damage * V39_VOLCANO_DAMAGE_BALANCE.facilityDamageMultiplier);
-    const damage = Math.min(beforeHp, requestedDamage);
-    const afterHp = Math.max(0, beforeHp - damage);
-    tileStates[facilityName] = {
-      ...source,
-      hp:afterHp,
-      maxHp,
-      status:afterHp <= 0 ? "損壊" : "稼働",
-      lastDamage:damage,
-      lastDamageTurn:turnNumber,
-      lastDamageCause:target.eventType === "eruption" ? "火山噴火" : "溶岩"
-    };
+    const {beforeHp,afterHp,maxHp,damage,health}=damageV39FacilityHealth(source,requestedDamage,turnNumber,target.eventType === "eruption" ? "火山噴火" : "溶岩");
+    tileStates[facilityName] = health;
     if (damage > 0) facilityEntries.push({ settlementId:text(next?.settlementId || next?.id), key:target.key, facilityName, beforeHp, afterHp, maxHp, damage });
   }
   if (Object.keys(tileStates).length) facilityStateByTile[target.key] = tileStates;

@@ -57,8 +57,8 @@ try {
     check("remote mining blocked",rejects(()=>c.useCaveSite(game,ore.id,game.party[0].id)));
     game.position=h.getHexNeighborCoords(game.map.w,game.map.h,ore.x,ore.y).find(t=>game.map.grid[t.y][t.x]==="洞窟");c.revealCave(game);game.party[0].ap=100;
     const grid=JSON.stringify(game.map.grid);
-    for(let i=0;i<3;i++)c.useCaveSite(game,ore.id,game.party[0].id);
-    check("mine deposit and AP",game.inventory.鉱石===3&&ore.remaining===0&&game.party[0].ap===10);
+    for(let i=0;i<3;i++){game.party[0].ap=100;c.useCaveSite(game,ore.id,game.party[0].id);}
+    check("mine deposit and AP",game.inventory.鉱石===3&&ore.remaining===0&&game.party[0].ap===0);
     check("depleted no repeated reward",rejects(()=>c.useCaveSite(game,ore.id,game.party[0].id))&&game.inventory.鉱石===3);
     check("mining keeps walls",JSON.stringify(game.map.grid)===grid);
     const gem=game.sites.find(s=>s.kind==="gem");game.position=h.getHexNeighborCoords(game.map.w,game.map.h,gem.x,gem.y).find(t=>game.map.grid[t.y][t.x]==="洞窟");c.revealCave(game);game.party[0].ap=100;

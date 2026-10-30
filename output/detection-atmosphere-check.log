@@ -1,0 +1,18 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: normal 3-hex sight must show the weather, not only 7 adjacent tiles
+
+91 !== 37
+
+    at file:///C:/Users/skkt3/%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88/Github/fantasy_Strategy/scripts/check-v39-cave-atmosphere-vision.mjs:43:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 91,
+  expected: 37,
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v22.20.0

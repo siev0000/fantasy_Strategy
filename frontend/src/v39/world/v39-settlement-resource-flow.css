@@ -1,0 +1,13 @@
+.settlement-resource-flow{min-width:0;padding:2px 3px;border:1px solid #394b52;border-radius:6px;background:#101c20}
+.settlement-resource-flow>header{display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:3px 0}
+.settlement-resource-flow>header strong{margin-right:auto;font-size:var(--font-body)}
+.settlement-resource-flow select,.settlement-resource-flow button{color:#deedef;background:#172b32;border:1px solid #496973;border-radius:4px;padding:2px 3px;font:inherit;font-size:var(--font-secondary)}
+.settlement-resource-flow>small,.settlement-resource-flow details{font-size:var(--font-secondary);color:#a9bbc0}
+.settlement-resource-flow table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:var(--font-secondary);font-variant-numeric:tabular-nums}
+.settlement-resource-flow th,.settlement-resource-flow td{padding:5px 2px;border-bottom:1px solid #2a4149;text-align:right;overflow-wrap:anywhere}
+.settlement-resource-flow th:first-child{width:25%;text-align:left}
+.settlement-resource-flow thead th{color:#9dbbc5;font-weight:600}
+.settlement-resource-flow tbody th{font-weight:500;color:#e0ebed}
+.settlement-resource-flow .positive{color:#77d9a1}
+.settlement-resource-flow .negative{color:#ffb386}
+.settlement-resource-flow p{margin:5px 0;font-size:var(--font-secondary)}

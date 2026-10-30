@@ -7,13 +7,14 @@ import {getV39HazardDefinitions,projectV39HazardEvents} from '../../lib/v39-haza
 
 window.startV39DisasterTest=(options={})=>{
   const natural=options.natural===true;
-  const atmosphere=options.atmosphere!==false&&!natural;
+  const extended=options.extended===true;
+  const atmosphere=options.atmosphere!==false&&!natural&&!extended;
   const result=window.startV39ExpeditionTest?.(false,{silentBanner:natural});
   if(!result?.ok)return result;
   const map=window.__v39FieldRuntime.mapData,state=window.getV39GameState({includeWorlds:false});
   map.hazardZones=[];
   const player=state.players.find(p=>p.id===state.activePlayerId),f=player.factionState;
-  const events=fixture.events;
+  const events=extended?fixture.extendedEvents:fixture.events;
   if(natural)for(let y=0;y<map.h;y++)for(let x=0;x<map.w;x++){
     map.grid[y][x]=y<12?(x<12?(x%4===0?'平地':'森'):(x%4===0?'山岳':'平地')):(x<12?(x%4===0?'山岳':'河川'):'雪原');
     map.specialMap[y][x]='';map.heightLevelMap[y][x]=map.grid[y][x]==='山岳'?3:0;
@@ -22,7 +23,15 @@ window.startV39DisasterTest=(options={})=>{
     const area=events.find(event=>getHexDistance(event,{x,y})<=2);
     if(area&&!natural){map.grid[y][x]=area.terrain;map.specialMap[y][x]='';}
   }
+  if(extended){
+    for(let y=4;y<=9;y++)for(let x=18;x<=20;x++){map.grid[y][x]='雪山';map.heightLevelMap[y][x]=Math.max(0,8-y);}
+    for(let y=13;y<=19;y++)for(let x=2;x<=21;x++){
+      map.grid[y][x]=x<=6||x>=15&&x<=17?'海':'平地';map.heightLevelMap[y][x]=map.grid[y][x]==='海'?0:1;
+    }
+    map.terrainDamage={};map.disasterFields=[];
+  }
   map.disasterTestFixture=true;
+  map.disasterExtendedTestFixture=extended;
   map.disasterNaturalTestFixture=natural;
   map.disasterAtmosphereTestFixture=atmosphere;
   if(atmosphere)for(const sample of fixture.atmosphere.samples.filter(row=>!row.disasters.length)){
@@ -44,11 +53,11 @@ window.startV39DisasterTest=(options={})=>{
   const units=f.units.map((unit,i)=>{
     if(i>=3)return {...unit,caveDuty:null,transportAssignment:null};
     const event=events[i];return {...unit,x:event.x,y:event.y,position:[event.x,event.y],
-      name:['山火事観察者','洪水観察者','干ばつ観察者'][i],caveDuty:null,transportAssignment:null,
+      name:`${resolveV39DisasterRule(event.id).name}観察者`,caveDuty:null,transportAssignment:null,
       worldId:'surface',hp:unit.maxHp,currentHp:unit.maxHp};
   });
   const {x,y,durationTurns}=fixture.lightning;
-  const lightningObservers=[{x,y},...getHexOffsetNeighbors(x,y)].map((point,index)=>({...units[0],
+  const lightningObservers=(extended?[]:[{x,y},...getHexOffsetNeighbors(x,y)]).map((point,index)=>({...units[0],
     id:`lightning-observer-${index}`,name:`落雷観察者${index+1}`,x:point.x,y:point.y,position:[point.x,point.y],
     squadId:'solo',hp:units[0].maxHp,currentHp:units[0].maxHp}));
   units.push(...lightningObservers);
@@ -68,7 +77,7 @@ window.startV39DisasterTest=(options={})=>{
   window.updateV39FieldData?.({...map},{silent:true});
   if(!natural){
     for(const event of events)window.forceV39Disaster(event.id,{x:event.x,y:event.y});
-    window.forceV39Disaster('災害:落雷嵐',{x,y});
+    if(!extended)window.forceV39Disaster('災害:落雷嵐',{x,y});
   }
   if(atmosphere){
     const turn=state.timeline.turnNumber;

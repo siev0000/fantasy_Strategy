@@ -1,0 +1,10 @@
+{
+  "effect": {
+    "referencePower":100,
+    "powerPerScale":200,
+    "minimumScale":0.1,
+    "maximumScale":2,
+    "limits":{"referencePower":[0,100000],"powerPerScale":[1,100000],"maximumScale":[1,10]},
+    "disabledSkillNames":[]
+  }
+}

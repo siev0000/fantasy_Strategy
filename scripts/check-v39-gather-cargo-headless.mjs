@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
+import {build} from 'esbuild';
+process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-logistics-state.js';export * from './frontend/src/lib/v39-cave-adventure.js';export * from './frontend/src/lib/v39-cargo-deposit.js';export * from './frontend/src/lib/v39-gather-rules.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
+  builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+    const dir=resolve('data/source/export/json'),modules=Object.fromEntries(readdirSync(dir).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${dir}/${name}`,'utf8'))]));
+    return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
+  });
+  builder.onLoad({filter:/(?:icon-library|facility-icon-artwork|map-entity-artwork|monster-sheet-artwork|unit-sheet-artwork)\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/g,'{};'),resolveDir:dirname(args.path),loader:'js'}));
+}}]});
+globalThis.window={addEventListener(){}};
+const warn=console.warn;let m;try{console.warn=()=>{};m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);}finally{console.warn=warn;}
+const actor={id:'a',name:'採取者',squadId:'solo',x:1,y:1,worldId:'cave-test',hp:100,maxHp:100,ap:100,currentAp:100,status:{SIZ:20.4}};
+const other={...actor,id:'b',status:{SIZ:170}};
+const faction={units:[actor,other],squads:[{id:'solo',unitIds:['a','b'],cargoByUnitId:{a:{resourcesByType:{鉱石:3}},b:{resourcesByType:{宝石:40}}}}]};
+const state={activeWorldId:'cave-test',timeline:{phase:'player',turnNumber:1},players:[{id:'p',race:'只人',factionState:faction}]};
+let status=m.resolveV39FactionUnitCargoStatus(faction,'a',state);
+assert.equal(status.capacity,12);assert.equal(status.load,3);assert.deepEqual(status.members.map(u=>u.id),['a']);
+assert.equal(m.formatV39CargoStatus(status),'手持ち 3/12 / 鉱石 3');
+assert.equal(m.formatV39CargoStatus(status,{includeSoul:true,showScope:true}),'手持ち（個人） 積載 3/12 / 魂 0 / 鉱石 3');
+assert.equal(m.formatV39CargoStatus({...status,individual:false,load:.06,cargo:{resourcesByType:{魂:.06},equipmentInventory:[]}},{includeSoul:true,showScope:true}),'手持ち（部隊共通） 積載 0.06/12 / 魂 6');
+const game={phase:'player',map:{w:5,h:5},position:actor,party:[structuredClone(actor)],sites:[{id:'ore',key:'2,1',x:2,y:1,name:'鉱石',wall:true,discovered:true,remaining:3}],inventory:{鉱石:0,宝石:0},cargoRemaining:status.remaining,turn:1,floor:1,log:[]};
+assert.equal(m.caveSiteUnavailable(game,game.sites[0],game.party[0]),'');
+m.useCaveSite(game,'ore','a');assert.equal(game.party[0].ap,0);assert.equal(game.sites[0].remaining,2);
+const added=m.addV39CargoToFactionUnit(faction,'a',{resourcesByType:game.inventory});assert(added.ok);
+status=m.resolveV39FactionUnitCargoStatus(added.faction,'a',state);assert.equal(status.load,4);assert.equal(status.cargo.resourcesByType.鉱石,4);
+assert.equal(added.faction.squads[0].cargoByUnitId.b.resourcesByType.宝石,40);
+assert.equal(faction.squads[0].cargoByUnitId.a.resourcesByType.鉱石,3,'input is immutable');
+for(const remaining of [0,0.9]){const full={...structuredClone(game),cargoRemaining:remaining};full.party[0].ap=100;const before=JSON.stringify(full);assert.throws(()=>m.useCaveSite(full,'ore','a'),/運搬上限/);assert.equal(JSON.stringify(full),before,'no AP/site loss on full cargo');}
+const noSquad=m.addV39CargoToFactionUnit({...faction,squads:[]},'a',{resourcesByType:{宝石:1}});assert(noSquad.ok);assert.equal(m.resolveV39FactionUnitCargoStatus(noSquad.faction,'a',state).load,1);
+const shared={...faction,units:[{...actor,squadId:'s'}, {...other,squadId:'s'}, {...other,id:'remote',squadId:'s',worldId:'surface'}],squads:[{id:'s',unitIds:['a','b','remote'],cargo:{resourcesByType:{宝石:2}}}]};
+assert.equal(m.resolveV39FactionUnitCargoStatus(shared,'a',state).capacity,112,'other worlds cannot lend capacity');
+assert.equal(m.resolveV39FactionUnitCargoStatus(shared,'a',state).load,2);
+const home={id:'home',settlementId:'home',placed:true,x:1,y:1,race:'只人',population:10,populationByRace:{只人:10},territoryTileKeys:['1,1'],territoryResidentialCenterMap:{'1,1':'1,1'},foodStockByType:{穀物:100},materialStockByType:{鉄:5,宝石:0}};
+const returning={...added.faction,units:added.faction.units.map(u=>u.id==='a'?{...u,worldId:'surface'}:u),settlements:[home],selectedSettlementId:'home'};
+const restored=JSON.parse(JSON.stringify({...state,activeWorldId:'surface',players:[{...state.players[0],factionState:returning}]}));
+const deposited=m.depositV39FactionCargo(restored,'p','a');assert.equal(deposited.reports.length,1);assert.equal(deposited.reports[0].deposited.resourcesByType.鉄,4);
+assert.equal(deposited.state.players[0].factionState.settlements[0].materialStockByType.鉄,9);
+assert.equal(m.resolveV39FactionUnitCargoStatus(deposited.state.players[0].factionState,'a',deposited.state).load,0);
+assert.equal(m.depositV39FactionCargo(deposited.state,'p','a').reports.length,0,'cannot deposit twice');
+const surface={...state,activeWorldId:'surface',territoryOwnerByTile:{},players:[{...state.players[0],factionState:{...faction,units:[{...actor,worldId:'surface'}],squads:[],exploration:{}}}]};
+const forest={w:5,h:5,grid:Array.from({length:5},()=>Array(5).fill('森'))};
+const check=m.inspectV39Gather(surface,'p','a',forest);assert(check.available,check.reasons.join('/'));
+const gathered=m.gatherV39Resources(surface,'p','a',forest);assert(gathered.ok);assert(m.resolveV39FactionUnitCargoStatus(gathered.state.players[0].factionState,'a',gathered.state).load>0);
+const fullSurface=structuredClone(gathered.state);fullSurface.timeline.turnNumber++;
+fullSurface.players[0].factionState.squads[0].cargoByUnitId.a={resourcesByType:{木材:12}};
+const rejected=m.gatherV39Resources(fullSurface,'p','a',forest);assert(!rejected.ok);assert.equal(rejected.state,fullSurface);
+console.log('PASS: solo 3/12 display, isolated cargo, capacity limits without AP/site loss, legacy solo recovery, shared/world capacity, save/restore and ore-to-iron deposit. No browser.');

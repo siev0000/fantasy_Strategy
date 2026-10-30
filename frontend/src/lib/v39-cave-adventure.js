@@ -231,13 +231,23 @@ export function descendCave(game) {
   game.floor++;enterFloor(game);
 }
 
+export function inspectV39CaveSiteGather(game,site,actor) {
+  const requiredAp=Math.max(1,Math.floor(balance.miningApCost));
+  const progressBefore=Math.max(0,Math.min(requiredAp-1,Math.floor(Number(site?.miningProgressByUnitId?.[actor?.id])||0)));
+  const slots=Math.max(0,Math.floor(Math.min(Number(site?.remaining)||0,game.cargoRemaining??Infinity)));
+  const apCost=Math.max(0,Math.min(Math.floor(Number(actor?.ap)||0),slots*requiredAp-progressBefore));
+  const amount=Math.min(slots,Math.floor((progressBefore+apCost)/requiredAp));
+  return {apCost,amount,progressBefore,progress:progressBefore+apCost-amount*requiredAp,requiredAp};
+}
+
 export function caveSiteUnavailable(game,site,actor) {
   if(game.phase!=="player"||!site.discovered)return "行動できません";
   if(site.remaining<=0)return "使い切りました";
   if(site.wall) {
     if(!getHexNeighborCoords(game.map.w,game.map.h,site.x,site.y).some(tile=>tile.key===key(game.position)))return "隣接マスから採取できます";
     if(!actor||!alive(actor))return "生存している担当者を選んでください";
-    if(actor.ap<balance.miningApCost)return "AP不足";
+    if(actor.ap<1)return "AP不足";
+    if(game.cargoRemaining != null && game.cargoRemaining < 1)return "運搬上限です。拠点へ戻って荷下ろししてください";
   } else {
     if(site.key!==key(game.position))return "群生地のマスへ移動してください";
     if(site.lastUseTurn===game.turn)return "このターンは休息済みです";
@@ -252,9 +262,12 @@ export function useCaveSite(game,siteId,actorId) {
   if(!site)throw new Error("地点がありません");
   const reason=caveSiteUnavailable(game,site,actor);if(reason)throw new Error(reason);
   if(site.wall) {
-    actor.ap-=balance.miningApCost;actor.currentAp=actor.ap;
-    game.inventory[site.name]++;
-    log(game,`${actor.name}：${site.name} +1`);
+    const work=inspectV39CaveSiteGather(game,site,actor);
+    actor.ap-=work.apCost;actor.currentAp=actor.ap;actor.actionPoint=actor.ap;
+    game.inventory[site.name]=(Number(game.inventory[site.name])||0)+work.amount;
+    site.miningProgressByUnitId={...site.miningProgressByUnitId,[actor.id]:work.progress};
+    site.remaining-=work.amount;
+    log(game,`${actor.name}：${site.name}${work.amount?` +${work.amount}`:''} / 採取進捗 ${work.progress}/${work.requiredAp} / AP-${work.apCost}`);
   } else {
     for(const unit of game.party.filter(alive)) {
       const amount=Math.min(unit.maxHp-unit.hp,Math.floor(Math.ceil(unit.maxHp*balance.recoveryHpRate)*v39HazardRecoveryMultiplier(game.map,unit,game.turn)));
@@ -262,6 +275,6 @@ export function useCaveSite(game,siteId,actorId) {
       log(game,`${site.name}：${unit.name} HP +${amount}`);
     }
     site.lastUseTurn=game.turn;
+    site.remaining--;
   }
-  site.remaining--;
 }

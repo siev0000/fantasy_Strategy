@@ -2,13 +2,14 @@ import { renderV39UnitSkills } from "./v39-unit-skills.js";
 import { openV39EquipmentPicker } from "./v39-equipment-picker.js";
 import { isMobUnit } from "../../composables/unitCoreUtils.js";
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
-import { renderV39UnitAbility, renderV39DetailTabs, renderV39UnitEquipment, renderV39UnitGrowth } from "./v39-unit-detail.js";
+import { renderV39UnitAbility, renderV39DetailTabs, renderV39UnitEquipment, renderV39UnitGrowth,renderV39UnitAchievements } from "./v39-unit-detail.js";
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import {resolveV39ToolSlots,getV39ToolLoadout,getV39ConsumableDefinitions,setV39ToolLoadout} from "../../lib/v39-consumables.js";
 import {getV39ClassPromotionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
 import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
 import {renderV39AnimalArmyControls,openV39AnimalArmyEditor} from './v39-animal-army-ui.js';
 import {renderV39UnitHeading} from './v39-unit-heading.js';
+import {mountV39UnitCreatePanel} from './v39-unit-create-ui.js';
 
 let activeTab = "character";
 let selectedId = "";
@@ -158,12 +159,17 @@ function growthPanel(unit) {
 }
 
 function detailTabs(unit) {
-  const tabs = [["status", "能力"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"]];
-  const panel = detailTab === "skills" ? skillsPanel(unit)
-    : detailTab === "equipment" ? equipmentPanel(unit)
-    : detailTab === "growth" ? growthPanel(unit)
+  const tabs = [["status", "能力"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"],['achievements','実績']];
+  const coordination=activeTab==='corpse'||activeTab==='dead'||storageOf(unit)?'':renderV39SquadCoordination(unit,faction());
+  if(coordination)tabs.splice(1,0,['basic','基本']);
+  const active=tabs.some(([key])=>key===detailTab)?detailTab:'status';
+  const panel = active === "skills" ? skillsPanel(unit)
+    : active === "basic" ? `<div class="v39-char-detail-scroll">${coordination}</div>`
+    : active === "equipment" ? equipmentPanel(unit)
+    : active === "growth" ? growthPanel(unit)
+    : active === "achievements" ? `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAchievements(unit)}</div>`
     : statusPanel(unit);
-  return `${renderV39DetailTabs(tabs, detailTab, "data-v39-character-detail-tab")}
+  return `${renderV39DetailTabs(tabs, active, "data-v39-character-detail-tab")}
     <div class="squad-detail-tab-content v39-char-detail-panel">${panel}</div>`;
 }
 function unitDetail(unit,current=faction()) {
@@ -178,7 +184,6 @@ function unitDetail(unit,current=faction()) {
       ${activeTab === "dead"&&!storageOf(unit) ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
       ${storageOf(unit)?`<p class="v39-char-storage-location">${escapeHtml(storageLabel(unit))}${isDead(unit)?' / 遺体保管・消滅停止':' / 施設格納中'}</p>`:''}
       ${!isDead(unit)&&activeTab!=='dead'?renderV39AnimalArmyControls(unit):''}
-      ${activeTab==='corpse'||activeTab==='dead'||storageOf(unit)?'':renderV39SquadCoordination(unit,current)}
     </div>
     ${detailTabs(unit)}
   </div>`;
@@ -208,15 +213,20 @@ function render({preserveDrafts=true} = {}) {
   const idFor = (row, index) => text(row?.id, `row-${index}`);
   if (!rows.some((row, index) => idFor(row, index) === selectedId)) selectedId = idFor(rows[0], 0);
   const selected = rows.find((row, index) => idFor(row, index) === selectedId) || null;
-  const tabs = [["character", "キャラクター"], ["squad", "部隊"], ["corpse", "死体回収"], ["dead", "死亡者一覧"]];
+  const tabs = [["character", "キャラクター"], ["squad", "部隊"], ['create','作成・訓練'],["corpse", "死体回収"], ["dead", "死亡者一覧"]];
   if (!body.querySelector('[data-v39-character-detail-host]')) {
     body.innerHTML = `<div class="modal-tabs">${tabs.map(([key,label]) => `<button data-v39-character-tab="${key}">${label}</button>`).join('')}</div><div class="v39-char-squad-toolbar" hidden></div>
-      <div class="character-layout"><div class="list-pane"></div><div data-v39-character-detail-host style="display:contents"></div></div>`;
+      <div class="character-layout"><div class="list-pane"></div><div data-v39-character-detail-host style="display:contents"></div></div><div id="v39-character-create-host" hidden></div>`;
     renderedMarkup.delete(body);
   }
   for (const button of body.querySelectorAll('[data-v39-character-tab]')) button.classList.toggle('active',button.dataset.v39CharacterTab === activeTab);
   const toolbar=body.querySelector('.v39-char-squad-toolbar');
+  const creation=activeTab==='create';
+  body.querySelector('.character-layout').hidden=creation;
+  body.querySelector('#v39-character-create-host').hidden=!creation;
+  mountV39UnitCreatePanel(body.querySelector('#v39-character-create-host'),creation);
   toolbar.hidden=activeTab!=='squad';
+  if(creation)return true;
   if(activeTab==='squad'){
     selectedSquadId=selected?.id||'';
     updateMarkup(toolbar,`<select data-v39-character-squad-select aria-label="表示する部隊">${rows.map(squad=>`<option value="${escapeHtml(squad.id)}"${squad.id===selectedId?' selected':''}>${escapeHtml(squad.name||squad.label||'部隊')} / ${current.units.filter(u=>(squad.unitIds||squad.memberIds||[]).includes(u.id)).length}体</option>`).join('')}</select><button type="button" class="v39-char-squad-action" id="v39-squad-edit" data-v39-character-squad-edit="">新規部隊</button>${selected&&!['solo','単独'].includes(selected.id)?`<button type="button" class="v39-char-squad-action" data-v39-character-squad-edit="${escapeHtml(selected.id)}">編制変更</button>`:''}`);
@@ -264,9 +274,10 @@ function render({preserveDrafts=true} = {}) {
   return true;
 }
 
-function openCharacterModal() {
+function openCharacterModal(options={}) {
   const modal = document.getElementById("characterModal");
   if (!(modal instanceof HTMLElement)) return false;
+  if(options.tab&&['character','squad','create','corpse','dead'].includes(options.tab))activeTab=options.tab;
   modal.classList.add("open");
   render();
   return true;
@@ -297,6 +308,22 @@ function installStyles() {
     #characterModal .v39-char-unit-row .squad-pos{white-space:normal;overflow-wrap:anywhere}
     #characterModal .modal{width:min(900px,96vw);height:min(780px,94svh)}
     #characterModal .modal-body{display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0;overflow:hidden;gap:7px}
+    #characterModal .character-layout[hidden],#v39-character-create-host[hidden]{display:none!important}
+    #v39-character-create-host{min-width:0;min-height:0;height:100%;overflow:hidden}
+    #v39-character-create-host>.v39-unit-create-panel{height:100%;box-sizing:border-box;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;padding:0;gap:6px}
+    #v39-character-create-host .v39-unit-create-pane{overflow:auto;min-height:0;padding:2px 3px}
+    #v39-character-create-host .v39-unit-create-head{padding:2px 3px;gap:4px}
+    #v39-character-create-host .v39-create-base-label{display:flex;align-items:center;gap:7px;width:100%;min-width:0;font-size:var(--font-body)}
+    #v39-character-create-host .v39-create-base-label select{flex:1;min-width:0;border:1px solid #425860;border-radius:5px;background:#101c21;color:#edf5f3;padding:5px;font:inherit}
+    #v39-character-create-host .v39-unit-create-tabs{gap:4px}
+    #v39-character-create-host .v39-unit-create-panel footer{padding:4px 3px}
+    @media(min-width:701px){
+      #v39-character-create-host #v39-create-pane{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+      #v39-character-create-host .v39-unit-create-grid{grid-row:1/3}
+      #v39-character-create-host .v39-unit-create-overview,#v39-character-create-host .v39-unit-training{grid-column:2}
+    }
+    #characterModal .modal-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;min-width:0;gap:4px}
+    #characterModal .modal-tabs button{flex:0 0 auto;white-space:nowrap}
     #characterModal .modal-body:has(.v39-char-squad-toolbar[hidden]){grid-template-rows:auto minmax(0,1fr)}
     #characterModal .v39-char-detail-scroll{height:100%;overflow:auto;padding:8px}
     #characterModal .v39-char-detail-scroll h4{margin:5px 0 7px}
@@ -317,8 +344,8 @@ function installStyles() {
       #characterModal{padding:0}
       #characterModal .modal{box-sizing:border-box;width:100vw;height:100svh;max-height:100svh;border-radius:0}
       #characterModal .modal-body{padding:6px}
-      #characterModal .modal-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px}
-      #characterModal .modal-tabs button{min-width:0;padding:4px 2px;overflow-wrap:anywhere;font-size:var(--font-body)}
+      #characterModal .modal-tabs{display:flex;gap:3px}
+      #characterModal .modal-tabs button{min-width:0;padding:4px 8px;font-size:var(--font-body)}
       #characterModal .character-layout{grid-template-columns:minmax(116px,40%) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:5px}
       #characterModal .v39-char-unit-detail{padding:5px}
 

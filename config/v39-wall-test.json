@@ -1,0 +1,12 @@
+{
+  "width":24,"height":16,
+  "construction":{"x":19,"y":9},
+  "samples":[
+    {"id":"defense","name":"防壁","x":5,"y":4,"facility":"防壁","footprint":3},
+    {"id":"castle","name":"城壁","x":9,"y":4,"facility":"城壁","footprint":7},
+    {"id":"magic","name":"魔法壁","x":5,"y":8,"guard":200,"duration":5},
+    {"id":"edge","name":"マス間の壁","x":9,"y":8,"guard":200,"edge":true,"facing":2,"duration":5},
+    {"id":"barrier","name":"障壁付きの壁","x":13,"y":8,"guard":200,"barrier":true,"duration":5},
+    {"id":"field","name":"結界","x":13,"y":4,"guard":300,"kind":"結界","duration":5}
+  ]
+}

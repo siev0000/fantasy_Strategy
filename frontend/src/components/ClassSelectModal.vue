@@ -20,6 +20,7 @@ const props = defineProps({
   selectedRace: { type: String, default: "" },
   selectedClass: { type: String, default: "" },
   allowAdvancedClasses: { type: Boolean, default: false },
+  baseClassesOnly: { type: Boolean, default: false },
   setupProgressText: { type: String, default: "" }
 });
 
@@ -112,6 +113,7 @@ const skillDescMap = computed(() => {
 const classCandidates = computed(() => {
   const race = nonEmptyText(props.selectedRace);
   if (!race) return [];
+  if(props.baseClassesOnly)return allClasses.value.filter(isV39BaseClassRow);
   const raceClassName = RACE_CLASS_NAME_MAP[race] || race;
   const raceBase = allClasses.value.filter(row => nonEmptyText(row.名前) === raceClassName);
   const jobs = allClasses.value.filter((row) => {
@@ -554,8 +556,8 @@ function confirmClass() {
   border:1px solid var(--picker-line);
   border-radius:8px;
   background:#0d181c;
-  scrollbar-width:thin;
-  scrollbar-color:#405b63 transparent;
+
+
 }
 
 .class-list-head {

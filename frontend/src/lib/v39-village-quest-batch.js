@@ -1,3 +1,4 @@
+import {isV39VillageContactUnit} from './v39-village-contacts.js';
 import {acceptV39NeutralVillageQuest,completeV39NeutralVillageQuest} from './v39-neutral-village-rules.js';
 import {openV39VillageDialogue,viewV39VillageDialogue,chooseV39VillageDialogue} from './v39-village-dialogue.js';
 import {findV39VillageQuest} from './v39-village-quest-log.js';
@@ -5,7 +6,7 @@ import {findV39VillageQuest} from './v39-village-quest-log.js';
 export function submitV39VillageQuestBatch(state,playerId,villageId,entries,mapData){
   const village=state.neutralVillages?.find(row=>row.id===villageId),player=state.players.find(row=>row.id===playerId);
   if(!village||state.activePlayerId!==playerId||state.timeline?.phase!=='player'||(state.activeWorldId||'surface')!=='surface')return {ok:false,state,reason:'地上の操作ターンに依頼を選択してください'};
-  if(!player?.factionState.units.some(unit=>(unit.hp??unit.currentHp)>0&&unit.state!=='死亡'&&(unit.worldId||'surface')==='surface'&&village.territoryTileKeys?.includes(`${unit.x},${unit.y}`)))return {ok:false,state,reason:'村の領域内に生存ユニットが必要です'};
+  if(!player?.factionState.units.some(unit=>isV39VillageContactUnit(unit,village)))return {ok:false,state,reason:'村の領土内または隣接マスに生存ユニットが必要です'};
   if(!entries.length||new Set(entries.map(row=>row.eventId)).size!==entries.length)return {ok:false,state,reason:'依頼を重複せず選択してください'};
   let working=structuredClone(state),accepted=0,reported=0;
   for(const entry of entries){

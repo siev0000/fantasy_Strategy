@@ -54,8 +54,10 @@ async function waitForServer() {
   fail(`サーバーを起動できませんでした: ${output}`);
 }
 
+const clients=new Set();
 function connectClient() {
   const client = io(baseUrl, { path:"/socket.io", transports:["websocket"] });
+  clients.add(client);
   return once(client, "connect").then(() => client);
 }
 
@@ -222,7 +224,7 @@ try {
   const forwardedPlacement = await placementForwarded;
   if (forwardedPlacement.x !== 0 || forwardedPlacement.y !== 0) fail("初期拠点配置要求がホストへ転送されません。");
 
-  const snapshotJson = JSON.stringify({
+  let snapshotJson = JSON.stringify({
     format:"fantasy-strategy-v39",
     version:4,
     savedAt:new Date().toISOString(),
@@ -252,6 +254,17 @@ try {
   const receivedGameSnapshot = await guestGameSnapshot;
   await Promise.all([hostStarted, guestStarted]);
   if (receivedGameSnapshot.snapshotJson !== snapshotJson) fail("初期配置完了後のゲーム状態が参加者へ配信されません。");
+
+  const guestRuleRejected = nextEvent(rejoinedGuest, 'room:error', payload => /ホストだけ/.test(payload?.message));
+  rejoinedGuest.emit('game:rule-settings', {roomId:hostCredentials.roomId, detectionScoutBonus:999, combatDamageMultiplier:10});
+  await guestRuleRejected;
+  const hostRuleChanged = nextEvent(host, 'room:snapshot', s => s.settings?.gameSetup?.gameSettings?.detectionScoutBonus === 75 && s.settings?.gameSetup?.gameSettings?.combatDamageMultiplier === 1.7);
+  const guestRuleChanged = nextEvent(rejoinedGuest, 'room:snapshot', s => s.settings?.gameSetup?.gameSettings?.detectionScoutBonus === 75 && s.settings?.gameSetup?.gameSettings?.combatDamageMultiplier === 1.7);
+  host.emit('game:rule-settings', {roomId:hostCredentials.roomId, detectionScoutBonus:75, combatDamageMultiplier:1.7});
+  await Promise.all([hostRuleChanged, guestRuleChanged]);
+  const updatedSave = JSON.parse(snapshotJson);
+  updatedSave.gameState.gameSettings = {detectionScoutBonus:75,combatDamageMultiplier:1.7};
+  snapshotJson = JSON.stringify(updatedSave);
 
   const lateJoiner = await connectClient();
   const lateJoinRejected = nextEvent(lateJoiner, "room:error", payload => /ゲーム開始後/.test(String(payload?.message || "")));
@@ -314,6 +327,7 @@ try {
   guestAfterExplicitLeave.close();
   console.log("v39 room lobby check passed");
 } finally {
+  for(const client of clients)client.close();
   server.kill("SIGTERM");
   await Promise.race([once(server, "exit"), new Promise(resolve => setTimeout(resolve, 1000))]);
 }

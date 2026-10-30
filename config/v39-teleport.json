@@ -1,0 +1,10 @@
+{
+  "registeredLocations": 1,
+  "castTurns": 1,
+  "arrivalRadius": 1,
+  "gatherRadius": 1,
+  "gateUseAp": 20,
+  "gateImage": "/assets/images/アイコン/闇の輪.webp",
+  "gateWidthTiles": 0.58,
+  "gateHeightTiles": 1.05
+}

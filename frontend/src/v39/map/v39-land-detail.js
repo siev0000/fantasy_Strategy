@@ -4,6 +4,11 @@ import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {getV39LandFacility,renderV39FacilityOperations} from '../world/v39-facility-panel.js';
 import {resolveV39CityRoadAtTile} from '../../lib/v39-city-development.js';
+import {V39_LAND_TABS,getV39LandFieldTab,selectV39LandTab} from '../ui/v39-land-tabs.js';
+import {inspectV39LandProduction,renderV39LandProduction} from './v39-land-production.js';
+import {findV39LandSettlement,summarizeV39LandDefenses} from './v39-land-status.js';
+import {resolveVillageScaleLabel} from '../../composables/villageCoreUtils.js';
+import {renderV39LandExpansionEntry} from '../world/v39-land-expansion-ui.js';
 import {
   inspectV39TerritoryTileConversion,
   startV39TerritoryTileConversion
@@ -21,6 +26,7 @@ const LAND_FIELD_IDS = Object.freeze({
   "浄化": "v39-land-purification",
   "開拓難易度": "v39-land-development-difficulty",
   "施設": "v39-land-facility",
+  "特産資源": "v39-land-specialty",
   "結界 / 壁": "v39-land-defense",
   "ユニット": "v39-land-units",
   "町状態": "v39-land-settlement",
@@ -52,6 +58,7 @@ function isSetLikeHas(value, key) {
 function bindFixedLandFields() {
   const panel = document.getElementById(PANEL_ID);
   if (!(panel instanceof HTMLElement)) return null;
+  const appendField=(item,label)=>document.getElementById(`v39-land-page-${getV39LandFieldTab(label)}`).appendChild(item);
 
   for (const item of panel.querySelectorAll(".land-item")) {
     const label = item.querySelector("span")?.textContent?.trim() || "";
@@ -64,32 +71,36 @@ function bindFixedLandFields() {
     const item = document.createElement("div");
     item.className = "land-item";
     item.innerHTML = '<span>地形補正</span><b id="v39-land-modifiers">なし</b>';
-    panel.appendChild(item);
+    appendField(item,'地形補正');
   }
-  for(const [id,label] of [['v39-land-purification','浄化'],['v39-land-cave-area','洞窟エリア'],['v39-land-weather','天候'],['v39-land-environment-effects','環境効果']])if(!document.getElementById(id)) {
-    const item=document.createElement('div');item.className='land-item';item.innerHTML=`<span>${label}</span><b id="${id}">-</b>`;panel.appendChild(item);
+  for(const [id,label] of [['v39-land-ground-damage','地形破壊'],['v39-land-purification','浄化'],['v39-land-cave-area','洞窟エリア'],['v39-land-weather','天候'],['v39-land-environment-effects','環境効果'],['v39-land-specialty','特産資源']])if(!document.getElementById(id)) {
+    const item=document.createElement('div');item.className='land-item';item.innerHTML=`<span>${label}</span><b id="${id}">-</b>`;appendField(item,label);
   }
 
   if (!document.getElementById("v39-land-development-difficulty")) {
     const item = document.createElement("div");
     item.className = "land-item";
     item.innerHTML = '<span>開拓難易度</span><b id="v39-land-development-difficulty">-</b>';
-    panel.appendChild(item);
+    appendField(item,'開拓難易度');
   }
 
   if (!document.getElementById("v39-land-victory-landmark")) {
     const item = document.createElement("div");
     item.className = "land-item";
     item.innerHTML = '<span>勝利対象</span><b id="v39-land-victory-landmark">未発見</b>';
-    panel.appendChild(item);
+    appendField(item,'勝利対象');
   }
 
   const firstLabel = panel.querySelector(".land-item span");
+  if(!document.getElementById('v39-land-expansion-entry')){
+    const entry=document.createElement('section');entry.id='v39-land-expansion-entry';
+    document.getElementById('v39-land-page-overview').prepend(entry);
+  }
   if (firstLabel) firstLabel.textContent = "地形 / 座標";
   if(!document.getElementById('v39-land-facility-actions')){
     const actions=document.createElement('section');
     actions.id='v39-land-facility-actions';actions.hidden=true;
-    document.getElementById('v39-land-facility')?.closest('.land-item')?.after(actions);
+    document.getElementById('v39-land-page-facilities').appendChild(actions);
   }
   return panel;
 }
@@ -101,6 +112,10 @@ function setField(id, value) {
 
 function resetLandPanel(message = "マスを選択") {
   selectedCoord = null;
+  setField('v39-land-heading',message);
+  setField('v39-land-heading-owner','');
+  const production=document.getElementById('v39-land-production');
+  if(production)production.textContent='マスを選択';
   setField("v39-land-terrain", message);
   setField("v39-land-owner", "未所属");
   setField("v39-land-danger", "-");
@@ -130,7 +145,7 @@ function resetLandPanel(message = "マスを選択") {
 
 function gameState() {
   try {
-    return typeof window.getV39GameState === "function" ? window.getV39GameState() : {};
+    return typeof window.getV39GameState === "function" ? window.getV39GameState({includeWorlds:false}) : {};
   } catch {
     return {};
   }
@@ -253,14 +268,14 @@ function formatUnits(state, detail) {
 }
 
 function settlementAt(state, detail) {
-  return entitiesAt(state?.settlements, detail.x, detail.y)[0] || null;
+  return findV39LandSettlement(state,detail);
 }
 
 function formatSettlement(state, detail) {
   const row = settlementAt(state, detail);
   if (!row) return "なし";
   const name = text(row.name, "村");
-  const scale = text(row.scaleLabel || row.scale || row.type, "");
+  const scale = resolveVillageScaleLabel(row);
   const population = Number(row.population);
   const parts = [name];
   if (scale && scale !== name) parts.push(scale);
@@ -329,10 +344,27 @@ function formatVictoryLandmark(discoveredFeature) {
 function formatDefenses(state, detail) {
   if (window.isV39TestMode?.() !== true && window.isV39TileInCurrentVision?.(detail.x,detail.y) !== true) return "未確認";
   const turn = state?.timeline?.turnNumber || 1;
-  return (window.__v39FieldRuntime?.mapData?.defenseStructures || [])
-    .filter(row => row.hp > 0 && row.tiles?.some(tile => tile.x === detail.x && tile.y === detail.y))
-    .map(row => `${row.kind} ${Math.ceil(row.hp)}/${Math.ceil(row.maxHp)}${row.expiresAtTurn ? ` ⌛${Math.max(0,row.expiresAtTurn-turn)}` : ""}`)
-    .join(" / ") || "なし";
+  const walls=(window.__v39FieldRuntime?.mapData?.defenseStructures || [])
+    .filter(row => row.hp > 0 && (row.edge?[row.edge.from,row.edge.to]:row.tiles)?.some(tile => tile.x === detail.x && tile.y === detail.y))
+    .map(row => `${row.name||row.kind}${row.edge?` (${row.edge.from.x},${row.edge.from.y})↔(${row.edge.to.x},${row.edge.to.y})`:''} ${Math.ceil(row.hp)}/${Math.ceil(row.maxHp)}${row.expiresAtTurn ? ` ⌛${Math.max(0,row.expiresAtTurn-turn)}` : ""}`)
+    ;
+  const owner=state.players?.find(p=>p.id===state.activePlayerId);
+  for(const base of owner?.factionState?.settlements||[])for(const [index,item] of (base.wallConstructionQueue||[]).entries()){
+    if([item.edge.from,item.edge.to].some(p=>p.x===detail.x&&p.y===detail.y))walls.push(`${item.facilityName} (${item.edge.from.x},${item.edge.from.y})↔(${item.edge.to.x},${item.edge.to.y}) ${index===0?`工事中 残${item.remainingTurns}T`:'着工待ち'}`);
+  }
+  return walls.join(' / ')||'なし';
+}
+
+function formatSpecialty(state,key){
+  if((state.activeWorldId||'surface')!=='surface')return '-';
+  const player=state.players?.find(p=>p.id===state.activePlayerId);
+  const discovered=!!player?.factionState?.exploration?.discoveredSpecialtiesByTile?.[key];
+  if(!discovered&&window.isV39TestMode?.()!==true)return '未調査';
+  const resource=state.specialtiesByTile?.[key];
+  if(!resource)return 'なし';
+  const name=String(resource.name??resource.名前??(typeof resource==='string'?resource:'')).trim();
+  const known=getGameDataRows('特産品').some(row=>String(row.名前||'').trim()===name);
+  return `${name||'名称なし'}${known?'':'（現行データ未定義）'}${discovered?'':' / 未発見・テスト表示'}`;
 }
 
 function buildFullDetail(selected) {
@@ -350,6 +382,7 @@ function buildFullDetail(selected) {
     danger: formatDanger(state, detail),
     facilities: formatFacilities(state, detail.key),
     defenses: formatDefenses(state, detail),
+    specialty:formatSpecialty(state,detail.key),
     units: formatUnits(state, detail),
     settlement: formatSettlement(state, detail),
     territoryState: formatTerritoryState(state, detail, ownerLabel)+(road?` / 道路${road}`:''),
@@ -377,6 +410,8 @@ function formatDevelopmentDifficulty(detail) {
 }
 
 function renderLandDetail(selected) {
+  if(Number.isFinite(Number(selected?.x))&&Number.isFinite(Number(selected?.y)))selectedCoord={x:Math.floor(Number(selected.x)),y:Math.floor(Number(selected.y))};
+  if(document.getElementById(PANEL_ID)?.hidden)return;
   const detail = buildFullDetail(selected);
   if (!detail) {
     resetLandPanel();
@@ -384,22 +419,31 @@ function renderLandDetail(selected) {
   }
 
   selectedCoord = { x: detail.x, y: detail.y };
+  setField('v39-land-heading',`${detail.hiddenCave&&detail.terrain==='洞窟'?'土地':detail.terrain} (${detail.x}, ${detail.y})`);
+  setField('v39-land-heading-owner',detail.owner);
   setField("v39-land-terrain", formatTerrain(detail));
   setField("v39-land-owner", detail.owner);
   setField("v39-land-danger", detail.danger);
   setField("v39-land-height", formatHeight(detail));
   setField("v39-land-development-difficulty", formatDevelopmentDifficulty(detail));
   setField("v39-land-facility", detail.facilities);
+  setField('v39-land-specialty',detail.specialty);
   renderLandFacility(detail.key);
   setField("v39-land-defense", detail.defenses);
   setField("v39-land-units", detail.units);
   setField("v39-land-settlement", detail.settlement);
-  setField("v39-land-territory-state", detail.territoryState);
+  const state=gameState(),settlement=settlementAt(state,detail);
+  const defenseSummary=summarizeV39LandDefenses(window.__v39FieldRuntime?.mapData?.defenseStructures,detail,state.timeline?.turnNumber||1,{
+    visible:window.isV39TestMode?.()===true||window.isV39TileInCurrentVision?.(detail.x,detail.y)===true
+  });
+  setField("v39-land-territory-state", [settlement?resolveVillageScaleLabel(settlement):'',detail.territoryState,defenseSummary].filter(Boolean).join(' / '));
   setField("v39-land-recovery", detail.recovery);
   setField("v39-land-move-stop", detail.moveStop);
   setField("v39-land-river-waterfall", `${detail.river} / ${detail.waterfall}`);
   setField("v39-land-volcano-lava", `${detail.volcano} / ${detail.lava}`);
   setField("v39-land-modifiers", formatV39TerrainModifiers(window.__v39FieldRuntime?.mapData, detail.x, detail.y));
+  const ground=window.__v39FieldRuntime?.mapData?.terrainDamage||{},groundKey=`${detail.x},${detail.y}`;
+  setField('v39-land-ground-damage',ground.rubbleByTile?.[groundKey]?`瓦礫 ${ground.rubbleByTile[groundKey].hp}/${ground.rubbleByTile[groundKey].maxHp}`:ground.pendingByTile?.[groundKey]?`落石予告 T${ground.pendingByTile[groundKey].resolvesAtTurn}`:ground.cells?.[groundKey]?`地形耐久 ${ground.cells[groundKey].hp}/${ground.cells[groundKey].maxHp}`:'なし');
   const map=window.__v39FieldRuntime?.mapData,key=coordKey(detail.x,detail.y);
   setField('v39-land-purification',String(map?.purificationByTile?.[key] ?? 0));
   setField('v39-land-cave-area',map?.isUnderground?(map?.caveAreaByTile?.[key] || '未設定'):'-');
@@ -407,12 +451,18 @@ function renderLandDetail(selected) {
   const weatherVisible=window.isV39TestMode?.()||window.isV39TileInCurrentVision?.(detail.x,detail.y);
   setField('v39-land-weather',weather&&weatherVisible?`${weather.weather||'未更新'} / ${Math.round(weather.temperature??weather.climateTemperature)}℃ / 乾燥${Math.round(weather.dryness??0)}`:'-');
   const effects=detail.environmentEffects;
-  setField('v39-land-environment-effects',weatherVisible?(effects.map(row=>`${row.name}${row.suppressedRemaining>0?` 抑制⌛${row.suppressedRemaining}`:row.persistent?'（常設）':row.remaining===null?'':` ⌛${row.remaining}`}`).join(' / ')||'なし'):'未確認');
+  setField('v39-land-environment-effects',weatherVisible?(effects.map(row=>`${row.name}${row.suppressedRemaining>0?` 抑制⌛${row.suppressedRemaining}`:row.persistent?'（常設）':row.remaining===null?'':` ⌛${row.remaining}`}`).join(' / ')||'環境効果なし'):'未確認');
   const environmentField=document.getElementById('v39-land-environment-effects');
   if(environmentField)environmentField.title=weatherVisible?effects.map(row=>[row.name,row.description].filter(Boolean).join('：')).join('\n'):'';
   setField("v39-land-enemies", detail.enemies);
   setField("v39-land-victory-landmark", detail.victoryLandmark);
   renderSettlementConversionAction();
+  if(document.getElementById(PANEL_ID)?.dataset.landTab==='production')renderProduction(detail);
+  for(const id of ['v39-land-danger','v39-land-move-stop','v39-land-river-waterfall','v39-land-volcano-lava','v39-land-ground-damage','v39-land-cave-area','v39-land-enemies']){
+    const field=document.getElementById(id);
+    const empty=['-','なし','なし / なし'].includes(field?.textContent?.trim());
+    if(field)field.closest('.land-item').hidden=empty;
+  }
 
   const panel = document.getElementById(PANEL_ID);
   if (panel) {
@@ -439,6 +489,8 @@ function renderLandFacility(tileKey){
 }
 
 function renderSettlementConversionAction() {
+  const expansion=document.getElementById('v39-land-expansion-entry');
+  if(expansion){const state=gameState();expansion.innerHTML=renderV39LandExpansionEntry(state,activePlayer(state),selectedCoord,window.__v39FieldRuntime?.mapData);expansion.hidden=!expansion.innerHTML;}
   const button = document.getElementById("v39-land-settlement-convert");
   const status = document.getElementById("v39-land-settlement-convert-status");
   if (!(button instanceof HTMLButtonElement)) return;
@@ -492,6 +544,11 @@ function refreshSelectedLand() {
   if (selectedCoord) renderLandDetail(selectedCoord);
 }
 
+function renderProduction(detail) {
+  const host=document.getElementById('v39-land-production');
+  if(host)host.innerHTML=renderV39LandProduction(inspectV39LandProduction(gameState(),window.__v39FieldRuntime?.mapData,detail));
+}
+
 function install() {
   const panel = bindFixedLandFields();
   if (!panel) {
@@ -500,10 +557,27 @@ function install() {
   }
 
   resetLandPanel();
+  selectV39LandTab(panel,panel.dataset.landTab);
+  panel.addEventListener('click',event=>{
+    const button=event.target.closest('[data-land-tab]');
+    if(!button)return;
+    selectV39LandTab(panel,button.dataset.landTab);
+    refreshSelectedLand();
+  });
+  panel.querySelector('[role=tablist]')?.addEventListener('keydown',event=>{
+    const button=event.target.closest('[data-land-tab]');
+    if(!button||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();
+    const index=V39_LAND_TABS.findIndex(tab=>tab.id===button.dataset.landTab);
+    const next=event.key==='Home'?0:event.key==='End'?V39_LAND_TABS.length-1:(index+(event.key==='ArrowLeft'?-1:1)+V39_LAND_TABS.length)%V39_LAND_TABS.length;
+    const tab=V39_LAND_TABS[next];
+    selectV39LandTab(panel,tab.id);panel.querySelector(`[data-land-tab="${tab.id}"]`).focus();refreshSelectedLand();
+  });
   window.addEventListener("v39:tile-selected", event => renderLandDetail(event.detail));
   window.addEventListener("v39:field-generated", () => resetLandPanel("マスを選択"));
   window.addEventListener("v39:field-data-updated", refreshSelectedLand);
   window.addEventListener("v39:game-state-changed", refreshSelectedLand);
+  window.addEventListener('v39:footer-tab-changed',event=>{if(event.detail?.tab==='tile')refreshSelectedLand();});
   document.getElementById("v39-land-settlement-convert")?.addEventListener("click", startSelectedSettlementConversion);
 
   window.getV39SelectedLandDetail = () => selectedCoord ? buildFullDetail(selectedCoord) : null;

@@ -1,0 +1,10 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.evaluate: TypeError: Failed to fetch dynamically imported module: http://127.0.0.1:3022/src/lib/v39-unit-creation-rules.js
+    at C:\Users\skkt3\ドキュメント\Github\fantasy_Strategy\scripts\check-v39-facility-recruitment.mjs:129:41 {
+  log: []
+}
+
+Node.js v22.20.0

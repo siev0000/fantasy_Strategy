@@ -7,7 +7,7 @@ import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "./v39-terra
 import { DEFAULT_MAGIC_CAST_TURNS, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "./v39-turn-timing.js";
 import { mergeV39EnemyExplorationInformation, normalizeV39EnemyExplorerState } from "./v39-enemy-exploration.js";
 import { resolveV39EnemyFleeHpRate, V39_ENEMY_AI_CONFIG } from "./v39-enemy-ai-config.js";
-import { resolveV39MovementTiles, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
+import { resolveV39MovementTiles, resolveV39MovementMultiplier, V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
 import { V39_CORPSE_EATING_BALANCE } from "./v39-gameplay-balance.js";
 import { canV39UnitEatCorpses, v39GroundCorpseAmount, consumeV39GroundCorpse } from "./v39-corpse-eating-rules.js";
 import { getGameDataRows } from "./game-data-registry.js";
@@ -81,9 +81,9 @@ function enemyMovementStat(enemy) {
   return V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile;
 }
 
-function pursuitLimit(enemy, nest) {
+function pursuitLimit(enemy, nest, mapData) {
   const outside = enemy?.aggressive === true
-    ? resolveV39MovementTiles(enemyMovementStat(enemy))
+    ? resolveV39MovementTiles(enemyMovementStat(enemy)*resolveV39MovementMultiplier(mapData))
     : 1;
   return territoryRadius(enemy, nest) + outside;
 }
@@ -132,7 +132,7 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
   }
   const nest = nestFor(state, enemy);
   const center = territoryCenter(enemy, nest);
-  const limit = pursuitLimit(enemy, nest);
+  const limit = pursuitLimit(enemy, nest, mapData);
   const inPursuitArea = target => distance(target, center) <= limit;
   const defense = nest
     ? targets.filter(target => distance(target, nest) <= 1).sort((a, b) => distance(enemy, a)-distance(enemy, b))[0]
@@ -162,7 +162,8 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
       distance:targetDistance,
       mapData,
       from:enemy,to:group[0],visionRange:visionRadius(enemy,mapData),
-      inRange:targetDistance <= visionRadius(enemy, mapData)
+      inRange:targetDistance <= visionRadius(enemy, mapData),
+      gameSettings:state.gameSettings
     })) continue;
     visible.push(...group);
   }
@@ -225,7 +226,7 @@ function corpseFoodTargetFor(state, enemy, mapData, turn, target) {
       scout:resolveDetectionScoutValue(enemy,mapData),
       stealth:resolveDetectionGroupSense([unit],{turnNumber:turn,mapData}).stealth,
       distance:distance(enemy,unit),mapData,from:enemy,to:unit,
-      visionRange:visionRadius(enemy,mapData),inRange:distance(enemy,unit)<=visionRadius(enemy,mapData)
+      visionRange:visionRadius(enemy,mapData),inRange:distance(enemy,unit)<=visionRadius(enemy,mapData),gameSettings:state.gameSettings
     }))) return null;
   return Object.entries(state.groundLootByTile || {})
     .filter(([, loot]) => v39GroundCorpseAmount(loot) >= V39_CORPSE_EATING_BALANCE.resourceAmount)
@@ -344,6 +345,7 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
       distance:distance(enemy, group[0]),
       mapData,
       from:enemy,to:group[0],visionRange:visionRadius(enemy,mapData),
+      gameSettings:state.gameSettings,
       inRange:true
     })) visibleUnits.push(...group);
   }
@@ -431,7 +433,7 @@ export function inspectEnemyAiState(state, enemyId, turnNumber, mapData = null) 
   const nest = nestFor(state, enemy);
   const center = territoryCenter(enemy, nest);
   const radius = territoryRadius(enemy, nest);
-  const limit = pursuitLimit(enemy, nest);
+  const limit = pursuitLimit(enemy, nest, mapData);
   const targets = targetsFor(state, enemy);
   const target = selectEnemyTarget(state, enemy, targets, turnNumber, mapData);
   const hp = Math.max(0, number(enemy?.hp, enemy?.currentHp));
@@ -653,7 +655,8 @@ export function applyEnemyPlanToSimulation(state, plan) {
     } : enemy);
     runtime.pendingActionsByEnemyId[id] = {
       enemyId:id, targetUnitId:text(plan.targetUnitId), skillRow:plan.skillRow, skillName:text(plan.skillName),
-      startedTurn:plan.turnNumber, resolvesAtTurn:resolveV39DeadlineTurn(plan.turnNumber, plan.delay), apCost:plan.apCost
+      startedTurn:plan.turnNumber, resolvesAtTurn:resolveV39DeadlineTurn(plan.turnNumber, plan.delay), apCost:plan.apCost,
+      origin:(()=>{const unit=enemies.find(u=>u.id===id);return {x:unit.x,y:unit.y,worldId:unit.worldId||'surface'};})()
     };
   }
   if (!["move", "wait", "queue-attack"].includes(plan.type) && plan.enemyPatch) {

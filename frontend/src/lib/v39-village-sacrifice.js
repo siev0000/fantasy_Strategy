@@ -1,8 +1,10 @@
+import {isV39VillageContactUnit} from './v39-village-contacts.js';
 import { resolveV39ImmediateSoulAmount } from './v39-soul-conversion.js';
+import {resolveV39SoulResourceValue} from './v39-soul-resource-value.js';
 import { isV39Undead } from './v39-corpse-types.js';
 import { addV39CargoToFactionUnit } from './v39-logistics-state.js';
 import { replaceIncidentVillage } from './v39-village-incidents.js';
-import { getHexDistance } from './hex-grid.js';
+import {addV39SoulApp,resolveV39UnitSoulApp} from './v39-soul-app.js';
 
 const living = unit => Number(unit?.hp ?? unit?.currentHp) > 0 && unit.state !== '死亡';
 
@@ -18,8 +20,8 @@ export function receiveV39VillageSacrifice(state, playerId, villageId, options =
     : state.activePlayerId !== playerId || state.timeline?.phase !== 'player') return fail('受取側の行動中に実行してください');
   const actor = player.factionState.units.find(unit => (!options.unitId || unit.id === options.unitId)
     && living(unit) && !unit.pendingWorldExit && (unit.worldId || 'surface') === 'surface'
-    && getHexDistance(unit, village) <= 1);
-  if (!actor) return fail('村の中心から1マス以内に受取ユニットが必要です');
+    && isV39VillageContactUnit(unit,village));
+  if (!actor) return fail('村の領土内または隣接マスに受取ユニットが必要です');
   const history = player.factionState.sacrificeReceiptHistory || [];
   const seen = new Set(history.map(row => row.unitId));
   const held = (village.heldUnits || []).filter(row => {
@@ -43,14 +45,15 @@ export function receiveV39VillageSacrifice(state, playerId, villageId, options =
   const prisoners = held.filter(row => !convertedIds.has(row.unit.id)).map(row => ({ ...row,
     unit:{ ...structuredClone(row.unit), equipment:[] }, receivedTurn }));
   const ids = new Set(held.map(row => row.unit.id));
-  const faction = { ...added.faction,
+  const faction = { ...addV39SoulApp(added.faction,converted.map(row=>resolveV39UnitSoulApp(row.unit,state.gameSettings))),
     villagePrisoners:[...(player.factionState.villagePrisoners || []), ...prisoners],
     sacrificeReceiptHistory:[...history, ...held.map(row => ({ unitId:row.unit.id, ownerPlayerId:row.ownerPlayerId,
-      villageId, receivedTurn, soulAmount:convertedIds.has(row.unit.id) ? resolveV39ImmediateSoulAmount(player, 1, options.conversion) : 0 }))]
+      villageId, receivedTurn, soulApp:convertedIds.has(row.unit.id)?resolveV39UnitSoulApp(row.unit,state.gameSettings):0,
+      soulAmount:convertedIds.has(row.unit.id) ? resolveV39ImmediateSoulAmount(player, 1, options.conversion) : 0 }))]
   };
   const next = replaceIncidentVillage({ ...state,
     players:state.players.map(row => row.id === playerId ? { ...row, factionState:faction } : row)
   }, { ...village, heldUnits:(village.heldUnits || []).filter(row => !ids.has(row.unit?.id)) });
   return { ok:true, state:next, soulAmount, received:held.length, unitId:actor.id,
-    message:`生贄受取 ${held.length}体${soulAmount > 0 ? ` / 魂へ即時変換 +${soulAmount}` : ' / 捕虜・死体として保持'} / 装備は荷物へ` };
+    message:`生贄受取 ${held.length}体${soulAmount > 0 ? ` / 魂へ即時変換 +${resolveV39SoulResourceValue(soulAmount)}` : ' / 捕虜・死体として保持'} / 装備は荷物へ` };
 }

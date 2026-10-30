@@ -4,6 +4,7 @@ import {getFactionSettlements,replaceFactionSettlement} from './settlement-state
 import {isV39UnitInsideSettlement} from './v39-transport-rules.js';
 import {getHexDistance} from './hex-grid.js';
 import {getV39SquadUnitIds as squadUnitIds,isV39CargoEmpty as cargoEmpty,normalizeV39Cargo} from './v39-logistics-state.js';
+import {V39_CARRIED_FOOD_KEYS} from './v39-carried-food.js';
 const text=value=>String(value??'').trim();
 const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
 const foodKeys=new Set(FOOD_RESOURCE_KEYS),materialKeys=new Set(MATERIAL_RESOURCE_KEYS);
@@ -18,27 +19,38 @@ function allLivingSquadMembersAt(faction, squad, destination) {
     &&(isV39UnitInsideSettlement(unit,destination)||getHexDistance(unit,destination)<=1));
 }
 
-function depositIntoSettlement(rawSettlement, race, rawCargo) {
+function depositIntoSettlement(rawSettlement, race, rawCargo,keepFood=false) {
   const settlement = normalizeV39Village(rawSettlement, race);
   const cargo = normalizeV39Cargo(rawCargo);
   const foodStockByType = { ...settlement.foodStockByType };
   const materialStockByType = { ...settlement.materialStockByType };
   const remainingResources = {};
   const depositedResources = {};
+  let soulRecoveryRemainderPoints=Math.max(0,Math.floor(Number(settlement.soulRecoveryRemainderPoints)||0));
   for (const [name, amount] of Object.entries(cargo.resourcesByType)) {
-    if (foodKeys.has(name)) foodStockByType[name] = number(foodStockByType[name]) + amount;
-    else if (materialKeys.has(name)) materialStockByType[name] = number(materialStockByType[name]) + amount;
+    if(keepFood&&V39_CARRIED_FOOD_KEYS.includes(name)){remainingResources[name]=amount;continue;}
+    const resourceName = name === '鉱石' ? '鉄' : name;
+    if(resourceName==='魂'){
+      const points=soulRecoveryRemainderPoints+Math.round(amount*100);
+      foodStockByType.魂=number(foodStockByType.魂)+Math.floor(points/10)/10;
+      soulRecoveryRemainderPoints=points%10;
+      depositedResources.魂=amount;
+      continue;
+    }
+    if (foodKeys.has(resourceName)) foodStockByType[resourceName] = number(foodStockByType[resourceName]) + amount;
+    else if (materialKeys.has(resourceName)) materialStockByType[resourceName] = number(materialStockByType[resourceName]) + amount;
     else {
       remainingResources[name] = amount;
       continue;
     }
-    depositedResources[name] = amount;
+    depositedResources[resourceName] = number(depositedResources[resourceName]) + amount;
   }
   const depositedEquipment = [...cargo.equipmentInventory];
   return {
     settlement:normalizeV39Village({
       ...settlement,
       foodStockByType,
+      soulRecoveryRemainderPoints,
       materialStockByType,
       equipmentInventory:normalizeV39EquipmentInventory([...settlement.equipmentInventory, ...depositedEquipment])
     }, race),
@@ -65,7 +77,8 @@ export function depositV39FactionCargo(state,playerId,movedUnitId="") {
         const settlement = unit && settlementAt(faction, unit);
         if (!settlement || unit.transportAssignment?.enabled || cargoEmpty(cargoByUnitId[unitId])) continue;
         if(cargoDeliveryTargetByUnitId[unitId]&&cargoDeliveryTargetByUnitId[unitId]!==text(settlement.settlementId||settlement.id))continue;
-        const result = depositIntoSettlement(settlement, player.race, cargoByUnitId[unitId]);
+        const result = depositIntoSettlement(settlement, player.race, cargoByUnitId[unitId],unit.carryFood===true);
+        if(cargoEmpty(result.deposited))continue;
         faction = replaceFactionSettlement(faction, result.settlement, { ownerPlayerId:player.id, select:false });
         if (cargoEmpty(result.remainingCargo)){delete cargoByUnitId[unitId];delete cargoDeliveryTargetByUnitId[unitId];}
         else cargoByUnitId[unitId] = result.remainingCargo;
@@ -79,7 +92,9 @@ export function depositV39FactionCargo(state,playerId,movedUnitId="") {
     const settlement = member && settlementAt(faction, member);
     if (!settlement || cargoEmpty(squad?.cargo) || !allLivingSquadMembersAt(faction, squad, settlement)) return squad;
     if(squad.cargoDeliveryTargetSettlementId&&squad.cargoDeliveryTargetSettlementId!==text(settlement.settlementId||settlement.id))return squad;
-    const result = depositIntoSettlement(settlement, player.race, squad.cargo);
+    const keepFood=faction.units.some(u=>ids.includes(text(u.id))&&u.squadMoveMode!=='independent'&&u.carryFood===true);
+    const result = depositIntoSettlement(settlement, player.race, squad.cargo,keepFood);
+    if(cargoEmpty(result.deposited))return squad;
     faction = replaceFactionSettlement(faction, result.settlement, { ownerPlayerId:player.id });
     reports.push({ playerId:player.id, squadId:text(squad.id), settlementId:text(settlement.settlementId || settlement.id), deposited:result.deposited });
     changed = true;

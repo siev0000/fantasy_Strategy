@@ -3,8 +3,15 @@ import {loadV39SharedImageTexture} from './v39-shared-image-texture.js';
 import {V39_FOG_BALANCE} from '../../lib/v39-gameplay-balance.js';
 import {v39AtmosphereOpacityPercent} from '../../lib/v39-atmosphere-opacity.js';
 import {V39_ATMOSPHERE_DISPLAY as config,collectV39AtmosphereTiles,v39AtmospherePalette} from '../../lib/v39-atmosphere-display.js';
+import {collectV39RainTiles} from '../../lib/v39-rain-display.js';
+import {drawV39RainLayer} from './v39-rain-layer.js';
+import {collectV39VortexFields,isV39VortexDisaster} from '../../lib/v39-vortex-display.js';
+import {drawV39VortexLayer} from './v39-vortex-layer.js';
+import {collectV39TornadoFields,isV39TornadoDisaster} from '../../lib/v39-tornado-display.js';
+import {drawV39TornadoLayer} from './v39-tornado-layer.js';
 
 const SOURCE='v39-atmosphere-source',LAYER='v39-atmosphere-fog-layer';
+const SAND_LAYER='v39-atmosphere-sand-layer';
 const rawAtmosphereArtworkModules=import.meta.glob('../../../../assets/images/background/*.{png,jpg,jpeg,webp,svg}',{
   eager:true,
   import:'default'
@@ -23,6 +30,7 @@ export function v39AtmosphereArtworkVersion(scene){return scene.textures.exists(
 
 function clear(scene){
   scene.children.list.find(child=>child.name===LAYER)?.destroy();
+  scene.children.list.find(child=>child.name===SAND_LAYER)?.destroy();
   for(const key of scene.v39AtmosphereTextureKeys||[])scene.textures.remove(key);
   scene.v39AtmosphereTextureKeys=[];
 }
@@ -31,7 +39,12 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
   const settings=window.getV39DisplaySettings?.()||{};
   const palette=v39AtmospherePalette().map(kind=>({...kind,opacity:v39AtmosphereOpacityPercent(kind.id,settings)/100})),ready=!!v39AtmosphereArtworkVersion(scene);
   const candidates=collectV39AtmosphereTiles(data,state);
-  const displayVision=!testMode&&candidates.length?(typeof vision==='function'?vision():vision):null;
+  const rain=collectV39RainTiles(data,state);
+  const hasVortex=(state.worldEnvironment?.activeDisasters||[]).some(event=>isV39VortexDisaster(event.disasterId)||isV39TornadoDisaster(event.disasterId));
+  const displayVision=!testMode&&(candidates.length||rain.length||hasVortex)?(typeof vision==='function'?vision():vision):null;
+  drawV39RainLayer(scene,rain.filter(tile=>testMode||displayVision?.has(tile.key)));
+  drawV39VortexLayer(scene,collectV39VortexFields(data,state,displayVision,testMode),resolveBundledAtmosphereAsset(config.vortex.image));
+  drawV39TornadoLayer(scene,collectV39TornadoFields(data,state,displayVision,testMode));
   const tiles=candidates.filter(tile=>testMode||displayVision?.has(tile.key))
     .map(tile=>({...tile,kinds:tile.kinds.filter(id=>palette.find(kind=>kind.id===id).opacity>0)})).filter(tile=>tile.kinds.length);
   const opacityFor=tile=>Math.max(0,...tile.kinds.map(id=>palette.find(row=>row.id===id).opacity));
@@ -40,6 +53,7 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
   if(scene.v39AtmosphereSignature===signature&&scene.children.list.some(child=>child.name===LAYER))return;
   scene.v39AtmosphereSignature=signature;clear(scene);
   const layer=scene.add.container().setDepth(14.2).setName(LAYER);
+  const sand=scene.add.container().setDepth(config.kinds.find(kind=>kind.id==='sandstorm').depth).setName(SAND_LAYER);
   const combinations=[...new Set(tiles.map(tile=>tile.kinds.join('|')))];
   layer.setData('atmosphere',{tileCount:tiles.length,tileKeys:tiles.map(tile=>tile.key),combinations,palette,ready,maxAlpha});
   if(!scene.v39AtmosphereCleanup){
@@ -55,6 +69,7 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
   const variants=new Map(),chunks=new Map(),scale=config.resolution,size=config.chunkSize;
   const worldW=Math.ceil((data.w*hex.width+hex.oddRowOffsetX)*scale),worldH=Math.ceil(((data.h-1)*hex.rowStep+hex.height)*scale);
   for(const tile of tiles){
+    const sandOnly=tile.kinds.every(id=>id==='sandstorm');
     const id=tile.kinds.join('|');let image=variants.get(id);
     if(!image){
       image=document.createElement('canvas');image.width=hex.width;image.height=hex.height;
@@ -78,10 +93,10 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
     const left=tile.x*hex.width+(tile.y%2?hex.oddRowOffsetX:0),top=tile.y*hex.rowStep;
     for(let cy=Math.floor(top*scale/size);cy<=Math.floor((top+hex.height)*scale/size);cy++)for(let cx=Math.floor(left*scale/size);cx<=Math.floor((left+hex.width)*scale/size);cx++){
       if(cx*size>=worldW||cy*size>=worldH)continue;
-      const key=`v39-atmosphere-chunk-${scene.sys.settings.key}-${cx}-${cy}`;let chunk=chunks.get(key);
+      const key=`v39-atmosphere-chunk-${scene.sys.settings.key}-${sandOnly?'sand':'fog'}-${cx}-${cy}`;let chunk=chunks.get(key);
       if(!chunk){
         chunk=scene.textures.createCanvas(key,Math.min(size,worldW-cx*size),Math.min(size,worldH-cy*size));chunks.set(key,chunk);scene.v39AtmosphereTextureKeys.push(key);
-        layer.add(scene.add.image(cx*size/scale,cy*size/scale,key).setOrigin(0).setScale(1/scale).setAlpha(maxAlpha));
+        (sandOnly?sand:layer).add(scene.add.image(cx*size/scale,cy*size/scale,key).setOrigin(0).setScale(1/scale).setAlpha(maxAlpha));
       }
       const ctx=chunk.context;ctx.save();ctx.translate(-cx*size,-cy*size);ctx.scale(scale,scale);
       ctx.beginPath();ctx.moveTo(left+hex.width/2,top);ctx.lineTo(left+hex.width,top+hex.height-hex.rowStep);

@@ -11,7 +11,7 @@ try {
   for (const width of [390,1100]) {
     const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
     page.on("pageerror",e=>errors.push(e.stack));
-    await page.goto("http://127.0.0.1:3000",{waitUntil:"networkidle"});
+    await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:5173",{waitUntil:"networkidle"});
     await page.evaluate(()=>{
       window.closeV39PlayModeSelection();window.startV39LocalSession(1,{playMode:"single-test"});
       const state=window.getV39GameState();
@@ -33,7 +33,13 @@ try {
     },entry);
     assert.ok(fixture.key);assert.ok(fixture.global.includes(entry.facilityName));assert.ok(fixture.buildings.includes(entry.facilityName));
     assert.equal(fixture.level,entry.requiredMilitaryLevel);
-    await page.evaluate(()=>window.openV39UnitCreate());
+    await page.evaluate(()=>{
+      // This test owns its instructor fixture; the shared test character may be a summoner.
+      const state=window.getV39GameState();
+      window.setV39GameState({players:state.players.map(p=>({...p,factionState:{...p.factionState,
+        units:p.factionState.units.map(u=>u.name==='被験者'?{...u,className:'ウォーリアー',prerequisiteClassLevels:{ファイター:10}}:u)}}))});
+      window.openV39UnitCreate();
+    });
     assert.equal(await page.locator('#v39-create-tab').getAttribute('aria-selected'),"true");
     await page.locator('#v39-training-tab').click();
     assert.match(await page.locator('#v39-training-pane').textContent(),/訓練中のユニットはありません/);
@@ -100,7 +106,7 @@ try {
       const picker=document.querySelector('.v39-instructor-picker').getBoundingClientRect();
       const count=document.querySelector('#v39-unit-count').getBoundingClientRect();
       const overview=document.querySelector('.v39-unit-create-overview').getBoundingClientRect();
-      return picker.top>=count.bottom && picker.bottom<=overview.top;
+      return picker.top>=count.bottom && (picker.bottom<=overview.top||picker.right<=overview.left);
     });
     assert.equal(instructorPlacement,true);
     assert.equal(await page.locator('#v39-unit-create-confirm').isEnabled(),true);
@@ -121,7 +127,7 @@ try {
     await page.screenshot({path:`output/web-game/facility-recruitment/${width}-training-details.png`});
     await page.locator('.v39-unit-training .v39-unit-create-extra summary').click();
     const instructorTarget = await page.evaluate(async () => {
-      const {buildV39UnitEntity}=await import("http://127.0.0.1:3022/src/lib/v39-unit-creation-rules.js");
+      const {buildV39UnitEntity}=await import("/src/lib/v39-unit-creation-rules.js");
       const state=window.getV39GameState(),player=window.getV39ActivePlayer(),v=player.factionState.settlements[0];
       const facilityKey=Object.keys(v.tileFacilityMap).find(key=>v.tileFacilityMap[key].includes("兵舎"));
       const units=[buildV39UnitEntity({id:"instructor-inside",name:"教官試験",race:player.race,className:"ウォーリアー",level:20,x:v.x,y:v.y}),
@@ -137,10 +143,10 @@ try {
     await page.locator('[data-v39-instructor-id="instructor-outside"]').scrollIntoViewIfNeeded();
     const fixedHeader=await page.evaluate(()=>{
       const panel=document.querySelector('#v39-unit-create-panel');
-      panel.scrollTop=panel.scrollHeight;
+      const pane=panel.querySelector('#v39-create-pane');pane.scrollTop=pane.scrollHeight;
       const head=panel.querySelector('.v39-unit-create-head');
       const bounds=head.getBoundingClientRect(),container=panel.getBoundingClientRect();
-      return {sticky:getComputedStyle(head).position,visible:Math.abs(bounds.top-container.top)<2,scroll:panel.scrollTop};
+      return {sticky:getComputedStyle(head).position,visible:Math.abs(bounds.top-container.top)<2,scroll:pane.scrollTop};
     });
     assert.equal(fixedHeader.sticky,"sticky");
     assert.equal(fixedHeader.visible,true);
@@ -152,7 +158,7 @@ try {
     assert.ok(instructorMoved.ap<100);
     assert.match(await page.locator('.v39-unit-training').textContent(),/教官: 教官試験/);
     const savedForSlots=await page.evaluate(async()=>{
-      const {createV39Units}=await import("http://127.0.0.1:3022/src/lib/v39-unit-creation-rules.js");
+      const {createV39Units}=await import("/src/lib/v39-unit-creation-rules.js");
       const saved=window.getV39GameState(),player=window.getV39ActivePlayer();
       const result=createV39Units(saved,player.id,{race:"只人",className:"ウォーリアー",mode:"army",count:2});
       if(!result.ok)throw new Error(result.reason);
@@ -194,7 +200,7 @@ try {
     await page.screenshot({path:`output/web-game/facility-recruitment/${width}-training.png`});
     await page.locator('#v39-create-tab').click();
     await page.evaluate(async () => {
-      const {advanceV39RecruitTraining} = await import("http://127.0.0.1:3022/src/lib/v39-recruit-training.js");
+      const {advanceV39RecruitTraining} = await import("/src/lib/v39-recruit-training.js");
       let state = window.getV39GameState();
       for (let turn=state.timeline.turnNumber+1; state.players.some(p => p.factionState.unitTrainingQueue.length); turn++) {
         if (turn>100) throw new Error("training did not finish");
@@ -251,7 +257,7 @@ try {
     assert.match(restrictions.missing.reason,/兵舎/);assert.match(restrictions.damaged.reason,/兵舎/);assert.match(restrictions.hero.reason,/軍隊のみ/);
     assert.match(restrictions.low.reason,/軍事Lv4/);
     const raceCases=await page.evaluate(async entry=>{
-      const {advanceV39RecruitTraining} = await import("http://127.0.0.1:3022/src/lib/v39-recruit-training.js");
+      const {advanceV39RecruitTraining} = await import("/src/lib/v39-recruit-training.js");
       const saved=window.getV39GameState(),player=window.getV39ActivePlayer();
       const outputs=[];
       for (const race of ["ビーストマン","デヴィル"]) {
@@ -295,7 +301,7 @@ try {
     assert.deepEqual(errors,[]);console.log(`${width}: test barracks placed, warrior army generated with JSON stats/equipment/skills, population consumed, restrictions verified`);
     await page.close();
   }
-  const page=await browser.newPage();await page.goto("http://127.0.0.1:3000",{waitUntil:"networkidle"});
+  const page=await browser.newPage();await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:5173",{waitUntil:"networkidle"});
   const normal=await page.evaluate(()=>{window.startV39LocalSession(1,{playMode:"single-normal"});return window.getV39ActiveFactionState().facilityRecruitmentTest;});
   assert.notEqual(normal,true);await page.close();console.log("normal play does not enable the test facility fixture");
 } finally {await browser.close();}

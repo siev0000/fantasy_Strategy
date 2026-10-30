@@ -135,8 +135,8 @@ function installStyles() {
 #v39-design-docs-modal .v39-doc-body{min-height:0;display:grid;grid-template-columns:250px minmax(0,1fr)}
 #v39-design-docs-modal .v39-doc-sidebar{min-width:0;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:7px;padding:8px;border-right:1px solid #304147;background:rgba(5,12,15,.7)}
 #v39-design-docs-modal .v39-doc-search{width:100%;box-sizing:border-box;padding:8px 9px;border:1px solid #3d4e55;border-radius:7px;background:#101a1f;color:#e5edeb;outline:none}
-#v39-design-docs-modal .v39-doc-list{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:4px;scrollbar-width:none}
-#v39-design-docs-modal .v39-doc-list::-webkit-scrollbar,#v39-design-docs-modal .v39-doc-reader::-webkit-scrollbar{display:none}
+#v39-design-docs-modal .v39-doc-list{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:4px;}
+
 #v39-design-docs-modal .v39-doc-item{display:block;width:100%;padding:8px 9px;border:1px solid #304047;border-radius:7px;background:#111c21;color:#dbe6e4;text-align:left;cursor:pointer}
 #v39-design-docs-modal .v39-doc-item.active{border-color:#6f8d95;background:#1b2c31;box-shadow:inset 3px 0 #7fa1aa}
 #v39-design-docs-modal .v39-doc-item b,#v39-design-docs-modal .v39-doc-item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -146,7 +146,7 @@ function installStyles() {
 #v39-design-docs-modal .v39-doc-current{display:flex;align-items:center;gap:8px;padding:6px 11px;border-bottom:1px solid #2c3d43;background:#0e181c}
 #v39-design-docs-modal .v39-doc-current strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-body)}
 #v39-design-docs-modal .v39-doc-current code{margin-left:auto;color:#83979c;font-size:var(--font-secondary);white-space:nowrap}
-#v39-design-docs-modal .v39-doc-reader{min-width:0;min-height:0;overflow:auto;padding:14px 18px 30px;line-height:1.7;scrollbar-width:none}
+#v39-design-docs-modal .v39-doc-reader{min-width:0;min-height:0;overflow:auto;padding:14px 18px 30px;line-height:1.7;}
 #v39-design-docs-modal .v39-doc-reader h1{font-size:var(--font-size-21);margin:4px 0 14px;padding-bottom:8px;border-bottom:1px solid #33454b}
 #v39-design-docs-modal .v39-doc-reader h2{font-size:var(--font-size-17);margin:20px 0 9px;padding-bottom:5px;border-bottom:1px solid #2a3b41}
 #v39-design-docs-modal .v39-doc-reader h3{font-size:var(--font-size-16);margin:17px 0 7px}

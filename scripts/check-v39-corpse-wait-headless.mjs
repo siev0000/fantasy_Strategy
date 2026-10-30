@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {dirname} from 'node:path';
+import {build} from 'esbuild';
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-unit-field-presentation.js';export * from './frontend/src/lib/v39-unit-action-rules.js';export * from './frontend/src/v39/unit/v39-unit-wait.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'headless',setup(b){
+  b.onLoad({filter:/v39-feedback\.js$/},()=>({contents:'export const showV39Feedback=()=>{};',loader:'js'}));
+  b.onLoad({filter:/v39-unit-wait\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/\ninstall\(\);\s*$/,''),resolveDir:dirname(args.path),loader:'js'}));
+}}]});
+const m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+const living={id:'a',name:'兵士',x:2,y:2,hp:40,maxHp:100,ap:61,worldId:'surface'};
+const corpse={...living,id:'dead',hp:0,state:'死亡'};
+assert.equal(m.v39FieldUnitAngle(corpse),90);assert.equal(m.v39FieldUnitAngle(living),0);
+assert(m.v39FieldUnitDepth(corpse)<m.v39FieldUnitDepth(living));
+assert.notEqual(m.v39FieldUnitGroupKey(corpse),m.v39FieldUnitGroupKey(living));
+assert.equal(m.v39FieldUnitAngle({...living,state:'死亡'}),90);
+const rows=[living,corpse].sort((a,b)=>m.v39FieldUnitDepth(a)-m.v39FieldUnitDepth(b));
+assert.equal(rows.at(-1).id,'a');
+let state={activePlayerId:'p',activeWorldId:'surface',timeline:{turnNumber:3,phase:'player'},gameSettings:{recoveryWaitHpPercent:100},players:[{id:'p',factionState:{selectedUnitId:'a',units:[living]}}]};
+const name={textContent:''},use={textContent:''};
+globalThis.document={querySelector:()=>name,getElementById:id=>id==='mobileBattleWaitUse'?use:null};
+globalThis.CustomEvent=class {constructor(type,options){this.type=type;this.detail=options?.detail;}};
+globalThis.window={getV39GameState:()=>state,getV39ActiveFactionState:()=>state.players[0].factionState,
+  getV39TimelineState:()=>state.timeline,getV39GameSettings:()=>state.gameSettings,
+  setV39GameState:patch=>{state={...state,...patch};},dispatchEvent(){}};
+const current=()=>state.players[0].factionState.units[0];
+assert(m.waitV39SelectedUnit().ok);assert(m.isV39UnitWaiting(current(),3));
+assert.equal(name.textContent,'待機中');assert.equal(use.textContent,'解除');assert.equal(current().ap,61);
+assert(m.waitV39SelectedUnit().ok);assert(!m.isV39UnitWaiting(current(),3));
+assert.equal(name.textContent,'待機');assert.equal(use.textContent,'待機');assert.equal(current().ap,61);
+assert(m.isV39UnitUnacted({...current(),ap:100,maxAp:100},3));
+assert(m.waitV39SelectedUnit({recovery:true}).ok);assert(m.isV39UnitWaiting(current(),3));
+assert(m.waitV39SelectedUnit({cancelRecovery:true}).ok);assert(!m.isV39UnitWaiting(current(),3));
+assert(m.waitV39SelectedUnit().ok);
+state={...state,timeline:{...state.timeline,turnNumber:4}};
+assert(!m.isV39UnitWaiting(current(),4));assert(m.waitV39SelectedUnit().ok);assert(m.isV39UnitWaiting(current(),4));
+state.players[0].factionState.units=[corpse];state.players[0].factionState.selectedUnitId='dead';
+assert.equal(m.waitV39SelectedUnit().reason,'unit-dead');
+const source=readFileSync('frontend/src/v39/map/v39-map-entities.js','utf8');
+assert(source.includes("unitContainer.sort('depth')"));
+assert(source.includes('const key = v39FieldUnitGroupKey(unit)'));
+assert(source.includes('marker.setDepth(v39FieldUnitDepth(unit))'));
+assert(source.includes('image.setAngle(v39FieldUnitAngle(enemy))'));
+console.log('PASS: corpse rotation and separate grouping/depth, actual wait/cancel/repeat and recovery cancel, labels, unchanged AP, turn reset. No browser.');

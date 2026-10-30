@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+import {normalizeV39MapQuality} from '../../lib/v39-map-quality.js';
+import {addV39FieldSymbol} from './v39-field-symbols.js';
 import {focusV39MapTile} from './v39-map-focus.js';
 import {hegemonyZoneAt} from '../../lib/v39-hegemony-areas.js';
 import { visibleV39CaveTerrainLabel } from "../../lib/v39-cave-entrance-rules.js";
@@ -180,10 +182,11 @@ function readDisplaySettings() {
     return {
       heightOutlineOnly: saved.heightOutlineOnly !== false,
       heightShading: saved.heightShading !== false,
+      mapQuality:normalizeV39MapQuality(saved.mapQuality),
       maxZoomFactor: Phaser.Math.Clamp(Number(saved.maxZoomFactor) || DEFAULT_MAX_ZOOM_FACTOR, 6, 16)
     };
   } catch {
-    return { heightOutlineOnly: true, heightShading: true, maxZoomFactor: DEFAULT_MAX_ZOOM_FACTOR };
+    return { heightOutlineOnly: true, heightShading: true, mapQuality:'standard',maxZoomFactor: DEFAULT_MAX_ZOOM_FACTOR };
   }
 }
 
@@ -269,25 +272,6 @@ function drawSnowCover(scene, data, graphics = scene.add.graphics().setDepth(1))
   return graphics;
 }
 
-function drawSnowfall(scene, data) {
-  for (const child of [...(scene?.children?.list || [])]) {
-    if (child?.name === "v39-snowfall-item") child.destroy();
-  }
-  const { width, height } = tileMetrics();
-  for (let y = 0; y < Number(data?.h || 0); y += 1) {
-    for (let x = 0; x < Number(data?.w || 0); x += 1) {
-      if (data?.snowfallMap?.[y]?.[x] !== true) continue;
-      const center = tileCenter(x, y);
-      scene.add.text(
-        center.x + width * 0.22,
-        center.y - height * 0.20,
-        "❄",
-        { fontSize:"14px", fontStyle:"bold", color:"#f7fbff", stroke:"#38536a", strokeThickness:2 }
-      ).setOrigin(0.5).setDepth(5).setName("v39-snowfall-item");
-    }
-  }
-}
-
 function drawRivers(scene, riverData, g = scene.add.graphics().setDepth(3).setName("v39-river-layer")) {
   const edges = new Set([
     ...(riverData?.cornerEdgeSet instanceof Set ? riverData.cornerEdgeSet : []),
@@ -330,17 +314,14 @@ function drawSpecialTerrain(scene, data) {
     if (child?.name === "v39-special-terrain-item") child.destroy();
   }
   const labels = {
-    "沼地":"沼",
-    "湿地":"湿",
-    "薬草の群生地":"草",
-    "峡谷":"峡"
+    "薬草の群生地":"herb",
+    "峡谷":"canyon"
   };
   for (let y = 0; y < data.h; y += 1) for (let x = 0; x < data.w; x += 1) {
     const label = labels[String(data.specialMap?.[y]?.[x] || "")];
     if (!label) continue;
     const center = tileCenter(x, y);
-    scene.add.text(center.x, center.y, label, { fontSize:"11px", fontStyle:"bold", color:"#f6f0d2", stroke:"#071014", strokeThickness:3 })
-      .setOrigin(0.5).setDepth(4).setName("v39-special-terrain-item");
+    addV39FieldSymbol(scene,null,label,center.x,center.y,14,{label:String(data.specialMap[y][x])}).setDepth(4).setName('v39-special-terrain-item');
   }
 }
 
@@ -466,14 +447,15 @@ function installInput(scene, data) {
     camera.scrollX += before.x - after.x; camera.scrollY += before.y - after.y;
     clampCamera(scene);
   };
-  const selectTile = (tile, focus = false) => {
+  const selectTile = (tile, focus = false, {notify=true}={}) => {
     if (window.isV39MapInputLocked?.() === true) return;
-    if (!Number.isInteger(tile?.x) || !Number.isInteger(tile?.y) || !data.grid?.[tile.y]?.[tile.x]) return;
+    const selectionMap=currentData||data;
+    if (!Number.isInteger(tile?.x) || !Number.isInteger(tile?.y) || !selectionMap.grid?.[tile.y]?.[tile.x]) return;
     const selected = {
       x:tile.x, y:tile.y,
-      terrain:String(data.grid?.[tile.y]?.[tile.x] || "海"),
-      height:Number(data.heightLevelMap?.[tile.y]?.[tile.x]) || 0,
-      special:String(data.specialMap?.[tile.y]?.[tile.x] || "")
+      terrain:String(selectionMap.grid?.[tile.y]?.[tile.x] || "海"),
+      height:Number(selectionMap.heightLevelMap?.[tile.y]?.[tile.x]) || 0,
+      special:String(selectionMap.specialMap?.[tile.y]?.[tile.x] || "")
     };
     if (window.getV39ActiveFactionState?.()?.villagePlacementMode
       && window.canPlaceV39InitialBase?.(selected) === false) return null;
@@ -486,13 +468,23 @@ function installInput(scene, data) {
       {x:hp[6],y:hp[7]},{x:hp[8],y:hp[9]},{x:hp[10],y:hp[11]}
     ], true);
     scene.v39SelectedTile = selected;
-    const landTerrain = document.getElementById("landTerrain"); if (landTerrain) landTerrain.textContent = visibleV39CaveTerrainLabel(window.getV39ActiveFactionState?.(),data,selected.x,selected.y);
-    window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:selected }));
+    const landTerrain = document.getElementById("landTerrain"); if (landTerrain) landTerrain.textContent = visibleV39CaveTerrainLabel(window.getV39ActiveFactionState?.(),selectionMap,selected.x,selected.y);
+    if(notify&&!window.getV39AttackSession?.()&&!window.getV39UnitMovePreview?.()){
+      const faction=window.getV39ActiveFactionState?.(),worldId=window.getV39GameState?.({includeWorlds:false})?.activeWorldId||'surface';
+      const unit=faction?.units?.find(row=>row.x===tile.x&&row.y===tile.y&&(row.worldId||'surface')===worldId);
+      if(unit&&unit.id!==faction.selectedUnitId){
+        window.updateV39ActiveFactionState?.({selectedUnitId:unit.id},{reason:'map-tile-unit-selected'});
+        window.dispatchEvent(new CustomEvent('v39:unit-selected',{detail:{unitId:unit.id,unit}}));
+      }
+    }
+    if(notify)window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:selected }));
     return selected;
   };
   const selectAt = (cx, cy) => {
     const p = clientPoint(cx, cy); const w = camera.getWorldPoint(p.x, p.y);
     const tile = resolveTileAtWorld(data, w.x, w.y);
+    if(tile&&window.handleV39SoulRecoveryTap?.(tile))return null;
+    if(tile&&window.handleV39WallConstructionTap?.(tile,w))return null;
     return tile ? selectTile(tile) : null;
   };
   const showPlacementTiles = (tiles, active = tiles.length > 0) => {
@@ -513,7 +505,17 @@ function installInput(scene, data) {
       placementMask.fillPoints(polygon, true);
     }
   };
-  scene.v39Input = { selectTile, selectTileAt:selectAt, zoomAt, showPlacementTiles };
+  const actionTiles=scene.add.graphics().setDepth(18).setName('v39-action-tile-selection');
+  const showActionTiles=(tiles,selectedKeys=[])=>{
+    if(!actionTiles.scene)return;
+    actionTiles.clear();const selected=new Set(selectedKeys);
+    for(const tile of tiles){
+      const active=selected.has(`${tile.x},${tile.y}`),color=active?0xffdd72:0x72cbd6,points=hexPoints(tile.x,tile.y);
+      const polygon=Array.from({length:6},(_,i)=>({x:points[i*2],y:points[i*2+1]}));
+      actionTiles.fillStyle(color,active?0.3:0.12).lineStyle(active?4:2,color,1).fillPoints(polygon,true).strokePoints(polygon,true);
+    }
+  };
+  scene.v39Input = { selectTile, selectTileAt:selectAt, zoomAt, showPlacementTiles,showActionTiles };
   // create中はまだアクティブシーン一覧へ載らないため、最初の更新後に配置範囲を描画する。
   const inputReady = () => {
     window.dispatchEvent(new CustomEvent("v39:field-input-ready"));
@@ -536,9 +538,9 @@ function installInput(scene, data) {
     const dx=e.clientX-prev.x,dy=e.clientY-prev.y; if(Math.abs(dx)+Math.abs(dy)<1)return;
     camera.scrollX-=dx/camera.zoom; camera.scrollY-=dy/camera.zoom; clampCamera(scene); dragged=true;
   }, { signal:inputSignal });
-  const finish=e=>{ const touch=e.pointerType!=="mouse", select=!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY); if(touch&&!dragged&&!pointers.size){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
+  const finish=e=>{ const touch=e.pointerType!=="mouse", select=!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY); if(touch&&!dragged&&!pointers.size&&!window.isV39SoulRecoverySelecting?.()){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
   host.addEventListener("pointerup",finish,{ signal:inputSignal }); host.addEventListener("pointercancel",finish,{ signal:inputSignal });
-  host.addEventListener("dblclick",e=>{e.preventDefault();if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
+  host.addEventListener("dblclick",e=>{e.preventDefault();if(window.isV39SoulRecoverySelecting?.())return;if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
   const handleKeyboard = e => {
     if (window.isV39MapInputLocked?.() === true) return;
     const target = e.target;
@@ -588,7 +590,7 @@ function terrainLayerSignature(data) {
   const display=readDisplaySettings();
   return JSON.stringify([data.w,data.h,data.isUnderground,data.grid,data.heightLevelMap,
     data.specialMap,data.snowCoverMap,data.snowfallMap,data.riverData,data.lavaFlowData,
-    data.hegemonyAreaId,data.hegemonyZoneKeys,display.heightShading,display.heightOutlineOnly]);
+    data.hegemonyAreaId,data.hegemonyZoneKeys,display.heightShading,display.heightOutlineOnly,display.mapQuality]);
 }
 
 function refreshWorldTerrain(entry) {
@@ -597,7 +599,7 @@ function refreshWorldTerrain(entry) {
   scene.v39TerrainGraphics=drawTerrain(scene,data,scene.v39TerrainGraphics);
   scene.v39SnowCoverGraphics=drawSnowCover(scene,data,scene.v39SnowCoverGraphics);
   scene.v39RiverGraphics=drawRivers(scene,data.riverData,scene.v39RiverGraphics);
-  drawSpecialTerrain(scene,data);drawSnowfall(scene,data);
+  drawSpecialTerrain(scene,data);
   scene.v39LavaGraphics=drawLava(scene,data,scene.v39LavaGraphics);
   entry.signature=signature;
   entry.terrainBuilds=(entry.terrainBuilds||0)+1;
@@ -628,7 +630,7 @@ function worldSceneConfig(entry) {
     if(entry.id===activeWorldLayerId){fitCamera(this);restoreWorldCamera(entry);installInput(this,entry.data);}
     const redraw=event=>{
       const keys=event.detail?.changedKeys;
-      if(keys&&!keys.some(key=>key==='heightOutlineOnly'||key==='heightShading'))return;
+      if(keys&&!keys.some(key=>['heightOutlineOnly','heightShading','mapQuality'].includes(key)))return;
       entry.signature=null;
       if(this.sys.isActive())refreshWorldTerrain(entry);
     };
@@ -657,6 +659,7 @@ function createGame(data,worldId='surface') {
   const entry=newWorldLayer(worldId,data);
   game=new Phaser.Game({
     type:Phaser.AUTO,parent:host,transparent:false,backgroundColor:'#081115',
+    render:{antialias:true,antialiasGL:true,pixelArt:false,roundPixels:false},
     callbacks:{postBoot:installV39IdleRender},
     scale:{mode:Phaser.Scale.RESIZE,width:Math.max(1,host.clientWidth),height:Math.max(1,host.clientHeight)},
     scene:worldSceneConfig(entry)

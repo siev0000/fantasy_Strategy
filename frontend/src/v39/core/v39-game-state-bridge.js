@@ -1,4 +1,7 @@
+import {normalizeV39OperationTimeline} from '../../lib/v39-operation-phases.js';
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
+import {normalizeV39SpatialUnitWorlds,normalizeV39SavedWorldUnitIds} from '../../lib/v39-spatial-unit-worlds.js';
+import {reconcileV39Casting} from '../../lib/v39-casting-rules.js';
 import {raceData} from '../../lib/game-data-registry.js';
 import {isV39RacePlayable} from '../../lib/v39-race-definitions.js';
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
@@ -39,6 +42,7 @@ const EMPTY_STATE = Object.freeze({
   victory: { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} },
   diplomacyRelations: {},
   lastMoveStop: null,
+  teleportGates: [],
   enemies: [],
   enemySquads: [],
   enemyNests: [],
@@ -114,7 +118,8 @@ function normalizeEntityArray(value) {
 }
 function normalizeConversationEntities(value){
   return normalizeEntityArray(value).map(row=>({...withV39ConversationPersonality(row),
-    ...(Array.isArray(row.defenseUnits)?{defenseUnits:row.defenseUnits.map(unit=>withV39ConversationPersonality(unit))}:{})}));
+    ...(Array.isArray(row.defenseUnits)?{defenseUnits:row.defenseUnits.map(unit=>withV39ConversationPersonality(
+      unit.derivedCharacter?.sizModifiers?unit:applyV39DerivedCharacterData(unit)))}:{})}));
 }
 
 function firstFiniteUnitNumber(values, fallback = 0) {
@@ -204,7 +209,8 @@ function normalizeState(input = {}) {
   return {
     activePlayerId,
     activeWorldId:String(input.activeWorldId || "surface"),
-    explorationWorlds:cloneJson(input.explorationWorlds, {}),
+    teleportGates:normalizeEntityArray(input.teleportGates),
+    explorationWorlds:normalizeV39SavedWorldUnitIds(cloneJson(input.explorationWorlds, {})),
     players,
     sessionParticipants:session.sessionParticipants,
     factionLabels: cloneRecord(input.factionLabels),
@@ -223,7 +229,7 @@ function normalizeState(input = {}) {
     victory:cloneJson(input.victory, { completed:false, winnerPlayerId:"", achievedTurn:0, reason:"", progressByPlayerId:{} }),
     diplomacyRelations: cloneJson(input.diplomacyRelations, {}),
     lastMoveStop: input.lastMoveStop && typeof input.lastMoveStop === "object" ? { ...input.lastMoveStop } : null,
-    enemies: normalizeUnitArray(input.enemies),
+    enemies: normalizeUnitArray(normalizeV39SpatialUnitWorlds({enemies:input.enemies},input.activeWorldId||'surface').enemies),
     enemySquads:normalizeV39EnemySquads(input.enemySquads),
     enemyNests:normalizeV39EnemyNests(input.enemyNests),
     groundLootByTile:normalizeV39GroundLootByTile(input.groundLootByTile,input.timeline?.turnNumber || 1),
@@ -243,6 +249,7 @@ function normalizeState(input = {}) {
       paused: input?.timeline?.paused === true,
       lastResolvedTurn:Math.max(0, Math.floor(Number(input?.timeline?.lastResolvedTurn) || 0)),
       lastStageSequence:Array.isArray(input?.timeline?.lastStageSequence) ? input.timeline.lastStageSequence.map(String) : [],
+      ...normalizeV39OperationTimeline(input?.timeline),
       ...normalizeV39PlayerTurnTimeline(input?.timeline, players.filter(player => player?.isPlayer !== false), activePlayerId)
     }
   };
@@ -304,7 +311,9 @@ let state = normalizeState(EMPTY_STATE);
 function getState({ includeWorlds = true } = {}) {
   return {
     ...state,
-    explorationWorlds:includeWorlds ? cloneJson(state.explorationWorlds, {}) : {},
+    teleportGates:cloneJson(state.teleportGates,[]),
+    // Omitted world data must not become an empty replacement when a snapshot is spread into a patch.
+    explorationWorlds:includeWorlds ? cloneJson(state.explorationWorlds, {}) : undefined,
     players: state.players.map(clonePlayer),
     sessionParticipants:cloneSessionParticipants(state.sessionParticipants),
     factionLabels: { ...state.factionLabels },
@@ -383,9 +392,20 @@ function applyDeathPurification(before,next,fields,options={}){
 
 function setState(patch = {}, options = {}) {
   const next = { ...state };
+  if(Object.prototype.hasOwnProperty.call(patch,'teleportGates'))next.teleportGates=normalizeEntityArray(cloneJson(patch.teleportGates,[]));
   if (Object.prototype.hasOwnProperty.call(patch, "activeWorldId")) next.activeWorldId = String(patch.activeWorldId || "surface");
-  if (Object.prototype.hasOwnProperty.call(patch, "explorationWorlds")) next.explorationWorlds = cloneJson(patch.explorationWorlds, {});
-  if (Object.prototype.hasOwnProperty.call(patch, "players")) next.players = normalizePlayers(patch.players);
+  if (Object.prototype.hasOwnProperty.call(patch, "explorationWorlds") && patch.explorationWorlds !== undefined) next.explorationWorlds = normalizeV39SavedWorldUnitIds(cloneJson(patch.explorationWorlds, {}));
+  if (Object.prototype.hasOwnProperty.call(patch, "players")) {
+    next.players = normalizePlayers(patch.players);
+    if(options.reason!=='save-loaded')for(const player of next.players){
+      const previous=state.players.find(p=>p.id===player.id)?.factionState?.units||[];
+      for(const unit of player.factionState.units){
+        if(!unit.pendingTeleport)continue;
+        const before=previous.find(u=>u.id===unit.id);
+        if(before?.pendingTeleport&&Number(unit.hp??unit.currentHp)<Number(before.hp??before.currentHp))unit.pendingTeleport={...unit.pendingTeleport,interrupted:true};
+      }
+    }
+  }
   if (Object.prototype.hasOwnProperty.call(patch, "sessionParticipants")) next.sessionParticipants = cloneSessionParticipants(patch.sessionParticipants);
   if (Object.prototype.hasOwnProperty.call(patch, "activePlayerId")) next.activePlayerId = String(patch.activePlayerId || "");
   if (Object.prototype.hasOwnProperty.call(patch, "factionLabels")) next.factionLabels = cloneRecord(patch.factionLabels);
@@ -423,6 +443,7 @@ function setState(patch = {}, options = {}) {
     &&Object.keys(normalized.victoryLandmarksByTile||{}).length){
     normalized.victory=evaluateV39Victory(normalized,normalized.timeline.turnNumber,{advanceProgress:false}).victory;
   }
+  reconcileV39Casting(state,normalized,options.reason);
   applyDeathPurification(state,normalized,Object.keys(patch),options);
   state = normalized;
   if (options.silent !== true) dispatchChange(options.reason || "set");
@@ -432,7 +453,7 @@ function setState(patch = {}, options = {}) {
 
 // Enemy turns can update dozens of units. Intermediate states are normalized once
 // by the normal turn-complete write instead of cloning the full state per enemy.
-function patchEnemyTurnState(patch = {}) {
+function patchEnemyTurnState(patch = {}, options = {}) {
   const next = { ...state };
   if (Object.prototype.hasOwnProperty.call(patch, "enemies")) next.enemies = patch.enemies;
   if (Object.prototype.hasOwnProperty.call(patch, "enemyNests")) next.enemyNests = patch.enemyNests;
@@ -440,6 +461,8 @@ function patchEnemyTurnState(patch = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "enemyCombatRuntime")) {
     next.enemyCombatRuntime = { ...state.enemyCombatRuntime, ...patch.enemyCombatRuntime };
   }
+  if(next.enemyCombatRuntime?.pendingActionsByEnemyId){next.enemyCombatRuntime={...next.enemyCombatRuntime,pendingActionsByEnemyId:{...next.enemyCombatRuntime.pendingActionsByEnemyId}};}
+  reconcileV39Casting(state,next,typeof options==='string'?options:options.reason);
   applyDeathPurification(state,next,Object.keys(patch));
   state = next;
   return true;
@@ -463,6 +486,7 @@ function updateTimelineState(patch = {}, options = {}) {
       paused:source.paused === true,
       lastResolvedTurn:Math.max(0, Math.floor(Number(source.lastResolvedTurn) || 0)),
       lastStageSequence:Array.isArray(source.lastStageSequence) ? source.lastStageSequence.map(String) : [],
+      ...normalizeV39OperationTimeline(source),
       ...normalizeV39PlayerTurnTimeline(source, state.players.filter(player => player?.isPlayer !== false), state.activePlayerId)
     }
   };
@@ -824,6 +848,7 @@ window.getV39ActivePlayerId = () => state.activePlayerId;
 window.getV39ActiveFactionState = getActiveFactionState;
 window.getV39TimelineState = getTimelineState;
 window.getV39GameSettings = () => ({...state.gameSettings});
+window.hasV39ActiveTeleportGates=()=>state.teleportGates.some(g=>g.worldId===state.activeWorldId&&g.expiresAtTurn>state.timeline.turnNumber);
 window.getV39ExplorationWorldIds = () => Object.keys(state.explorationWorlds).filter(id => state.explorationWorlds[id]?.map);
 window.setV39ActivePlayer = setActivePlayer;
 window.updateV39TimelineState = updateTimelineState;

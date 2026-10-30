@@ -1,5 +1,7 @@
 import {renderV39NpcDiagnostics,handleV39NpcDiagnosticEvent} from './v39-npc-diagnostics.js';
 import {openV39AiSimulation} from './v39-ai-simulation.js';
+import './v39-terrain-destruction-test.js';
+import './v39-wall-test.js';
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { buildV39PopulationMaintenanceStock } from "../../lib/v39-population-economy.js";
@@ -36,6 +38,8 @@ let statusMessage = "テスト対象を選択してください";
 let selectedEnemyId = "";
 let selectedTestSkillName = "";
 let selectedDisasterId = "";
+let selectedTyphoonRadius = null;
+let selectedTyphoonAutoGrow = true;
 let selectedAtmosphereSample = 0;
 let selectedWeatherType = '晴れ';
 let selectedTerrainSample = 0;
@@ -44,7 +48,7 @@ let selectedTile = null;
 const collapsedSectionKeys = new Set();
 const openScenarioSuites = new Set();
 const TEST_TOOL_TABS = [
-  {id:'scenarios',label:'専用',sections:['expedition','village-plans','negotiation-hub','undead-natural']},
+  {id:'scenarios',label:'専用',sections:['expedition','walls','village-plans','negotiation-hub','undead-natural']},
   {id:'turns',label:'進行',sections:['turns','faction']},
   {id:'settlement',label:'拠点',sections:['base-info','settlement-resources','city-research','territory']},
   {id:'unit',label:'キャラ',sections:['character','test-skills']},
@@ -298,9 +302,11 @@ function forceDisasterAtSelectedTile() {
   if (!selectedTileKey(tile)) return setStatus("災害を発生させるマスを選択してください");
   if (!selectedDisasterId) return setStatus("災害種別を選択してください");
   if(selectedDisasterId.startsWith('危険地帯:'))return setStatus('常設の危険地帯は「危険地帯6種を確認」で配置してください');
-  const result = window.forceV39Disaster?.(selectedDisasterId, { x:tile.x, y:tile.y });
+  const rule=resolveV39DisasterRule(selectedDisasterId);
+  const result = window.forceV39Disaster?.(selectedDisasterId, { x:tile.x, y:tile.y,
+    ...(selectedDisasterId==='災害:台風'?{radius:selectedTyphoonRadius??rule.radius,autoGrow:selectedTyphoonAutoGrow}:{}) });
   if (!result?.ok) return setStatus("災害を発生できません: " + text(result?.reason, "処理未接続"));
-  setStatus(`${result.disasters?.[0]?.name || "災害"}を発生しました`);
+  setStatus(`${result.disasters?.[0]?.name || "災害"}を発生しました${selectedDisasterId==='災害:台風'?`（半径${selectedTyphoonRadius??rule.radius}マス・${selectedTyphoonAutoGrow?'自動拡大':'固定'}）`:''}`);
 }
 
 function forceUndeadAtSelectedTile() {
@@ -658,7 +664,7 @@ function terrainTestHtml() {
 function fixedDisasterTestHtml(state){
   const map=window.__v39FieldRuntime?.mapData;
   if(!map?.disasterTestFixture||map.disasterNaturalTestFixture)return '';
-  const rows=map.hazardTestFixture?map.hazardZones.map(zone=>({...zone,id:zone.disasterId})):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}];
+  const rows=map.hazardTestFixture?map.hazardZones.map(zone=>({...zone,id:zone.disasterId})):map.disasterExtendedTestFixture?disasterTest.extendedEvents.map(row=>({...row,...state.worldEnvironment?.activeDisasters?.find(event=>event.disasterId===row.id),id:row.id})):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}];
   const turn=state.timeline?.turnNumber||1,active=state.worldEnvironment?.activeDisasters||[];
   const comparison=`<div data-atmosphere-test-info><button data-test-action="disaster-atmosphere-start">霧・重なり比較を開始</button>${map.disasterAtmosphereTestFixture?`<p>霧・対象災害は検証用⌛${disasterTest.atmosphere.durationTurns}。気象の色はOFFで比較。効果の内訳は土地画面へ。</p><div class="v39-test-form-row"><select id="v39-test-atmosphere-sample" aria-label="霧の比較地点">${disasterTest.atmosphere.samples.map((sample,index)=>`<option value="${index}"${index===selectedAtmosphereSample?' selected':''}>${escapeHtml(sample.name)} (${sample.x},${sample.y})</option>`).join('')}</select><button data-test-action="disaster-atmosphere-focus">比較地点へ</button></div>`:''}</div>`;
   return `<div data-fixed-disaster-info><p>固定配置 ${rows.length}種類／${map.hazardTestFixture?'常設危険地帯：通常・耐性100の観察者を配置':map.disasterAtmosphereTestFixture?'霧・対象災害の持続は比較用に延長':'継続・威力は通常データ（落雷の持続のみ検証用）'}</p><div class="v39-test-form-row"><select id="v39-test-disaster-fixture" aria-label="確認する固定災害">${rows.map(row=>{
@@ -674,7 +680,7 @@ function naturalDisasterTestHtml(state){
   const percent=n=>`${(n*100).toFixed(2)}%`;
   const detail=row=>`${statuses[row.status]||row.status}${row.chance!==undefined?`／実効${percent(row.chance)}・抽選値${percent(row.rolled)}`:''}${row.terrainCandidates!==undefined?`／条件適合${row.eligibleCandidates}/${row.terrainCandidates}マス`:''}${row.anchorKey?`／(${row.anchorKey})`:''}`;
   const history=(env.lastDisasterEvents||[]).filter(row=>row.disasterId&&!row.forced).slice(-4).reverse();
-  return `<div data-natural-disaster-info><p><b>自然発生の確認</b>：${window.__v39FieldRuntime?.mapData?.disasterNaturalTestFixture?'自然発生テスト（強制配置なし）':'通常確率で抽選'}</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-start">自然発生用に初期化</button><button data-test-action="hazard-test-start">危険地帯6種を確認</button>${window.__v39FieldRuntime?.mapData?.disasterTestFixture?'<button data-test-action="disaster-fixed-start">固定配置に戻す</button>':''}</div><p>発生率は通常のまま。初期化は条件を満たす天候・地形のみ用意し、災害は配置しません。火山噴火は別の専用処理です。</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-turns"${advancingTestTurns?" disabled":""}>10T経過</button><button data-test-action="turn-stop"${advancingTestTurns?"":" disabled"}>停止</button></div><p>${report?`T${report.turn}：抽選${attempts.filter(row=>row.rolled!==undefined).length}件／自然発生${attempts.filter(row=>row.status==='spawned').length}件`:'未抽選：次の通常ターンから結果を表示'}</p>${chosen?`<p data-disaster-trial-selected><b>${escapeHtml(chosen.name)}</b>：${escapeHtml(detail(chosen))}</p>`:''}${report?`<details><summary>全${attempts.length}件の抽選結果</summary>${attempts.map(row=>`<p>${escapeHtml(row.name)}：${escapeHtml(detail(row))}</p>`).join('')}</details>`:''}<p data-natural-disaster-history>${history.length?history.map(row=>`T${row.turn} ${escapeHtml(row.name)} (${row.x},${row.y})`).join('<br>'):'自然発生の履歴なし'}</p></div>`;
+  return `<div data-natural-disaster-info><p><b>自然発生の確認</b>：${window.__v39FieldRuntime?.mapData?.disasterNaturalTestFixture?'自然発生テスト（強制配置なし）':'通常確率で抽選'}</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-start">自然発生用に初期化</button><button data-test-action="hazard-test-start">危険地帯6種を確認</button><button data-test-action="disaster-extended-start">新災害5種を確認</button>${window.__v39FieldRuntime?.mapData?.disasterTestFixture?'<button data-test-action="disaster-fixed-start">固定配置に戻す</button>':''}</div><p>発生率は通常のまま。初期化は条件を満たす天候・地形のみ用意し、災害は配置しません。火山噴火は別の専用処理です。</p><div class="v39-test-button-row"><button data-test-action="disaster-natural-turns"${advancingTestTurns?" disabled":""}>10T経過</button><button data-test-action="turn-stop"${advancingTestTurns?"":" disabled"}>停止</button></div><p>${report?`T${report.turn}：抽選${attempts.filter(row=>row.rolled!==undefined).length}件／自然発生${attempts.filter(row=>row.status==='spawned').length}件`:'未抽選：次の通常ターンから結果を表示'}</p>${chosen?`<p data-disaster-trial-selected><b>${escapeHtml(chosen.name)}</b>：${escapeHtml(detail(chosen))}</p>`:''}${report?`<details><summary>全${attempts.length}件の抽選結果</summary>${attempts.map(row=>`<p>${escapeHtml(row.name)}：${escapeHtml(detail(row))}</p>`).join('')}</details>`:''}<p data-natural-disaster-history>${history.length?history.map(row=>`T${row.turn} ${escapeHtml(row.name)} (${row.x},${row.y})`).join('<br>'):'自然発生の履歴なし'}</p></div>`;
 }
 
 function weatherTestHtml(tile) {
@@ -694,13 +700,21 @@ function weatherTestHtml(tile) {
   return `${samples}<div data-weather-test-info><p>地域 ${escapeHtml(current.regionId)} / 気候 ${current.climateTemperature}℃・湿潤度${current.climateHumidity}<br>天候 ${escapeHtml(current.weather||'未更新')} ⌛${remaining} / ${Math.round(current.temperature??current.climateTemperature)}℃ / 湿度${Math.round(current.humidity??0)}・乾燥${Math.round(current.dryness??0)}<br>晴天${current.dryTurns||0}T・降水${current.wetTurns||0}T</p><p data-weather-conditions>気象条件: ${checks}<br>○でも地形条件と確率抽選が必要。強制発生は条件を無視します。</p><div class="v39-test-form-row"><select id="v39-test-weather-type" aria-label="変更する天候">${V39_WEATHER_TYPES.map(name=>`<option${name===selectedWeatherType?' selected':''}>${name}</option>`).join('')}</select><button data-test-action="weather-change">地域の天候を変更</button><button data-test-action="weather-turn">1T経過</button><button data-test-action="weather-overlay" aria-pressed="${window.isV39WeatherOverlayEnabled?.()!==false}">フィールド気象 ${window.isV39WeatherOverlayEnabled?.()===false?'OFF':'ON'}</button></div></div>`;
 }
 
+function typhoonRadiusControlsHtml() {
+  if(selectedDisasterId!=='災害:台風')return '';
+  const rule=resolveV39DisasterRule(selectedDisasterId);
+  const maximum=Math.max(rule.radius,Number(rule.details?.maximumRadius)||0);
+  const radius=Math.max(0,Math.min(maximum,selectedTyphoonRadius??rule.radius));
+  return `<div class="v39-test-form-row"><label>台風の半径 <select id="v39-test-typhoon-radius" aria-label="台風の半径">${Array.from({length:maximum+1},(_,value)=>`<option value="${value}"${value===radius?' selected':''}>${value}マス</option>`).join('')}</select></label><label>自動拡大 <select id="v39-test-typhoon-grow" aria-label="台風の自動拡大"><option value="on"${selectedTyphoonAutoGrow?' selected':''}>ON（最大${maximum}マス）</option><option value="off"${selectedTyphoonAutoGrow?'':' selected'}>OFF（指定半径で固定）</option></select></label></div>`;
+}
+
 function panelHtml() {
   const { state, settlement, unit, tile } = context();
   const resource = selectedResourceKey();
   const cityLevel = text(document.getElementById("v39-test-city-level-key")?.value) || CITY_LEVEL_KEYS[0];
   const tileKey = selectedTileKey(tile);
   const testSkills = getV39TestSkillRows();
-  const disasters = (Array.isArray(disasterData) ? disasterData : []).filter(row => text(row?.ID) && text(row?.ID) !== "災害:火山噴火");
+  const disasters = (Array.isArray(disasterData) ? disasterData : []).filter(row => text(row?.ID) && text(row?.ID) !== "災害:火山噴火"&&!text(row.地形災害処理));
   if (!disasters.some(row => text(row?.ID) === selectedDisasterId)) selectedDisasterId = text(disasters[0]?.ID);
   const disasterOptions = disasters.map(row => `<option value="${escapeHtml(text(row.ID))}"${text(row.ID) === selectedDisasterId ? " selected" : ""}>${escapeHtml(text(row.カテゴリ名))}</option>`).join("");
   if (!testSkills.some(row => text(row?.名前) === selectedTestSkillName)) selectedTestSkillName = text(testSkills[0]?.名前);
@@ -730,14 +744,14 @@ function panelHtml() {
     <header class="v39-test-tools-head"><strong>テスト操作</strong><span>TEST</span></header>
     <nav class="v39-test-tools-tabs" role="tablist" aria-label="テスト操作カテゴリ">${TEST_TOOL_TABS.map(tab=>`<button type="button" role="tab" id="v39-test-tab-${tab.id}" data-test-tab="${tab.id}" aria-controls="v39-test-tool-content" aria-selected="${tab.id===selectedToolTab}" tabindex="${tab.id===selectedToolTab?0:-1}">${tab.label}</button>`).join('')}</nav>
     <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
-      ${renderV39VillagePlanTestTools(state)}
+      ${renderV39VillagePlanTestTools(state)}      ${window.__v39FieldRuntime?.mapData?.wallTestFixture?`<details class="v39-test-section" data-test-section="walls" open><summary>壁・結界の比較</summary><div class="v39-test-section-body"><button data-test-action="wall-build-open">壁建築を試す（未建築の拠点）</button><p>部隊から移動・攻撃を試せます。3マス都市・7マス大都市の辺別HPを確認。魔法壁・結界は5T継続。</p><div class="v39-test-button-row">${(window.__v39FieldRuntime.mapData.wallTestSamples||[]).map(sample=>{const group=window.__v39FieldRuntime.mapData.defenseStructures?.filter(row=>(sample.structureIds||[sample.structureId]).includes(row.id)&&row.hp>0)||[];const wall=group[0];return `<button data-test-action="wall-sample-${escapeHtml(sample.id)}">${escapeHtml(sample.name)} (${sample.x},${sample.y}) ${wall?`${sample.structureIds?`${group.length}辺 / 1辺HP${wall.hp}/${wall.maxHp}`:`HP${wall.hp}/${wall.maxHp}`}`:'終了'}</button>`;}).join('')}</div></div></details>`:''}
       ${renderV39NegotiationHubTestTools(state)}
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><button data-test-action="ai-simulation">AI長期シミュレーション</button>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><button data-test-action="ai-simulation">AI長期シミュレーション</button>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="teleport-test-start">転移テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="ground-test-start">地形破壊テスト</button><button data-test-action="wall-test-start">壁・結界テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
       <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
-       <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p>${terrainTestHtml()}${fixedDisasterTestHtml(state)}${weatherTestHtml(tile)}${naturalDisasterTestHtml(state)}<div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで強制発生</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
+       <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p>${terrainTestHtml()}${fixedDisasterTestHtml(state)}${weatherTestHtml(tile)}${naturalDisasterTestHtml(state)}${typhoonRadiusControlsHtml()}<div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで強制発生</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
       <details class="v39-test-section" data-test-section="test-skills"${testSectionOpenAttribute("test-skills")}><summary>テストスキル</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / 付与中: ${assignedTestSkills.length ? assignedTestSkills.map(escapeHtml).join(" / ") : "なし"}</p><div class="v39-test-form-row"><select id="v39-test-skill-name">${testSkillOptions || '<option value="">テストスキルなし</option>'}</select><button data-test-action="test-skill-add">選択を付与</button><button data-test-action="test-skill-all">全テスト技を付与</button><button data-test-action="test-skill-clear">全解除</button></div></div></details>
@@ -751,6 +765,7 @@ function panelHtml() {
 
 function render() {
   if(window.__v39AiSimulationRunning)return;
+  if(document.getElementById('footTest')?.hidden)return;
   const panel = document.getElementById("v39-test-tools-panel");
   if (!(panel instanceof HTMLElement)) return;
   const currentScroll = panel.querySelector(".v39-test-tools-scroll");
@@ -830,10 +845,10 @@ function handleAction(action) {
     if(!advancingTestTurns&&window.confirm('現在のゲームを危険地帯6種の検証マップに置き換えます。開始しますか？'))window.startV39HazardTest?.();
     return;
   }
-  if(action==='disaster-natural-start'||action==='disaster-fixed-start'||action==='disaster-atmosphere-start'){
+  if(action==='disaster-natural-start'||action==='disaster-fixed-start'||action==='disaster-atmosphere-start'||action==='disaster-extended-start'){
     if(advancingTestTurns)return;
     if(window.confirm('現在のゲームを災害検証マップに置き換えます。開始しますか？')){
-      window.startV39DisasterTest?.({natural:action==='disaster-natural-start',atmosphere:action==='disaster-atmosphere-start'});
+      window.startV39DisasterTest?.({natural:action==='disaster-natural-start',atmosphere:action==='disaster-atmosphere-start',extended:action==='disaster-extended-start'});
       if(action==='disaster-atmosphere-start'){
         selectedAtmosphereSample=0;window.setV39WeatherOverlayEnabled?.(false);render();handleAction('disaster-atmosphere-focus');
       }
@@ -842,12 +857,13 @@ function handleAction(action) {
   }
   if(action==='disaster-natural-turns'){void advanceTurn(10);return;}
   if(action==='disaster-fixture-focus'||action==='disaster-atmosphere-focus'){
+    const state=window.getV39GameState({includeWorlds:false});
     const map=window.__v39FieldRuntime?.mapData;
     if(!map?.disasterTestFixture||map.disasterNaturalTestFixture)return;
     const id=document.getElementById('v39-test-disaster-fixture')?.value||selectedDisasterId;
     const comparison=action==='disaster-atmosphere-focus';
     if(comparison&&!map.disasterAtmosphereTestFixture)return;
-    const sample=comparison?disasterTest.atmosphere.samples[selectedAtmosphereSample]:map.hazardTestFixture?map.hazardZones.find(zone=>zone.disasterId===id):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}].find(row=>row.id===id);
+    const sample=comparison?disasterTest.atmosphere.samples[selectedAtmosphereSample]:map.hazardTestFixture?map.hazardZones.find(zone=>zone.disasterId===id):map.disasterExtendedTestFixture?state.worldEnvironment?.activeDisasters?.find(event=>event.disasterId===id)||disasterTest.extendedEvents.find(row=>row.id===id):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}].find(row=>row.id===id);
     const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];if(!sample||!scene)return;
     if(!comparison)selectedDisasterId=sample.disasterId||sample.id;
     const c=HEX_TILE_CONFIG;
@@ -868,6 +884,16 @@ function handleAction(action) {
     if(window.confirm('現在のゲームを全地形の比較マップに置き換えます。開始しますか？')){closePanel();window.startV39TerrainTest?.();}
     return;
   }
+  if(action==='ground-test-start'){
+    if(window.confirm('現在のゲームを地形破壊テストへ置き換えます。開始しますか？')){closePanel();void window.startV39TerrainDestructionTest?.();}
+    return;
+  }
+  if(action==='wall-test-start'){
+    if(window.confirm('現在のゲームを壁5種の確認テストへ置き換えます。開始しますか？')){closePanel();void window.startV39WallTest?.();}
+    return;
+  }
+  if(action==='wall-build-open'){window.openV39WallBuildTest?.();return;}
+  if(action.startsWith('wall-sample-')){window.focusV39WallTestSample?.(action.slice('wall-sample-'.length));return;}
   if(action==='terrain-sample-focus'){window.focusV39TerrainTestSample?.(selectedTerrainSample);return;}
   if(action==='terrain-overview'){window.overviewV39TerrainTest?.();return;}
   if(/^weather-sample-\d+$/.test(action)){
@@ -921,6 +947,7 @@ function handleAction(action) {
     "undead-test-surface":()=>{if(window.viewV39ExpeditionTestWorld?.("surface"))window.activateV39FooterTab?.("test");},
     "undead-test-cave":()=>{if(window.viewV39ExpeditionTestWorld?.(undeadTest.洞窟ID))window.activateV39FooterTab?.("test");},
     "undead-test-turn":()=>advanceTurn(),
+    "teleport-test-start":()=>{if(window.confirm("現在のゲームを転移テストに置き換えます。開始しますか？"))window.startV39TeleportTest?.();},
     "call-test-start":()=>{if(window.confirm("現在のゲームを召喚・呼集テストに置き換えます。開始しますか？"))window.startV39CallTest?.();},
     "ritual-test-none":()=>startRitualTest(0),
     "ritual-test-one":()=>startRitualTest(1),
@@ -1016,6 +1043,8 @@ function install() {
       return;
     }
     if (!(event.target instanceof HTMLSelectElement)) return;
+    if(event.target.id==='v39-test-typhoon-radius'){selectedTyphoonRadius=Number(event.target.value);render();return;}
+    if(event.target.id==='v39-test-typhoon-grow'){selectedTyphoonAutoGrow=event.target.value==='on';render();return;}
     if(event.target.id==='v39-test-atmosphere-kind'){selectedTerrainAtmosphereKind=event.target.value;render();return;}
     if (event.target.id === "v39-test-enemy-id") selectedEnemyId = text(event.target.value);
     else if (event.target.id === "v39-test-skill-name") selectedTestSkillName = text(event.target.value);
@@ -1058,7 +1087,7 @@ function install() {
       selectedTile = { x:Math.floor(number(point.x)), y:Math.floor(number(point.y)) };
     }
     const key = selectedTileKey(point);
-    const state = window.getV39GameState?.();
+    const state = window.getV39GameState?.({includeWorlds:false});
     const enemy = (state?.enemies || []).find(row => selectedTileKey(row) === key && livingUnit(row));
     const villageGuard = (state?.neutralVillages || []).flatMap(village => village?.defenseUnits || [])
       .find(row => selectedTileKey(row) === key && livingUnit(row));

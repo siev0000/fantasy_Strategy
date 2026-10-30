@@ -1,0 +1,153 @@
+{
+  "openMs": 166,
+  "moveMs": 687,
+  "totalMs": 853,
+  "target": {
+    "key": "12,25",
+    "cost": 17
+  },
+  "metrics": {
+    "calls": {
+      "getV39ActiveFactionState": {
+        "count": 283,
+        "ms": 101.70000004768372
+      },
+      "getV39GameState": {
+        "count": 119,
+        "ms": 369.5
+      },
+      "getV39EnemyTurnState": {
+        "count": 380,
+        "ms": 0.19999998807907104
+      },
+      "getV39ActivePlayer": {
+        "count": 12,
+        "ms": 4.000000059604645
+      },
+      "updateV39ActiveFactionState": {
+        "count": 4,
+        "ms": 195.00000002980232
+      },
+      "refreshV39MapEntities": {
+        "count": 1,
+        "ms": 3.0999999940395355
+      },
+      "setV39GameState": {
+        "count": 1,
+        "ms": 73.09999999403954
+      }
+    },
+    "longTasks": [
+      {
+        "start": 6265.700000017881,
+        "ms": 83
+      },
+      {
+        "start": 6697,
+        "ms": 302
+      }
+    ]
+  },
+  "top": [
+    [
+      "(program) :0",
+      547.889
+    ],
+    [
+      "(idle) :0",
+      246.34999999999994
+    ],
+    [
+      "Ce v39-bootstrap-core-CSgjPDPa.js:231",
+      174.63899999999998
+    ],
+    [
+      "qo v39-disaster-test-XpopAdKE.js:3",
+      74.456
+    ],
+    [
+      "structuredClone :0",
+      72.02900000000002
+    ],
+    [
+      " v39-bootstrap-core-CSgjPDPa.js:231",
+      61.858000000000004
+    ],
+    [
+      "Ln v39-bootstrap-core-CSgjPDPa.js:231",
+      32.351
+    ],
+    [
+      "Os v39-bootstrap-core-CSgjPDPa.js:231",
+      17.076
+    ],
+    [
+      " v39-expedition-tools-DGzfSJMG.js:73",
+      13.948
+    ],
+    [
+      "D v39-expedition-tools-DGzfSJMG.js:73",
+      8.028
+    ],
+    [
+      "texImage2D :0",
+      4.6
+    ],
+    [
+      "ve v39-expedition-tools-DGzfSJMG.js:73",
+      3.193
+    ],
+    [
+      "Ma v39-expedition-tools-DGzfSJMG.js:73",
+      3.1660000000000004
+    ],
+    [
+      "(garbage collector) :0",
+      3.143
+    ],
+    [
+      "Lv v39-bootstrap-core-CSgjPDPa.js:231",
+      3.1100000000000003
+    ],
+    [
+      "Pt v39-bootstrap-core-CSgjPDPa.js:391",
+      3.05
+    ],
+    [
+      "yr v39-bootstrap-final-BeTlzJsp.js:181",
+      3.032
+    ],
+    [
+      "C2 v39-expedition-tools-DGzfSJMG.js:73",
+      2.514
+    ],
+    [
+      "e vendor-phaser-C1IXbtjv.js:1036",
+      1.695
+    ],
+    [
+      "measureText :0",
+      1.597
+    ],
+    [
+      "click :0",
+      1.592
+    ],
+    [
+      "M3 v39-expedition-tools-DGzfSJMG.js:77",
+      1.582
+    ],
+    [
+      "il v39-bootstrap-game-4-ulzGqa.js:70",
+      1.578
+    ],
+    [
+      "window.<computed> :1",
+      1.577
+    ],
+    [
+      "Is v39-expedition-tools-DGzfSJMG.js:73",
+      1.574
+    ]
+  ]
+}

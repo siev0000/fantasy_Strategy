@@ -50,7 +50,7 @@ export function revealV39NearbySites(state, map) {
         visited.add(key);
         if (distance<range) queue.push(...getHexOffsetNeighbors(tile.x,tile.y));
         if (!hasV39CaveLineOfSight(map,unit,tile,{showWall:true})) continue;
-        const detect = definition => isDetectedByScout({scout,stealth:resolveV39SiteStealth(state,key,definition),distance,inRange:true,mapData:map,from:unit,to:tile,visionRange:range});
+        const detect = definition => isDetectedByScout({scout,stealth:resolveV39SiteStealth(state,key,definition),distance,inRange:true,mapData:map,from:unit,to:tile,visionRange:range,gameSettings:state.gameSettings});
         const record={discoveredTurn:turn,discoveredByUnitId:unit.id,discoveredByProximity:true};
         const names=[];
         const site=state.explorationSitesByTile?.[key], row=site && definitions.get(site.featureName || site.name || String(site.featureId || "").replace(/^地形:/,""));

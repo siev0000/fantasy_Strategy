@@ -1,9 +1,23 @@
 import {isV39VillageHostileToPlayer,v39VillageHostilePlayerUnits} from '../../lib/v39-village-hostility.js';
+import {recordV39CombatAchievements} from '../../lib/v39-unit-achievements.js';
+import {applyV39SkillForcedMovement} from '../../lib/v39-skill-forced-movement.js';
+import {collectV39JoinedWallPairs,resolveV39JoinedWallDamageScales,resolveV39SmoothedFootprintOutline} from '../../lib/v39-wall-edges.js';
+
+function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,achievementInfo={}){
+  const result=applyV39SkillForcedMovement({...state,...patch},map,attacker,skillRow,combatLog);
+  for(const entry of result.damageEntries)combatLog.push({...entry,targetId:entry.unitId,targetName:entry.name,hitCount:1,hitResults:[{hit:true,damage:entry.damage}],friendly:false});
+  for(const entry of result.entries)window.appendV39ActivityLog?.([state.activePlayerId],'戦闘',`${entry.name}: ${entry.source}で${entry.distance}マス移動 (${entry.to.x},${entry.to.y})`,entry);
+  const recorded=recordV39CombatAchievements(state,{...state,...patch,players:result.players,enemies:result.enemies,neutralVillages:result.neutralVillages},attacker,
+    [...combatLog,...(achievementInfo.wallEntries||[])],{...achievementInfo,skillRow});
+  return {...patch,players:recorded.players,enemies:recorded.enemies,neutralVillages:recorded.neutralVillages};
+}
+import {isV39CastingMagic,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import {canV39UnitLeaveOrganicCorpse} from '../../lib/v39-corpse-types.js';
 import {v39HazardRecoveryMultiplier} from '../../lib/v39-hazard-zones.js';
 import {resolveV39CorpseLifetimeTurns} from '../../lib/v39-corpse-lifetime.js';
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
+import {applyV39AttackGroundDamage} from '../world/v39-terrain-destruction.js';
 import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
 import {convertV39CorpsesInDeathFog} from '../../lib/v39-corpse-undead-rules.js';
 import {inspectV39SoulCollection,collectV39Soul} from '../../lib/v39-soul-storage.js';
@@ -220,14 +234,17 @@ function clearDestroyedWallFacilities(state, map, players = state.players) {
 }
 
 function damagePlacedWalls(map, area, attacker, row, log) {
+  const scales=resolveV39JoinedWallDamageScales(map.defenseStructures||[],area);
+  const pairById=new Map(collectV39JoinedWallPairs(map.defenseStructures||[]).flatMap(pair=>pair.map(w=>[w.id,pair.map(p=>p.id).sort().join('|')])));
+  const rolls=new Map();
   for (const wall of map.defenseStructures || []) {
     if (wall.hp <= 0 || (wall.kind !== "壁" && !area.blockingStructures?.has(wall.id))) continue;
-    const keys = wall.edge ? [coordKey(wall.edge.from.x, wall.edge.from.y), coordKey(wall.edge.to.x, wall.edge.to.y)]
-      : wall.tiles.map(tile => coordKey(tile.x, tile.y));
-    const scale = Math.max(area.structureScales?.get(wall.id) || 0, ...keys.map(key => area.get(key) || 0));
+    const scale=scales.get(wall.id)||0;
     if (!scale) continue;
-    let damage = computeAttackDamage({ attacker:terrainAdjusted(attacker),
+    const rollKey=pairById.get(wall.id)||wall.id;
+    let damage = rolls.get(rollKey)||computeAttackDamage({ attacker:terrainAdjusted(attacker),
       target:{ level:1, status:{ 防御:0, 精神:0, 回避:1 } }, skillRow:row, scale });
+    rolls.set(rollKey,damage);
     if (wall.kind==="結界") {
       const power=Math.floor(resolveAttackPower(row,terrainAdjusted(attacker))*scale);
       const hits=damage.hitResults.map(hit=>hit.hit ? power : 0);
@@ -235,7 +252,7 @@ function damagePlacedWalls(map, area, attacker, row, log) {
     }
     const beforeHp = wall.hp;
     wall.hp = Math.max(0, beforeHp - damage.total);
-    log.push({ ...damage, targetId:wall.id, targetName:wall.name, x:wall.x, y:wall.y,
+    log.push({ ...damage, structureKind:wall.kind, targetId:wall.id, targetName:wall.name, x:wall.x, y:wall.y,
       beforeHp, afterHp:wall.hp, maxHp:wall.maxHp });
   }
 }
@@ -279,7 +296,7 @@ function applyDirectDamage(unit, damage, skillRow, { directTarget = false } = {}
 
 function castDurationTurns(skillRow) {
   const configured = parseV39TurnCount(skillRow?.待機, 0);
-  return text(skillRow?.攻撃手段) === "魔法" ? Math.max(DEFAULT_MAGIC_CAST_TURNS, configured) : configured;
+  return isV39CastingMagic(skillRow) ? Math.max(DEFAULT_MAGIC_CAST_TURNS, configured) : configured;
 }
 
 const cooldownDurationTurns = resolveV39SkillCooldownTurns;
@@ -334,7 +351,7 @@ function tilesWithin(data, origin, radius) {
     for (const tile of frontier) {
       for (const neighbor of neighbors(data, tile.x, tile.y)) {
         if (found.has(neighbor.key)) continue;
-        if (!hasV39CaveLineOfSight(data, origin, neighbor, {ignorePlacedWalls:true})) continue;
+        if (!hasV39CaveLineOfSight(data, origin, neighbor, {ignorePlacedWalls:true,showWall:true})) continue;
         const value = { x:neighbor.x, y:neighbor.y, distance };
         found.set(neighbor.key, value);
         next.push(value);
@@ -346,7 +363,7 @@ function tilesWithin(data, origin, radius) {
 }
 
 function directionLine(data, from, target, length) {
-  return v39HexRay(data,from,target,length).filter(tile=>hasV39CaveLineOfSight(data,from,tile,{ignorePlacedWalls:true}))
+  return v39HexRay(data,from,target,length).filter(tile=>hasV39CaveLineOfSight(data,from,tile,{ignorePlacedWalls:true,showWall:true}))
     .map(tile=>({...tile,key:coordKey(tile.x,tile.y)}));
 }
 
@@ -435,10 +452,12 @@ function buildAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
     const [x,y]=key.split(",").map(Number),point={x,y};
     const check=traceV39AttackRay(data,attacker,point,units,{turn,ignoreUnit:ignoreFriendly,ignoreUnits:piercing||splash});
     if (coordKey(check.impact.x,check.impact.y)!==key) { result.delete(key); continue; }
+    if(['瓦礫','地形'].includes(check.reason))result.blockedUnitKeys.add(key);
     const structures=[check.structure];
     // 爆心からの広がりも壁・結界・遮断を回り込まない。
     if (splash && key!==coordKey(blastCenter.x,blastCenter.y)) {
-      const spread=traceV39AttackRay(data,blastCenter,point,units,{turn,ignoreUnits:true});
+      const spreadOrigin=['地形','瓦礫'].includes(ray.reason)?ray.tiles.at(-2)||attacker:blastCenter;
+      const spread=traceV39AttackRay(data,spreadOrigin,point,units,{turn,ignoreUnits:true});
       if (coordKey(spread.impact.x,spread.impact.y)!==key) { result.delete(key); continue; }
       structures.push(spread.structure);
     }
@@ -486,12 +505,20 @@ function drawAttackArea(areaScale) {
   areaGraphics = null;
   if (!ctx || !(areaScale instanceof Map)) return;
   areaGraphics = ctx.scene.add.graphics().setDepth(AREA_DEPTH);
+  const fieldOutline=resolveV39DefenseKind(attackSession?.skillRow)==='結界';
   for (const [key, scale] of areaScale) {
     const [x, y] = key.split(",").map(Number);
     const points = hexPoints(x, y);
     const color = resolveV39DefenseKind(attackSession?.skillRow) ? 0x73e0ff : scale < 1 ? 0xf08a32 : 0xe44d3a;
     areaGraphics.fillStyle(color, 0.25).fillPoints(points, true);
-    areaGraphics.lineStyle(2, color, 0.98).strokePoints(points, true);
+    if(!fieldOutline)areaGraphics.lineStyle(2, color, 0.98).strokePoints(points, true);
+  }
+  if(fieldOutline){
+    const tiles=[...areaScale.keys()].map(key=>{const [x,y]=key.split(',').map(Number);return {x,y};});
+    areaGraphics.lineStyle(2,0x73e0ff,.98).fillStyle(0x73e0ff,.98);
+    for(const [a,b] of resolveV39SmoothedFootprintOutline(tiles,tileCenter,tileMetrics())){
+      areaGraphics.lineBetween(a.x,a.y,b.x,b.y).fillCircle(a.x,a.y,1).fillCircle(b.x,b.y,1);
+    }
   }
 }
 
@@ -595,9 +622,10 @@ function unavailableAttackReason(skillName) {
   if (!unit || !row) return "攻撃するキャラクターと技を選択してください";
   if (isV39UnitWaiting(unit, currentV39TurnNumber())) return "このターンは待機済みです";
   if (text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) return "死亡したキャラクターは攻撃できません";
-  if (currentAp(unit) < resolveAttackApCost(row, unit)) return "APが不足しています";
   const timing = unitRuntimeState(faction, unit, row);
-  if (timing.pending) return "別の行動を発動待機中です";
+  const releasing=timing.pending?.aimAfterCast&&timing.pending.skillName===skillName&&describeV39Cast(timing.pending,currentV39TurnNumber()).ready;
+  if (!releasing&&currentAp(unit) < resolveAttackApCost(row, unit)) return "APが不足しています";
+  if (timing.pending && (!timing.pending.aimAfterCast||timing.pending.skillName===skillName&&!releasing)) return "詠唱中です。完了後に攻撃位置を指定できます";
   if (timing.cooldownRemainingTurns > 0) return parseV39TurnCount(row.CT)<=1?"このターンは使用済みです":`CT中です。残り${timing.cooldownRemainingTurns}ターン`;
   return "現在は使用できません";
 }
@@ -631,12 +659,13 @@ function renderActionPanel() {
     const name = text(button?.dataset?.v39AttackName);
     const row = rowByName.get(name) || null;
     const timing = unitRuntimeState(faction, unit, row, turnNumber);
+    const releasing=timing.pending?.aimAfterCast&&timing.pending.skillName===name&&describeV39Cast(timing.pending,turnNumber).ready;
     const disabled = !row
       || isV39UnitWaiting(unit, turnNumber)
-      || currentAp(unit) < resolveAttackApCost(row, unit)
+      || (!releasing&&currentAp(unit) < resolveAttackApCost(row, unit))
       || text(unit?.state) === "死亡"
       || number(unit?.hp, unit?.currentHp) <= 0
-      || !!timing.pending
+      || (!!timing.pending&&(!timing.pending.aimAfterCast||timing.pending.skillName===name&&!releasing))
       || timing.cooldownRemainingTurns > 0;
     const selected = !!row && attackSession?.skillName === name && attackSession?.unitId === text(unit?.id);
     button.classList.toggle("active", selected);
@@ -655,11 +684,12 @@ function canTargetOwnTile(skillRow, unit, data) {
 }
 
 function startAttack() {
+  if(window.isV39TerritoryPlanning?.()){window.showV39TurnBanner?.('計画を確定して戦闘・探索へ進んでください');return false;}
   if(window.isV39MapInputLocked?.())return false;
   const ctx = activeRuntime();
   const faction = activeFaction();
   const unit = selectedUnit(faction);
-  const skillRow = selectedAttackRow(unit);
+  let skillRow = selectedAttackRow(unit);
   if (attackSession) {
     cancelAttack();
     return false;
@@ -678,19 +708,24 @@ function startAttack() {
     showToast("このターンは待機済みです");
     return false;
   }
+  const timing = unitRuntimeState(faction, unit, skillRow);
+  const releaseCast=timing.pending?.aimAfterCast&&timing.pending.skillName===text(skillRow.名前)&&describeV39Cast(timing.pending,currentV39TurnNumber()).ready;
+  if(releaseCast)skillRow=timing.pending.skillRow;
   const apCost = resolveAttackApCost(skillRow, unit);
-  if (currentAp(unit) < apCost) {
+  if (!releaseCast&&currentAp(unit) < apCost) {
     showToast("APが不足しています");
     return false;
   }
-  const timing = unitRuntimeState(faction, unit, skillRow);
-  if (timing.pending) {
-    showToast("別の行動を発動待機中です");
+  if (timing.pending&&(!timing.pending.aimAfterCast||timing.pending.skillName===text(skillRow.名前)&&!releaseCast)) {
+    showToast("詠唱中です。完了後に攻撃位置を指定できます");
     return false;
   }
   if (timing.cooldownRemainingTurns > 0) {
     showToast(parseV39TurnCount(skillRow.CT)<=1?"このターンは使用済みです":`CT中です。残り${timing.cooldownRemainingTurns}ターン`);
     return false;
+  }
+  if(!releaseCast&&isV39CastingMagic(skillRow)&&castDurationTurns(skillRow)>0){
+    return queueCombatCast({unitId:text(unit.id),skillName:text(skillRow.名前),skillRow},unit,state.players.find(p=>p.id===state.activePlayerId),state);
   }
   const range = resolveAttackRange(skillRow, unit, ctx.data);
   const rangeTiles = tilesWithin(ctx.data, unit, range);
@@ -698,7 +733,7 @@ function startAttack() {
   const support=isV39SupportSkill(skillRow,unit)||!!resolveV39TileTransformEffect(skillRow,TERRAIN_DATA_ROWS);
   for (const tile of rangeTiles.values()) tile.rangeScale=support ? 1 : resolveAttackRangeScale(skillRow,unit,tile.distance,ctx.data);
   attackSession = { playerId:state.activePlayerId,worldId:state.activeWorldId,turnNumber:state.timeline.turnNumber,
-    unitId:text(unit.id), skillName:text(skillRow.名前), skillRow, range, rangeTiles };
+    unitId:text(unit.id), skillName:text(skillRow.名前), skillRow, range, rangeTiles,releaseCast };
   rangeGraphics = drawTiles(rangeTiles, 0xf3d84a, 0.20, RANGE_DEPTH, rangeGraphics);
   setBanner(`${text(skillRow.名前)}：黄色が射程、対象位置を選択`);
   if (resolveV39DefenseKind(skillRow) && ["辺", "三角形"].includes(skillRow.範囲)) {
@@ -792,7 +827,7 @@ function executeAttack(target) {
     }
   }
   const delayTurns = castDurationTurns(session.skillRow);
-  if(hasV39SkillEffect(session.skillRow,'魂回収')){
+  if(hasV39SkillEffect(session.skillRow,'魂回収')&&isV39SupportSkill(session.skillRow,attacker)){
     const check=inspectV39SoulCollection(window.getV39GameState(),player.id,target);
     if(!check.ok){showToast(check.reason);return false;}
   }
@@ -811,7 +846,15 @@ function executeAttack(target) {
     if (directionButton) document.getElementById("modeBanner")?.append(directionButton);
     return false;
   }
+  if(session.releaseCast)return performAttack(target,{...session,playerId:player.id},{apPaid:true,clearPending:true});
   if (delayTurns <= 0) return performAttack(target, { ...session, playerId:player.id });
+  return queueCombatCast(session,attacker,player,state,target);
+}
+
+function queueCombatCast(session,attacker,player,state,target=null){
+  const timing=unitRuntimeState(player.factionState,attacker,session.skillRow);
+  if(timing.cooldownRemainingTurns>0||timing.pending&&!timing.pending.aimAfterCast||isV39UnitWaiting(attacker,currentV39TurnNumber(state))||number(attacker.hp??attacker.currentHp)<=0)return false;
+  const delayTurns=castDurationTurns(session.skillRow);
   const apCost = resolveAttackApCost(session.skillRow, attacker);
   if (currentAp(attacker) < apCost) {
     showToast("APが不足しています");
@@ -824,7 +867,9 @@ function executeAttack(target) {
     unitId:text(attacker.id),
     skillName:text(session.skillRow?.名前),
     skillRow:session.skillRow,
-    target:{ x:integer(target.x), y:integer(target.y) },
+    target:target?{ x:integer(target.x), y:integer(target.y) }:null,
+    aimAfterCast:isV39CastingMagic(session.skillRow),
+    origin:{x:attacker.x,y:attacker.y,worldId:attacker.worldId||'surface'},
     startedTurn,
     defenseFacing:session.defenseFacing || 0,
     resolvesAtTurn:resolveV39DeadlineTurn(startedTurn, delayTurns),
@@ -847,9 +892,9 @@ function executeAttack(target) {
   window.setV39GameState({ players }, { reason:"combat-cast-start" });
   window.dispatchEvent(new CustomEvent("v39:cast-started", { detail:pending }));
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
-    detail:{ summary:`${text(attacker.name)}：${pending.skillName} 発動待機 ${delayTurns}ターン / AP-${apCost}`, attackerId:text(attacker.id), skillName:pending.skillName, apCost, target:pending.target, entries:[] }
+    detail:{ summary:`${text(attacker.name)}：${pending.skillName} 詠唱開始 ${delayTurns}ターン / AP-${apCost}`, attackerId:text(attacker.id), skillName:pending.skillName, apCost, target:pending.target, entries:[],castStarted:true }
   }));
-  showToast(`${pending.skillName}：${delayTurns}ターン後に発動`);
+  showToast(`${pending.skillName}：詠唱${delayTurns}ターン。完了後に攻撃位置を指定`);
   cancelAttack("cast-started");
   renderActionPanel();
   return true;
@@ -859,7 +904,7 @@ function performRevival(target, session, options, state, player, attacker, reviv
   const validation = resolveRevivalTarget(player, target, revivalSpec);
   if (!validation.ok) {
     showToast(validation.reason);
-    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
     return false;
   }
   const result = window.reviveV39Unit?.(player.id, validation.unit.id, {
@@ -871,7 +916,7 @@ function performRevival(target, session, options, state, player, attacker, reviv
   });
   if (!result?.ok) {
     showToast(text(result?.reason, "蘇生に失敗しました"));
-    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
     return false;
   }
   const latestState = window.getV39GameState?.({ includeWorlds:false });
@@ -929,7 +974,7 @@ function performSoulCollection(target,session,options,state,player,attacker,apCo
   const result=collectV39Soul(window.getV39GameState(),player.id,target);
   if(!result.ok){
     showToast(result.reason);
-    if(options.clearPending)clearPendingAction(player.id,attacker.id,'soul-target-invalid');
+    if(options.clearPending && !session?.releaseCast)clearPendingAction(player.id,attacker.id,'soul-target-invalid');
     return false;
   }
   const turn=currentV39TurnNumber(state);
@@ -955,7 +1000,7 @@ function performUndeadConversion(target,session,options,state,player,attacker,ap
   const patch=prepareUndeadConversion(state,ctx,area);
   if(!patch?.spawned.length) {
     showToast('変換できる死体または配置可能な空きマスがありません');
-    if(options.clearPending)clearPendingAction(player.id,text(attacker.id),'cast-target-invalid');
+    if(options.clearPending && !session?.releaseCast)clearPendingAction(player.id,text(attacker.id),'cast-target-invalid');
     return false;
   }
   const created=patch.spawned.map(({enemy})=>({...enemy,role:'味方',ownerPlayerId:player.id,aggressive:false,
@@ -990,7 +1035,7 @@ function performUndeadConversion(target,session,options,state,player,attacker,ap
 function performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx) {
   const sourceMap = ctx?.data;
   if (!sourceMap) {
-    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-map-missing");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id, text(attacker.id), "cast-map-missing");
     return false;
   }
 
@@ -1002,13 +1047,13 @@ function performTileTransform(target, session, options, state, player, attacker,
   const result = applyV39TileTransformEffect(nextMap, target.x, target.y, transformSpec, TERRAIN_DATA_ROWS);
   if (!result.ok) {
     showToast(result.reason || "地形変換に失敗しました");
-    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
     return false;
   }
 
   if (window.updateV39FieldData?.(nextMap, { reason:"tile-transform" }) !== true) {
     showToast("地形表示の更新に失敗しました");
-    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-map-update-failed");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id, text(attacker.id), "cast-map-update-failed");
     return false;
   }
 
@@ -1056,7 +1101,7 @@ function performAttack(target, session = attackSession, options = {}) {
   const player = state?.players?.find((row) => row.id === text(session.playerId, state?.activePlayerId));
   const attacker = player?.factionState?.units?.find((unit) => text(unit?.id) === session.unitId);
   if (!ctx || !state || !player || !attacker || !isV39UnitInWorld(attacker,state.activeWorldId) || number(attacker?.hp, attacker?.currentHp) <= 0) {
-    if (options.clearPending) clearPendingAction(text(session?.playerId), text(session?.unitId), "cast-cancelled");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(text(session?.playerId), text(session?.unitId), "cast-cancelled");
     return false;
   }
   const targetKey = coordKey(target.x, target.y);
@@ -1075,14 +1120,14 @@ function performAttack(target, session = attackSession, options = {}) {
   if (!canTargetOwnTile(session.skillRow,attacker,ctx.data)) rangeTiles.delete(coordKey(attacker.x, attacker.y));
   if (!rangeTiles.has(targetKey)) {
     showToast("射程外です");
-    if (options.clearPending) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
     return false;
   }
-  const apCost = resolveAttackApCost(session.skillRow, attacker);
+  const apCost = options.apPaid?0:resolveAttackApCost(session.skillRow, attacker);
   const areaScale = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow, session.defenseFacing || 0);
   if (!areaScale.size) {
     showToast("壁・結界・遮断で届きません");
-    if (options.clearPending) clearPendingAction(player.id,text(attacker.id),"cast-target-blocked");
+    if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id,text(attacker.id),"cast-target-blocked");
     return false;
   }
   if (!supportSkill && !transformSpec && !revivalSpec) target=areaScale.impact;
@@ -1105,7 +1150,7 @@ function performAttack(target, session = attackSession, options = {}) {
     return false;
   }
   if (revivalSpec) return performRevival(target, session, options, state, player, attacker, revivalSpec, apCost);
-  if(hasV39SkillEffect(session.skillRow,'魂回収'))return performSoulCollection(target,session,options,state,player,attacker,apCost);
+  if(hasV39SkillEffect(session.skillRow,'魂回収')&&supportSkill)return performSoulCollection(target,session,options,state,player,attacker,apCost);
   if(hasV39SkillEffect(session.skillRow,'アンデッド化'))return performUndeadConversion(target,session,options,state,player,attacker,apCost,ctx,areaScale);
   if (transformSpec) return performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx);
   if (["壁", "結界"].includes(defenseKind)) {
@@ -1307,8 +1352,10 @@ function performAttack(target, session = attackSession, options = {}) {
     ? { ...row, factionState:expResult.factionState }
     : row);
   placeV39SkillFog(ctx.data,areaScale,session.skillRow,currentV39TurnNumber(state));
+  if(!supportSkill)applyV39AttackGroundDamage(ctx.data,areaScale,attacker,session.skillRow,currentV39TurnNumber(state),state);
   applyV39DeathBlade(ctx.data,attacker,combatLog);
-  commitVillageCombatState({ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies,neutralVillages:nextVillages }, { reason:"combat-attack" });
+  commitVillageCombatState(withSkillForcedMovement(state,{ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies,neutralVillages:nextVillages },ctx.data,attacker,session.skillRow,combatLog,
+    {support:supportSkill,supportTargetIds:[...supportTargetIds],wallEntries:combatWallLog,terrainReports:areaScale.achievementTerrainReports}), { reason:"combat-attack" });
   for (const levelUp of expResult.levelUps) {
     window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail:levelUp }));
   }
@@ -1334,7 +1381,7 @@ function performAttack(target, session = attackSession, options = {}) {
     : "";
   const summary = supportSkill
     ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
-    : `${text(attacker.name)}：${text(session.skillRow.名前)} / ${obstruction?.reason || `合計${total}${hits.length ? ` (${hits.join(",")})` : ""}`} / AP-${apCost}${expText}${levelUpText}`;
+    : `${text(attacker.name)}：${text(session.skillRow.名前)} / ${obstruction?.reason || `合計${total}${hits.length ? ` (${hits.join(",")})` : ""}`} / AP-${apCost}${expText}${levelUpText}${areaScale.groundSummary||''}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{
       summary,
@@ -1542,11 +1589,13 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     [text(skillRow?.名前)]:resolveV39DeadlineTurn(currentV39TurnNumber(state),cooldownDurationTurns(skillRow))
   }}};
   placeV39SkillFog(ctx.data,areaScale,skillRow,currentV39TurnNumber(state));
+  applyV39AttackGroundDamage(ctx.data,areaScale,attacker,skillRow,currentV39TurnNumber(state),state);
   applyV39DeathBlade(ctx.data,attacker,combatLog);
-  commitVillageCombatState({ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime }, { reason:"enemy-combat-attack" });
+  commitVillageCombatState(withSkillForcedMovement(state,{ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime },ctx.data,attacker,skillRow,combatLog,
+    {terrainReports:areaScale.achievementTerrainReports}), { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
-  const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}`;
+  const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}${areaScale.groundSummary||''}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerName:`${text(attacker.name)} Lv${integer(attacker.level, 1)}`, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
     detail:{ attackerSide:"enemy", targetSide:state.enemies.some(unit=>unit.id===targetUnit.id) ? "enemy"
@@ -1598,12 +1647,14 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, t
     areaTiles:[...area.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),splash:resolveSplashSpec(skillRow).value
   });
   placeV39SkillFog(ctx.data,area,skillRow,currentV39TurnNumber(state));
+  applyV39AttackGroundDamage(ctx.data,area,attacker,skillRow,currentV39TurnNumber(state),state);
   applyV39DeathBlade(ctx.data,attacker,entries);
-  window.setV39GameState({...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages,players }, { reason:"neutral-village-defense-attack" });
+  commitVillageCombatState(withSkillForcedMovement(state,{...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages,players },ctx.data,attacker,skillRow,entries,
+    {terrainReports:area.achievementTerrainReports}), { reason:"neutral-village-defense-attack" });
   const total=entries.reduce((sum,entry)=>sum+entry.total,0);
   const hits = entries.flatMap(entry=>(entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss"));
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{
-    summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""}`,
+    summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""}${area.groundSummary||''}`,
     attackerName:text(attacker.name), attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:defenseApCost, target:area.impact, entries, villageAction:true
   } }));
   if(!isCounter)window.dispatchEvent(new CustomEvent("v39:attack-resolved", { detail:{
@@ -1729,6 +1780,7 @@ function resolvePendingActions(turnNumber = currentV39TurnNumber()) {
   for (const player of state?.players || []) {
     for (const pending of Object.values(player?.factionState?.combatRuntime?.pendingActionsByUnitId || {})) {
       if (number(pending?.resolvesAtTurn) > turnNumber) continue;
+      if(pending.aimAfterCast||isV39CastingMagic(pending.skillRow))continue;
       const caster = player.factionState.units.find(unit => text(unit.id) === text(pending.unitId));
       if (!caster) {
         clearPendingAction(player.id, text(pending.unitId), "cast-caster-missing");
@@ -1760,6 +1812,7 @@ function installStyles() {
     #modeBanner [data-v39-defense-facing]:focus-visible{outline:2px solid #ffe09a;outline-offset:2px}
     #detailTechniqueList .action-technique.unavailable{opacity:.38;filter:saturate(.4);cursor:not-allowed}
     #detailTechniqueList .action-technique.active{border-color:#e7c466}
+    .v39-cast-status{padding:6px;border:1px solid #7ecfdd;border-radius:7px;background:#16303a;color:#c8f5fc}.v39-cast-status>div{display:flex;gap:5px;margin-top:4px}.v39-cast-status button{padding:5px 7px;border:1px solid #7ecfdd;border-radius:5px;background:#1b353e;color:#f0fcff;font:inherit}
   `;
   document.head.appendChild(style);
 }
@@ -1771,6 +1824,21 @@ function install() {
     return;
   }
   installStyles();
+  techniqueList.addEventListener('click',event=>{
+    const button=event.target.closest?.('[data-v39-cast-release],[data-v39-cast-cancel]');
+    if(!button)return;
+    const state=window.getV39GameState({includeWorlds:false}),faction=activeFaction(),unit=selectedUnit(faction),pending=faction?.combatRuntime?.pendingActionsByUnitId?.[unit?.id];
+    if(!pending?.aimAfterCast)return;
+    event.preventDefault();event.stopPropagation();cancelAttack('cast-control');
+    if(button.hasAttribute('data-v39-cast-cancel')){clearPendingAction(state.activePlayerId,unit.id,'cast-user-cancelled');showToast('詠唱を解除しました（AP返還なし）');}
+    else {selectedSkillName=pending.skillName;startAttack();}
+  });
+  window.addEventListener('v39:combat-log',event=>{
+    const detail=event.detail||{};
+    if(detail.castStarted||detail.combatActivity===false||!detail.skillName)return;
+    const state=window.getV39GameState({includeWorlds:false});
+    for(const player of state.players){const pending=player.factionState.combatRuntime?.pendingActionsByUnitId?.[detail.attackerId];if(pending?.aimAfterCast)clearPendingAction(player.id,detail.attackerId,'cast-other-action');}
+  });
   techniqueList.addEventListener("click", (event) => {
     const card = event.target instanceof Element ? event.target.closest("[data-v39-technique-name]") : null;
     if (!card) return;
@@ -1846,6 +1914,12 @@ window.addEventListener("v39:tile-selected", (event) => {
       ? target
       : targetUnit ? { x:targetUnit.x, y:targetUnit.y } : null;
     if (!point || !text(playerId) || !text(attackerId) || !skillRow) return false;
+    const owner=state.players.find(p=>p.id===playerId),caster=owner?.factionState?.units?.find(u=>u.id===attackerId),pending=owner?.factionState?.combatRuntime?.pendingActionsByUnitId?.[attackerId];
+    if(pending?.aimAfterCast){
+      if(!describeV39Cast(pending,state.timeline.turnNumber).ready)return false;
+      return performAttack(point,{playerId,unitId:attackerId,skillName:pending.skillName,skillRow:pending.skillRow,releaseCast:true},{apPaid:true,clearPending:true});
+    }
+    if(caster&&!apPaid&&isV39CastingMagic(skillRow)&&castDurationTurns(skillRow)>0)return queueCombatCast({unitId:attackerId,skillName:skillRow.名前,skillRow},caster,owner,state);
     return performAttack(point, {
       playerId:text(playerId),
       unitId:text(attackerId),

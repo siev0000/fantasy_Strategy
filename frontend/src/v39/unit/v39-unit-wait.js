@@ -1,6 +1,7 @@
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import {isV39UnitRecoveryWaiting,normalizeV39RecoveryWaitPercent} from '../../lib/v39-recovery-wait.js';
+import {isV39UnitWaiting,resolveV39UnitWaitUpdate} from '../../lib/v39-unit-action-rules.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -27,8 +28,8 @@ export function waitV39SelectedUnit(options = {}) {
   if(!isV39UnitInWorld(unit,state.activeWorldId)){
     showMessage("このキャラクターは別のマップにいます");return {ok:false,reason:"unit-other-world"};
   }
-  const recovery = options.recovery === true, cancel = options.cancelRecovery === true;
-  if(cancel && !(Number(unit.recoveryWaitTargetPercent)>0))return {ok:false,reason:'not-recovery-waiting'};
+  const recovery = options.recovery === true;
+  if(options.cancelRecovery && !(Number(unit.recoveryWaitTargetPercent)>0))return {ok:false,reason:'not-recovery-waiting'};
   const target = normalizeV39RecoveryWaitPercent(state.gameSettings?.recoveryWaitHpPercent);
   if (recovery && !isV39UnitRecoveryWaiting({...unit,recoveryWaitTargetPercent:target})) {
     showMessage(`HPは目標の${target}%以上です`);return {ok:false,reason:'recovery-target-reached'};
@@ -40,27 +41,24 @@ export function waitV39SelectedUnit(options = {}) {
   }
   const apCost = 0;
   const turnNumber = Math.max(1, number(state.timeline?.turnNumber, 1));
+  const update=resolveV39UnitWaitUpdate(unit,turnNumber,{recovery,cancelRecovery:options.cancelRecovery===true,target});
+  const cancel=update.cancel;
   window.cancelV39SelectedUnitMove?.("wait-command");
   window.cancelV39SelectedUnitAttack?.("wait-command");
   const players = state.players.map(row => row.id !== player.id ? row : ({
     ...row,
     factionState:{
       ...row.factionState,
-      units:row.factionState.units.map(member => member.id !== unit.id ? member : ({
-        ...member,
-        recoveryWaitTargetPercent:recovery?target:0,
-        waitTurnNumber:cancel?0:turnNumber,
-        lastActionTurn:cancel?0:turnNumber,
-        lastAction:cancel?'回復待機解除':recovery?'回復待機':"待機"
-      }))
+      units:row.factionState.units.map(member => member.id !== unit.id ? member : update.unit)
     }
   }));
   window.setV39GameState?.({ players }, { reason:"unit-wait" });
-  const summary = `${text(unit.name) || "キャラクター"}：${cancel?'回復待機を解除':recovery?`HP${target}%まで回復待機`:'待機 / このターンの行動終了（AP保持）'}`;
+  const summary = `${text(unit.name) || "キャラクター"}：${cancel?'待機を解除':recovery?`HP${target}%まで回復待機`:'待機 / このターンの行動終了（AP保持）'}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{ summary, attackerId:text(unit.id), skillName:"待機", combatActivity:false, apCost, entries:[] }
   }));
   showMessage(summary);
+  updateRecoveryWaitControl();
   return { ok:true, unitId:text(unit.id), apCost };
 }
 
@@ -68,6 +66,11 @@ function updateRecoveryWaitControl() {
   const faction=window.getV39ActiveFactionState?.();
   const unit=faction?.units?.find(unit=>unit.id===faction.selectedUnitId);
   const active=Number(unit?.recoveryWaitTargetPercent)>0;
+  const waiting=isV39UnitWaiting(unit,window.getV39TimelineState?.()?.turnNumber);
+  const waitName=document.querySelector('#mobileBattleWait .technique-name');
+  if(waitName)waitName.textContent=waiting?'待機中':'待機';
+  const waitButton=document.getElementById('mobileBattleWaitUse');
+  if(waitButton)waitButton.textContent=waiting?'解除':'待機';
   const target=normalizeV39RecoveryWaitPercent(window.getV39GameSettings?.()?.recoveryWaitHpPercent);
   const label=document.getElementById('mobileRecoveryWaitTarget');
   if(label)label.textContent=active?`HP${unit.recoveryWaitTargetPercent}%まで待機中`:`HP${target}%まで`;
@@ -99,6 +102,8 @@ function install() {
     updateRecoveryWaitControl();
   },true);
   window.addEventListener('v39:squad-detail-rendered',updateRecoveryWaitControl);
+  window.addEventListener('v39:game-state-changed',updateRecoveryWaitControl);
+  window.addEventListener('v39:unit-selected',updateRecoveryWaitControl);
   updateRecoveryWaitControl();
   window.waitV39SelectedUnit = waitV39SelectedUnit;
 }

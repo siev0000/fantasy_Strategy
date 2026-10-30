@@ -427,8 +427,8 @@ function handleSkillRowKeydown(event, row) {
   border: 1px solid #294047;
   border-radius: 7px;
   background: #0c171b;
-  scrollbar-width: thin;
-  scrollbar-color: #405b63 transparent;
+
+
 }
 
 .skill-list {

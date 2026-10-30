@@ -1,0 +1,5 @@
+PASS: real fire renderer, cold is blue fog only (no ice or fallback badges), visible/test/expired/future filtering, deduplication, aspect ratio and unit-safe depth. No browser.
+PASS: actual tsunami renderer uses one radius-scaled image with shared hex masks, no small badges, visibility updates and expiry cleanup. No browser.
+PASS: standard fixture flood and tsunami share single-image wave presentation; seven affected tiles never create seven wave badges. No browser.
+PASS: landslide and avalanche render tile-sized rocks directly, without circular badges, and respect visibility/expiry. No browser.
+PASS: existing drought/wind artwork at 70 percent opacity, shared per-tile rendering, visibility/test/expiry and no custom vector layer. No browser.

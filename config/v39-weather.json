@@ -2,9 +2,17 @@
   "regionSize": 12,
   "durationMin": 3,
   "durationMax": 5,
+  "wind":{"maximumChangeSteps":1},
   "temperature": {"equator":28,"latitudeDrop":20,"heightDrop":4,"minimum":-20,"maximum":40,"snowRegionMaximum":-3,"snowfallMaximum":0},
   "humidity": {"base":35,"water":50,"forest":35,"river":20,"desert":-45},
   "conditions": {"dryness":55,"coldTemperature":5,"hotTemperature":28,"wetHumidity":65,"unholyPurification":-5},
+  "rainStrengths": {
+    "weak":{"angleDegrees":0,"scoutPenalty":20},
+    "strong":{"angleDegrees":25,"scoutPenalty":40},
+    "storm":{"angleDegrees":45,"scoutPenalty":60}
+  },
+  "rainStrengthByWeather":{"雨":"weak","豪雨":"strong","雷雨":"strong"},
+  "rainStrengthByDisaster":{"災害:台風":"storm"},
   "weathers": {
     "晴れ": {"weight":40,"humidityBias":-0.25,"temperatureOffset":3,"drynessDelta":8,"humidityDelta":-2,"precipitation":false},
     "雨": {"weight":22,"humidityBias":0.5,"temperatureOffset":-2,"drynessDelta":-10,"humidityDelta":4,"precipitation":true},

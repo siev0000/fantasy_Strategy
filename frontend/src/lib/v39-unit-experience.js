@@ -9,6 +9,20 @@ import {isV39AnimalArmy,isV39OrdinaryAnimal,V39_ANIMAL_ARMY_SETTINGS} from './v3
 export const V39_UNIT_LEVEL_CAP = 120;
 export const V39_UNIT_EXP_LEVEL_SPLIT = 15;
 
+export function resolveV39ArmyExpMultiplier(unit={}){
+  const count=isV39AnimalArmy(unit)?unit.animalArmy.members.length:Math.max(1,Math.floor(number(unit?.combatProfile?.memberCount,1)));
+  return 1+(count-1)*Math.max(0,number(V39_UNIT_EXP_BALANCE.armyExpPerAdditionalMember));
+}
+
+function armyExpDisplay(unit,progress){
+  const multiplier=resolveV39ArmyExpMultiplier(unit);
+  if(multiplier===1)return progress;
+  const need=Math.ceil(progress.need*multiplier),remainder=Math.max(0,number(unit.armyExpRemainder));
+  const exp=Math.min(need,Math.floor(progress.exp*multiplier+remainder+1e-8));
+  return {...progress,exp,need,totalExp:Math.floor(progress.totalExp*multiplier+remainder+1e-8),
+    percent:progress.atLimit?100:need>0?Math.min(100,exp/need*100):0,armyMultiplier:multiplier};
+}
+
 export function resolveV39UnitLevelCap(unit) {
   if (isV39OrdinaryAnimal(unit) && !unit.fusionGrowth && !unit.strongAnimalClassName) return V39_ANIMAL_ARMY_SETTINGS.ordinaryLevelCap;
   const kind = {human:"人族",demi:"亜人",demon:"魔族"}[resolveV39UnitRaceCategory(unit)];
@@ -81,11 +95,12 @@ export function resolveV39UnitExpDisplay(unit = {}) {
   if (isV39AnimalArmy(unit)) {
     const progress=resolveV39AnimalArmyProgress(unit.animalArmy.members);
     const atLimit=unit.animalArmy.members.every(member=>member.level>=resolveV39UnitLevelCap(member));
-    return {...progress,category,percent:atLimit?100:progress.exp/progress.need*100,atLimit};
+    const exp=Math.min(progress.need,Math.floor(progress.exactExp+Math.max(0,number(unit.armyExpRemainder))+1e-8));
+    return {...progress,exp,totalExp:progress.totalExp-progress.exp+exp,category,percent:atLimit?100:exp/progress.need*100,atLimit};
   }
   if(unit.fusionGrowth&&!unit.reincarnationGrowthStart){
     const exp=Math.max(0,number(unit.fusionGrowth.baseExp)),need=Math.max(1,number(unit.fusionGrowth.baseNeed,1));
-    return {exp,need,totalExp:number(unit.totalExp),category,level,percent:Math.min(100,exp/need*100)};
+    return armyExpDisplay(unit,{exp,need,totalExp:number(unit.totalExp),category,level,percent:Math.min(100,exp/need*100)});
   }
   const baseline = resolveV39UnitTotalExpForLevel(level, category);
   const totalExp = Math.max(baseline, Math.floor(number(unit?.totalExp, number(unit?.status?.totalExp, baseline))));
@@ -94,7 +109,7 @@ export function resolveV39UnitExpDisplay(unit = {}) {
     return {...progress,exp:0,need:0,category,level,percent:100,atLimit:true};
   }
   const percent = progress.need > 0 ? Math.max(0, Math.min(100, (progress.exp/progress.need)*100)) : 0;
-  return { ...progress, category, level, percent };
+  return armyExpDisplay(unit,{ ...progress, category, level, percent });
 }
 
 const clamp01 = value => Math.max(0, Math.min(1, number(value)));
@@ -313,6 +328,19 @@ export function resolveV39ExperienceRecipientIds(factionState = {}, attackerIdRa
 
 export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
   if(isV39AnimalArmy(unit))return grantAnimalArmyExperience(unit,amountRaw);
+  const multiplier=resolveV39ArmyExpMultiplier(unit);
+  if(multiplier===1)return grantUnitExperienceBase(unit,amountRaw);
+  // Keep the existing single-person EXP ledger, so old saves retain their level/progress.
+  const requested=Math.max(0,Math.floor(number(amountRaw))),previous=Math.max(0,number(unit.armyExpRemainder));
+  const available=requested+previous,normalized=Math.floor((available+1e-8)/multiplier);
+  const result=grantUnitExperienceBase(unit,normalized);
+  const atLimit=(unit.classGrowthStart||isV39OrdinaryAnimal(unit))&&result.unit.level>=resolveV39UnitLevelCap(result.unit);
+  const remainder=atLimit?0:Math.max(0,Math.round((available-normalized*multiplier)*1e8)/1e8);
+  const amount=atLimit?Math.min(requested,Math.max(0,Math.ceil(result.amount*multiplier-previous))):requested;
+  return {...result,amount,unit:{...result.unit,armyExpRemainder:remainder}};
+}
+
+function grantUnitExperienceBase(unit = {}, amountRaw = 0) {
   if(unit.fusionGrowth?.levelsByClass&&!unit.reincarnationGrowthStart)return grantFusionExperience(unit,amountRaw);
   const requestedAmount = Math.max(0, Math.floor(number(amountRaw)));
   const category = resolveV39UnitRaceCategory(unit);
@@ -358,20 +386,24 @@ export function resolveV39AnimalArmyProgress(members) {
   });
   const average=values.reduce((n,v)=>n+v,0)/Math.max(1,values.length);
   const level=Math.max(1,Math.floor(average+1e-9)),category=resolveV39UnitRaceCategory(members[0]);
-  const need=resolveV39UnitExpNeed(level,category),exp=Math.floor((average-level)*need+1e-9);
-  return {level,exp,need,totalExp:resolveV39UnitTotalExpForLevel(level,category)+exp,average};
+  const multiplier=resolveV39ArmyExpMultiplier({animalArmy:{members}});
+  const baseNeed=resolveV39UnitExpNeed(level,category),need=Math.ceil(baseNeed*multiplier),exactExp=(average-level)*baseNeed*multiplier,exp=Math.floor(exactExp+1e-8);
+  return {level,exp,need,exactExp,totalExp:Math.floor(resolveV39UnitTotalExpForLevel(level,category)*multiplier)+exp,average,armyMultiplier:multiplier};
 }
 
 function grantAnimalArmyExperience(unit,amountRaw) {
   const requested=Math.max(0,Math.floor(number(amountRaw))),count=unit.animalArmy.members.length;
-  const cursor=number(unit.animalArmy.expRemainderIndex)%count,base=Math.floor(requested/count),remainder=requested%count;
+  const multiplier=resolveV39ArmyExpMultiplier(unit),available=requested+Math.max(0,number(unit.armyExpRemainder));
+  const pool=Math.floor(available*count/multiplier+1e-8);
+  const pending=Math.max(0,Math.round((available-pool*multiplier/count)*1e8)/1e8);
+  const cursor=number(unit.animalArmy.expRemainderIndex)%count,base=Math.floor(pool/count),remainder=pool%count;
   const awards=unit.animalArmy.members.map((member,index)=>grantV39UnitExperience(member,base+(((index-cursor+count)%count)<remainder?1:0)));
   const members=awards.map(row=>row.unit),progress=resolveV39AnimalArmyProgress(members),fromLevel=unit.level;
-  const next=applyV39DerivedCharacterData({...unit,level:progress.level,exp:progress.exp,totalExp:progress.totalExp,
+  const next=applyV39DerivedCharacterData({...unit,level:progress.level,exp:progress.exp,totalExp:progress.totalExp,armyExpRemainder:pending,
     animalArmy:{...unit.animalArmy,members,expRemainderIndex:(cursor+remainder)%count}});
   const hp=Math.min(next.maxHp,Math.floor(next.maxHp*Math.max(0,number(unit.hp??unit.currentHp))/Math.max(1,unit.maxHp)));
   return {unit:{...next,hp,currentHp:hp,status:{...next.status,exp:progress.exp,totalExp:progress.totalExp}},
-    amount:awards.reduce((n,row)=>n+row.amount,0),fromLevel,toLevel:progress.level,leveledUp:progress.level>fromLevel};
+    amount:Math.min(requested,Math.ceil(awards.reduce((n,row)=>n+row.amount,0)*multiplier/count)),fromLevel,toLevel:progress.level,leveledUp:progress.level>fromLevel};
 }
 
 // Fusion fractions belong to separate growth pools; never silently discard or add them twice.

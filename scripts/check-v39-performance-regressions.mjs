@@ -4,7 +4,7 @@ import { chromium } from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/
 const browser=await chromium.launch(),page=await browser.newPage(),errors=[];
 page.on("pageerror",error=>errors.push(String(error)));
 try{
-  await page.goto("http://127.0.0.1:3022",{waitUntil:"networkidle"});
+  await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:5173",{waitUntil:"networkidle"});
   const report=await page.evaluate(async()=>{
     const check=(condition,message)=>{if(!condition)throw new Error(message);};
     const {currentV39TurnNumber}=await import("/src/lib/v39-turn-timing.js");
@@ -15,7 +15,7 @@ try{
     const full=window.getV39GameState();full.explorationWorlds.other.map.grid[0][0]="海";
     check(window.getV39GameState().explorationWorlds.other.map.grid[0][0]==="平地","full snapshot stays defensive");
     const partial=window.getV39GameState({includeWorlds:false});
-    check(Object.keys(partial.explorationWorlds).length===0&&partial.players.length>0,"current-only snapshot excludes saved worlds");
+    check(partial.explorationWorlds===undefined&&partial.players.length>0,"current-only snapshot omits saved worlds without replacing them");
     window.setV39GameState({timeline:{paused:true}});
     check(window.getV39GameState().explorationWorlds.other.map.grid[0][0]==="平地","timeline write preserves saved map");
     const originalGet=window.getV39GameState,originalCapture=window.captureV39ExplorationWorlds;

@@ -1,3 +1,4 @@
+import {formatV39EnvironmentDamageEntry} from '../../lib/v39-environment-damage-log.js';
 const MAX_LOGS = 300;
 let sequence = 0;
 let selectedLogGroupId = "";
@@ -131,8 +132,8 @@ window.addEventListener("v39:terrain-damage", event => {
   const state = window.getV39GameState?.({ includeWorlds:false });
   for (const player of state?.players || []) {
     const ids = new Set((player?.factionState?.units || []).map(unit => text(unit?.id)));
-    const entries = (event?.detail?.entries || []).filter(row => ids.has(text(row?.targetId)));
-    if (entries.length) appendV39ActivityLog(player.id, "地形", `溶岩被害: ${entries.map(row => `${text(row.name) || text(row.targetId)} ${number(row.damage)}`).join(" / ")}`, { entries });
+    const entries = (event?.detail?.entries || []).filter(row => ids.has(text(row?.targetId||row?.unitId)));
+    if (entries.length) appendV39ActivityLog(player.id, "地形", entries.map(row=>formatV39EnvironmentDamageEntry(row,'地形・災害')).join(" / "), { entries });
   }
 });
 window.addEventListener("v39:territory-hazard-damage", event => {

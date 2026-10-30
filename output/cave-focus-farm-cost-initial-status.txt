@@ -1,0 +1,9 @@
+ M docs/SPREADSHEET_DATA_WORKFLOW.md
+ M "docs/rules/economy/\346\226\275\350\250\255\347\231\272\345\261\225\343\203\225\343\203\255\343\203\274\343\203\201\343\203\243\343\203\274\343\203\210.md"
+ M frontend/src/lib/v39-economy-rules.js
+ M frontend/src/v39/world/v39-land-construction-ui.js
+ M output/facility-refresh-build.log
+ M progress.md
+ M scripts/check-v39-production-facility-candidates.mjs
+?? output/cave-focus-farm-cost-initial-status.txt
+?? output/vision-user-change-status.txt

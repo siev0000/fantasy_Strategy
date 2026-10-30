@@ -235,19 +235,6 @@ body {
   overflow: auto !important;
 }
 
-.phaser-map-panel *,
-.phaser-map-panel *::before,
-.phaser-map-panel *::after {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-
-.phaser-map-panel *::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
-}
-
 /* Smartphone portrait follows the supplied v39 ratio: playfield 3 / command UI 2. */
 @media (max-width: 760px) and (orientation: portrait) {
   :root {

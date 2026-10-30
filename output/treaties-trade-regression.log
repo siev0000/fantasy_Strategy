@@ -1,0 +1,194 @@
+[
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'exchange',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'cancel',
+    status: 'cancelled'
+  },
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'cancel-loaded',
+    status: 'cancelled'
+  },
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'death',
+    status: 'interrupted'
+  },
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'repeat',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'mail',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'relocated-after-exchange',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'proposer',
+    scenario: 'specialty',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'exchange',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'cancel',
+    status: 'cancelled'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'cancel-loaded',
+    status: 'cancelled'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'death',
+    status: 'interrupted'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'repeat',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'mail',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'relocated-after-exchange',
+    status: 'complete'
+  },
+  {
+    npc: false,
+    deliveryMode: 'partner',
+    scenario: 'specialty',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'exchange',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'cancel',
+    status: 'cancelled'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'cancel-loaded',
+    status: 'cancelled'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'death',
+    status: 'interrupted'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'repeat',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'mail',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'relocated-after-exchange',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'proposer',
+    scenario: 'specialty',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'exchange',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'cancel',
+    status: 'cancelled'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'cancel-loaded',
+    status: 'cancelled'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'death',
+    status: 'interrupted'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'repeat',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'mail',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'relocated-after-exchange',
+    status: 'complete'
+  },
+  {
+    npc: true,
+    deliveryMode: 'partner',
+    scenario: 'specialty',
+    status: 'complete'
+  }
+]

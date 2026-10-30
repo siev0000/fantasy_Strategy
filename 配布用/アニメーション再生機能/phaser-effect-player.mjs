@@ -16,6 +16,17 @@ const DEFAULT_OPTIONS = Object.freeze({
 
 let instanceSerial = 0;
 
+// Local image axes, before rotation. Beams keep their endpoint-fitted length.
+export function resolveEffectPowerAxes(request = {}) {
+  const power = Number(request.powerScale);
+  const scale = Number.isFinite(power) && power > 0 ? power : 1;
+  const stretched = Number(request.stretchLengthPx) > 0;
+  return {
+    x:request.powerScaleAxis === 'y' || (stretched && request.stretchAxis !== 'y') ? 1 : scale,
+    y:request.powerScaleAxis === 'x' || (stretched && request.stretchAxis === 'y') ? 1 : scale
+  };
+}
+
 function numberOr(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -155,6 +166,13 @@ export function resolveEffectSheetLayout(widthRaw, heightRaw, options = {}) {
   };
 }
 
+export function resolveEffectFrameRange(frameCount,source={},request={}){
+  const last=Math.max(0,frameCount-1);
+  const start=clamp(Math.floor(numberOr(request.frameStart??source.frameStart,0)),0,last);
+  const end=clamp(Math.floor(numberOr(request.frameEnd??source.frameEnd,last)),start,last);
+  return {start,end,count:end-start+1};
+}
+
 export class PhaserEffectPlayer {
   constructor(scene, options = {}) {
     if (!scene?.add || !scene?.textures) {
@@ -241,6 +259,7 @@ export class PhaserEffectPlayer {
       }
       return {
         src: String(item?.src || "").trim(),
+        frameStart:item?.frameStart,frameEnd:item?.frameEnd,
         sourceScaleMultiplier: numberOr(item?.sourceScaleMultiplier ?? request.sourceScaleMultiplier, 1)
       };
     }).filter(item => item.src);
@@ -248,6 +267,11 @@ export class PhaserEffectPlayer {
 
   async loadTexture(src) {
     if (this.textureKeys.has(src)) return this.textureKeys.get(src);
+    if(typeof this.options.textureLoader==='function'){
+      const key=await this.options.textureLoader(src,this.scene);
+      if(key&&!this.destroyed)this.textureKeys.set(src,key);
+      return key;
+    }
     const key = `portable-effect-${this.instanceId}-${this.textureKeys.size + 1}`;
     const image = await new Promise((resolve, reject) => {
       const element = new Image();
@@ -334,8 +358,9 @@ export class PhaserEffectPlayer {
       : (scalePercent / this.options.baseScalePercent)
       * Math.max(0.01, numberOr(source.sourceScaleMultiplier, 1));
     const stretched=Number.isFinite(request.stretchLengthPx)&&request.stretchLengthPx>0;
-    const scaleX=stretched&&request.stretchAxis!=='y'?request.stretchLengthPx/layout.frameWidth:scale;
-    const scaleY=stretched&&request.stretchAxis==='y'?request.stretchLengthPx/layout.frameHeight:scale;
+    const powerAxes=resolveEffectPowerAxes(request);
+    const scaleX=(stretched&&request.stretchAxis!=='y'?request.stretchLengthPx/layout.frameWidth:scale)*powerAxes.x;
+    const scaleY=(stretched&&request.stretchAxis==='y'?request.stretchLengthPx/layout.frameHeight:scale)*powerAxes.y;
     const tint = normalizeTint(request.tint);
     const tintStrength = clamp(numberOr(request.colorStrengthPercent, 100), 0, 100);
     const huePerFrame = clamp(numberOr(request.hueAnimationDegPerFrame, 0), -360, 360);
@@ -493,9 +518,10 @@ export class PhaserEffectPlayer {
       }
     }
 
-    let currentFrameIndex = request.staticFrame ? clamp(Math.floor(numberOr(request.frameIndex, 0)), 0, layout.frameCount - 1) : 0;
+    const range=resolveEffectFrameRange(layout.frameCount,source,request);
+    let currentFrameIndex = request.staticFrame ? clamp(Math.floor(numberOr(request.frameIndex, range.start)), 0, layout.frameCount - 1) : range.start;
     applyFrame(this.effectImage, currentFrameIndex, 0);
-    applyFrame(this.previousImage, 0, 0);
+    applyFrame(this.previousImage, range.start, 0);
     if (request.staticFrame) return true;
     const duration = Math.max(16, Math.floor(numberOr(request.totalDurationMs, this.options.totalDurationMs)));
 
@@ -505,7 +531,7 @@ export class PhaserEffectPlayer {
         if (requestId !== this.requestId || !this.effectImage) return;
         const elapsedMs = nowMs() - playbackStartedAt;
         applyColor(this.effectImage, currentFrameIndex, elapsedMs);
-        applyColor(this.previousImage, Math.max(0, currentFrameIndex - 1), elapsedMs);
+        applyColor(this.previousImage, Math.max(range.start, currentFrameIndex - 1), elapsedMs);
       }, refreshMs);
     }
 
@@ -518,7 +544,7 @@ export class PhaserEffectPlayer {
       };
       this.finishActivePlayback = finish;
 
-      if (layout.frameCount <= 1) {
+      if (range.count <= 1 && request.loop!==true) {
         this.hideTimer = setTimeout(() => {
           if (requestId === this.requestId) this.clearActiveObjects();
           finish();
@@ -526,7 +552,7 @@ export class PhaserEffectPlayer {
         return;
       }
 
-      const frameInterval = Math.max(16, Math.floor(duration / layout.frameCount));
+      const frameInterval = Math.max(16, Math.floor(duration / range.count));
       this.frameTimer = setInterval(() => {
         // セーブ読込等でSceneが先に破棄される場合、破棄済みFrameへ触れない。
         if (requestId !== this.requestId || !this.effectImage?.scene || !this.effectImage.frame?.data) {
@@ -535,14 +561,15 @@ export class PhaserEffectPlayer {
           return;
         }
         currentFrameIndex += 1;
-        if (currentFrameIndex >= layout.frameCount) {
+        if(currentFrameIndex>range.end&&request.loop===true)currentFrameIndex=range.start;
+        if (currentFrameIndex > range.end) {
           this.clearActiveObjects();
           finish();
           return;
         }
         const elapsedMs = nowMs() - playbackStartedAt;
         applyFrame(this.effectImage, currentFrameIndex, elapsedMs);
-        applyFrame(this.previousImage, Math.max(0, currentFrameIndex - 1), elapsedMs);
+        applyFrame(this.previousImage, Math.max(range.start, currentFrameIndex - 1), elapsedMs);
       }, frameInterval);
     });
     return true;

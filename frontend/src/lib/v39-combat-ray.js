@@ -1,4 +1,6 @@
 import { getHexDistance, normalizeWrappedCoordinate } from "./hex-grid.js";
+import {getV39Rubble} from './v39-terrain-destruction.js';
+import {resolveV39WallStepStructures} from './v39-wall-edges.js';
 
 const key = p => `${p.x},${p.y}`;
 const cube = p => { const q = p.x - (p.y - (p.y & 1)) / 2; return [q, -q-p.y, p.y]; };
@@ -37,6 +39,7 @@ export function v39HexRay(map, from, to, length = null) {
 }
 
 export function v39RayStructureAtStep(map, from, to, {wallsOnly=false}={}) {
+  const crossed=new Set(resolveV39WallStepStructures(map,from,to).map(w=>w.id));
   return (map?.defenseStructures || []).find(structure => {
     if (structure.hp<=0 || (wallsOnly && structure.kind!=="壁")) return false;
     if (structure.kind==="結界") {
@@ -44,19 +47,18 @@ export function v39RayStructureAtStep(map, from, to, {wallsOnly=false}={}) {
       return inside(from)!==inside(to);
     }
     if (structure.kind!=="壁") return false;
-    if (structure.edge) return (key(structure.edge.from)===key(from)&&key(structure.edge.to)===key(to))
-      ||(key(structure.edge.to)===key(from)&&key(structure.edge.from)===key(to));
+    if (structure.edge) return crossed.has(structure.id);
     return (structure.tiles || []).some(tile=>key(tile)===key(to));
   }) || null;
 }
 
 export function hasV39WallLineOfSight(map, from, to, {showWall=false,ignorePlacedWalls=false}={}) {
-  if (!map?.isUnderground && (ignorePlacedWalls || !(map?.defenseStructures || []).some(row=>row.kind==="壁"&&row.hp>0))) return true;
+  if (!map?.isUnderground && !Object.keys(map?.terrainDamage?.rubbleByTile||{}).length && (ignorePlacedWalls || !(map?.defenseStructures || []).some(row=>row.kind==="壁"&&row.hp>0))) return true;
   const ray=v39HexRay(map,from,to);
   if (key(from)!==key(to) && (!ray.length || key(ray.at(-1))!==key(to))) return false;
   let previous=from;
   for (const point of ray) {
-    if ((map.isUnderground && map.grid[point.y][point.x]!=="洞窟")
+    if (getV39Rubble(map,point.x,point.y)||(map.isUnderground && map.grid[point.y][point.x]!=="洞窟")
       || (!ignorePlacedWalls && v39RayStructureAtStep(map,previous,point,{wallsOnly:true}))) return showWall&&key(point)===key(to);
     previous=point;
   }
@@ -75,7 +77,8 @@ export function traceV39AttackRay(map, from, to, units, {length=null, ignoreUnit
   const tiles=[],ray=v39HexRay(map,from,to,length);
   let previous=from;
   for (const point of ray) {
-    if (map.isUnderground && map.grid[point.y][point.x]!=="洞窟") return {tiles,impact:previous,reason:"地形"};
+    if(getV39Rubble(map,point.x,point.y))return {tiles:[...tiles,point],impact:point,reason:'瓦礫'};
+    if (map.isUnderground && map.grid[point.y][point.x]!=="洞窟") return {tiles:[...tiles,point],impact:point,reason:"地形"};
     tiles.push(point);
     const structure=v39RayStructureAtStep(map,previous,point);
     if (structure) return {tiles,impact:point,reason:structure.kind,structure};

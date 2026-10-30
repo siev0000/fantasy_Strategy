@@ -1,5 +1,5 @@
 import {V39_RECRUIT_TRAINING_BALANCE as balance} from "./v39-gameplay-balance.js";
-import {resolveV39UnitRaceCategory, resolveV39UnitTotalExpForLevel, grantV39UnitExperience} from "./v39-unit-experience.js";
+import {resolveV39UnitRaceCategory, resolveV39UnitTotalExpForLevel, grantV39UnitExperience,resolveV39ArmyExpMultiplier} from "./v39-unit-experience.js";
 import {resolveV39AssignedRecruitInstructor, getV39RecruitInstructorFacility} from "./v39-recruit-instructor.js";
 import {getV39FacilityRecruitmentClasses} from "./v39-facility-recruitment.js";
 import {supplyV39DefaultTools} from "./v39-consumables.js";
@@ -9,8 +9,8 @@ export function inspectV39RecruitTraining(faction, village, unit, state = {}, ti
   const instructor = resolveV39AssignedRecruitInstructor(faction, village, unit, state, tileKey);
   const expPerTurn = Math.max(1,Math.floor((balance.baseExpPerTurn + (instructor ? Number(instructor.level) * balance.instructorExpPerLevel : 0))
     * Math.max(0,1+resolveV39CitySpecializationModifiers(village).trainingExpPercent/100)));
-  const requiredExp = Math.max(balance.minimumTrainingExp,
-    resolveV39UnitTotalExpForLevel(unit.level, resolveV39UnitRaceCategory(unit)));
+  const requiredExp = Math.ceil(Math.max(balance.minimumTrainingExp,
+    resolveV39UnitTotalExpForLevel(unit.level, resolveV39UnitRaceCategory(unit)))*resolveV39ArmyExpMultiplier(unit));
   return {requiredExp, expPerTurn, instructor, instructorRewardExp:balance.instructorRewardExpPerTurn, turns:Math.ceil(requiredExp / expPerTurn)};
 }
 

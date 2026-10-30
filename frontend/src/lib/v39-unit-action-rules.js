@@ -4,6 +4,13 @@ export function isV39UnitWaiting(unit, turnNumber) {
   return Number(unit?.waitTurnNumber) === Number(turnNumber) || isV39UnitRecoveryWaiting(unit);
 }
 
+export function resolveV39UnitWaitUpdate(unit,turnNumber,{recovery=false,cancelRecovery=false,target=100}={}){
+  const cancel=cancelRecovery||(!recovery&&isV39UnitWaiting(unit,turnNumber));
+  return {cancel,unit:{...unit,recoveryWaitTargetPercent:recovery&&!cancel?target:0,
+    waitTurnNumber:cancel?0:turnNumber,lastActionTurn:cancel?0:turnNumber,
+    lastAction:cancel?'待機解除':recovery?'回復待機':'待機'}};
+}
+
 export const V39_WAITED_UNIT_BRIGHTNESS = 0.72;
 
 export function isV39UnitWaitDimmed(unit, turnNumber) {
@@ -18,6 +25,8 @@ export function getV39UnitWaitTint(unit, turnNumber) {
 }
 
 export function isV39UnitUnacted(unit, turnNumber, faction = {}) {
+  const cast=faction.combatRuntime?.pendingActionsByUnitId?.[unit?.id];
+  if(cast&&(!cast.aimAfterCast||Number(cast.resolvesAtTurn)>Number(turnNumber)))return false;
   const ap = Number(unit?.ap ?? unit?.currentAp ?? 0);
   // 移動中の新教官と交代前の現教官は、どちらも任務中として扱う。
   const instructor = [faction.recruitInstructorByTile, faction.recruitInstructorTransfers]

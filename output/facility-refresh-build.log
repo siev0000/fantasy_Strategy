@@ -4,7 +4,7 @@
 
 vite v6.4.1 building for production...
 transforming...
-✓ 1048 modules transformed.
+✓ 1049 modules transformed.
 rendering chunks...
 computing gzip size...
 ../web-vue-dist/assets/剣使い-DVDFlZT-.webp                                      4.10 kB
@@ -301,7 +301,7 @@ computing gzip size...
 ../web-vue-dist/assets/ピュリファイア_ブランド-9Se29_V5.webp                           124.09 kB
 ../web-vue-dist/assets/ブレイザーver (1)-CIyxEa5N.webp                           126.07 kB
 ../web-vue-dist/assets/ゼルバーグ-D6d2ujaN.webp                                  127.72 kB
-../web-vue-dist/index.html                                                  129.60 kB │ gzip:  24.08 kB
+../web-vue-dist/index.html                                                  129.61 kB │ gzip:  24.08 kB
 ../web-vue-dist/assets/ラージトレント-CdxAYWaG.webp                                130.71 kB
 ../web-vue-dist/assets/ピュリファイア_ガラン-DFx-ZUz2.webp                            134.03 kB
 ../web-vue-dist/assets/tor_回復1_sorted_result-BTWna82u.webp                  135.55 kB
@@ -410,21 +410,21 @@ computing gzip size...
 ../web-vue-dist/assets/v39-disaster-test-BCDU14Zr.css                        17.31 kB │ gzip:   3.49 kB
 ../web-vue-dist/assets/v39-bootstrap-final-BI0bSJi5.css                      20.70 kB │ gzip:   4.37 kB
 ../web-vue-dist/assets/v39-bootstrap-core-DXZj25zR.css                       47.36 kB │ gzip:   8.42 kB
-../web-vue-dist/assets/index.js                                               7.13 kB │ gzip:   3.02 kB
-../web-vue-dist/assets/CaveTestModal-88WWWPUc.js                             12.24 kB │ gzip:   5.16 kB
+../web-vue-dist/assets/index-DeVuNrdX.js                                      7.13 kB │ gzip:   3.01 kB
+../web-vue-dist/assets/CaveTestModal-Bf-3bdf-.js                             12.25 kB │ gzip:   5.16 kB
 ../web-vue-dist/assets/vendor-socket-BcUbSB83.js                             31.34 kB │ gzip:   9.76 kB
-../web-vue-dist/assets/v39-turn-loading-CTt2GJ9x.js                          34.40 kB │ gzip:  12.38 kB
+../web-vue-dist/assets/v39-turn-loading-Byn4-rM2.js                          36.93 kB │ gzip:  13.26 kB
 ../web-vue-dist/assets/vendor-misc-CPyPDZKB.js                              120.27 kB │ gzip:  46.46 kB
-../web-vue-dist/assets/v39-class-progression-BSGZoR_j.js                    127.97 kB │ gzip:  41.11 kB
-../web-vue-dist/assets/v39-disaster-test-Eo3FzFCD.js                        162.56 kB │ gzip:  56.61 kB
-../web-vue-dist/assets/v39-bootstrap-game-C2QAtX79.js                       475.54 kB │ gzip: 148.38 kB
-../web-vue-dist/assets/v39-bootstrap-core-C0KN8T2C.js                       573.27 kB │ gzip: 172.74 kB
+../web-vue-dist/assets/v39-class-progression-C71C3OpD.js                    127.97 kB │ gzip:  41.11 kB
+../web-vue-dist/assets/v39-disaster-test-BVOLWCd4.js                        162.56 kB │ gzip:  56.61 kB
+../web-vue-dist/assets/v39-bootstrap-game-Cbe6I_70.js                       476.99 kB │ gzip: 148.83 kB
+../web-vue-dist/assets/v39-bootstrap-core-Bu8hpDyi.js                       572.67 kB │ gzip: 172.44 kB
 ../web-vue-dist/assets/vendor-phaser-C1IXbtjv.js                          1,482.21 kB │ gzip: 340.02 kB
-../web-vue-dist/assets/v39-expedition-tools-tXoTfx0M.js                   1,505.99 kB │ gzip: 411.34 kB
-../web-vue-dist/assets/v39-bootstrap-final-BM_eX_NG.js                    2,135.74 kB │ gzip: 715.42 kB
+../web-vue-dist/assets/v39-expedition-tools-BFkhkqXB.js                   1,506.30 kB │ gzip: 411.45 kB
+../web-vue-dist/assets/v39-bootstrap-final-BSneH_uy.js                    2,139.45 kB │ gzip: 716.28 kB
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 7.28s
+✓ built in 6.99s

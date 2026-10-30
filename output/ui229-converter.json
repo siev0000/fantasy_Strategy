@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-ui229.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "都市基本データ"
+  ],
+  "source_sheets": {
+    "都市基本データ": "都市基本データ"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 58,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "都市基本データ",
+      "output": "都市基本データ.json",
+      "input_rows": 999,
+      "records": 58,
+      "skipped_blank_rows": 941,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

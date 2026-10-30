@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {readFileSync,readdirSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
+import {EventEmitter} from 'node:events';
+process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
+const bundle=await build({entryPoints:['frontend/src/v39/map/v39-vortex-layer.js'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'registry',setup(builder){builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+  const directory=resolve('data/source/export/json');
+  const modules=Object.fromEntries(readdirSync(directory).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${directory}/${name}`,'utf8'))]));
+  return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
+});}}]});
+const m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+let invalidates=0;const images=[],graphics=[],containers=[],masks=[];
+const scene={textures:{exists:()=>true},events:new EventEmitter(),cameras:{main:{worldView:{x:0,y:0,width:1000,height:1000}}},game:{v39InvalidateRender(){invalidates++;}},add:{container(){const c={list:[],setDepth(v){this.depth=v;return this;},setName(){return this;},add(v){this.list.push(v);},destroy(){this.destroyed=true;}};containers.push(c);return c;},image(x,y,key){const image={x,y,key,setDisplaySize(w,h){this.displayWidth=w;this.displayHeight=h;return this;},setAlpha(v){this.alpha=v;return this;},setMask(v){this.mask=v;return this;},setData(){return this;}};images.push(image);return image;}},make:{graphics(){const graphic={polygons:[],fillStyle(){},fillPoints(points){this.polygons.push(points);},createGeometryMask(){const mask={destroy(){this.destroyed=true;}};masks.push(mask);return mask;},destroy(){this.destroyed=true;}};graphics.push(graphic);return graphic;}}};
+const field={id:'storm',x:3,y:3,radius:1,tileKeys:['3,3','4,3']};
+m.drawV39VortexLayer(scene,[field],'local-asset');
+assert.equal(images.length,1);assert.equal(images[0].displayWidth,186);assert.ok(containers[0].depth<12);assert.equal(graphics[0].polygons.length,2);
+scene.events.emit('update',100);assert.ok(images[0].rotation<0);const count=invalidates;scene.events.emit('update',110);assert.equal(invalidates,count);
+scene.cameras.main.worldView.x=10000;scene.events.emit('update',200);assert.equal(invalidates,count,'no off-screen animation rendering');
+m.drawV39VortexLayer(scene,[field],'local-asset');assert.equal(images.length,1,'reuse unchanged image/mask');
+m.drawV39VortexLayer(scene,[{...field,x:4,radius:4,tileKeys:['4,3']}],'local-asset');assert.equal(images[1].displayWidth,558);assert.equal(graphics[1].polygons.length,1);assert.ok(masks[0].destroyed&&graphics[0].destroyed&&containers[0].destroyed);
+m.drawV39VortexLayer(scene,[],'local-asset');assert.equal(scene.events.listenerCount('update'),0);assert.equal(scene.events.listenerCount('shutdown'),0);assert.ok(masks[1].destroyed);
+m.drawV39VortexLayer(scene,[field],'local-asset');scene.events.emit('shutdown');assert.equal(scene.events.listenerCount('update'),0);
+console.log('PASS: one rotating storm sprite, affected/visible tile masks, growth/movement redraw, frame throttling, camera culling, reuse and cleanup. No browser.');

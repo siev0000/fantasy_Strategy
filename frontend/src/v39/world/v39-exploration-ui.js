@@ -5,16 +5,20 @@ import {
   getV39DiscoveredFeature,
   inspectV39Survey,
   revealV39SurveyedDiscoveries,
+  restoreV39InitialTerritorySurveys,
   startV39SurveyTask
 } from "../../lib/v39-exploration-rules.js";
 import { generateV39VictoryLandmarks } from "../../lib/v39-victory-landmarks.js";
 import { getFactionSettlements } from "../../lib/settlement-state.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { inspectV39Gather, gatherV39Resources } from "../../lib/v39-gather-rules.js";
+import {resolveV39FactionUnitCargoStatus,formatV39CargoStatus} from '../../lib/v39-logistics-state.js';
 import { generateV39Specialties } from "../../lib/v39-specialty-rules.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { revealV39NearbySites } from "../../lib/v39-site-discovery.js";
 import { resolveDetectionScoutValue } from "../../lib/v39-detection-rules.js";
+import {renderV39SoulRecoveryControl} from '../unit/v39-soul-recovery-ui.js';
+import {renderV39CarriedFoodControl} from '../unit/v39-carried-food-ui.js';
 
 let selectedTile = null;
 
@@ -38,13 +42,20 @@ function ensureLandControls() {
   const actions = document.createElement("div");
   actions.id = "v39-land-survey-actions";
   actions.innerHTML = `<div><span>探索</span><b id="v39-land-exploration-result">未調査</b></div><button type="button" id="v39-land-survey-start" hidden>残留品回収</button>`;
-  panel.appendChild(actions);
+  (document.getElementById('v39-land-page-overview')||panel).appendChild(actions);
   actions.querySelector("button")?.addEventListener("click", () => runSurvey());
 }
 
 function render() {
   ensureLandControls();
   const { state, player, faction, unit } = context();
+  const cargoReadout=document.getElementById('detailUnitCargoStatus');
+  if(cargoReadout){
+    cargoReadout.hidden=!unit;
+    cargoReadout.textContent=unit?formatV39CargoStatus(resolveV39FactionUnitCargoStatus(faction,unit.id,state),{includeSoul:true,showScope:true}):'';
+  }
+  renderV39SoulRecoveryControl();
+  renderV39CarriedFoodControl();
   const gatherButton = document.getElementById("mobileBattleGather");
   if (gatherButton instanceof HTMLElement) {
     if (gatherButton.dataset.gatherBound !== "1") {
@@ -55,6 +66,7 @@ function render() {
     }
     const cave = window.inspectV39CaveGather?.();
     const check = cave || inspectV39Gather(state, player?.id, unit?.id, window.__v39FieldRuntime?.mapData);
+    const cargoStatus = resolveV39FactionUnitCargoStatus(faction, unit?.id, state);
     const hasTarget = cave ? cave.hasTarget : !!unit && Object.keys(check.yields).length > 0 && !state?.territoryOwnerByTile?.[check.key];
     gatherButton.hidden = !hasTarget;
     renderGatherHint(cave ? null : hasTarget ? unit : null, check.available);
@@ -63,8 +75,9 @@ function render() {
     gatherButton.setAttribute("aria-disabled", String(!check.available));
     gatherButton.title = cave ? check.reason || "選択した鉱床から採取" : check.available ? "現在地の資源を運搬品へ積載" : check.reasons.join(" / ");
     document.getElementById("mobileGatherAp").textContent = `AP ${check.apCost}`;
+    document.getElementById('mobileGatherCargo').textContent = formatV39CargoStatus(cargoStatus);
     document.getElementById("mobileGatherYield").textContent = cave
-      ? cave.site ? `${cave.site.icon} ${cave.site.name} (${cave.site.x},${cave.site.y}) / 残り${cave.site.remaining}${cave.reason ? ` / ${cave.reason}` : ""}` : cave.reason
+      ? cave.site ? `${cave.site.icon} ${cave.site.name} (${cave.site.x},${cave.site.y}) / 残り${cave.site.remaining}${cave.work?` / 取得${cave.work.amount} / 進捗${cave.work.progressBefore}→${cave.work.progress}/${cave.work.requiredAp}`:''}${cave.reason ? ` / ${cave.reason}` : ""}` : cave.reason
       : check.available
       ? Object.entries(check.accepted.resourcesByType).map(([name, amount]) => `${name} ${amount}`).join(" / ")
       : check.reasons[0];
@@ -213,9 +226,10 @@ function initializeSites(event) {
   const explorationSitesByTile = { ...normalSitesByTile, ...victoryLandmarksByTile };
   const players = state.players.map(player => ({
     ...player,
-    factionState:{ ...player.factionState, exploration:{ discoveredFeaturesByTile:{}, discoveredSpecialtiesByTile:{}, surveyedTileKeys:[], history:[], lastProcessedTurn:0 } }
+    factionState:{ ...player.factionState, exploration:{ initialTerritoryTileKeys:player.factionState?.exploration?.initialTerritoryTileKeys||[], discoveredFeaturesByTile:{}, discoveredSpecialtiesByTile:{}, surveyedTileKeys:[], history:[], lastProcessedTurn:0 } }
   }));
-  window.setV39GameState?.({ explorationSitesByTile, specialtiesByTile, victoryLandmarksByTile, players }, { reason:"exploration-sites-generated" });
+  const initialized=restoreV39InitialTerritorySurveys({...state,explorationSitesByTile,specialtiesByTile,victoryLandmarksByTile,players},mapData);
+  window.setV39GameState?.({ explorationSitesByTile, specialtiesByTile, victoryLandmarksByTile, players:initialized.players }, { reason:"exploration-sites-generated" });
   window.dispatchEvent(new CustomEvent("v39:exploration-sites-generated", { detail:{ count:Object.keys(explorationSitesByTile).length, landmarkCount:Object.keys(victoryLandmarksByTile).length } }));
 }
 
@@ -283,7 +297,7 @@ function syncNearbyDiscoveries() {
   if (syncingProximity) return;
   const state=window.getV39GameState?.({includeWorlds:false}), map=window.__v39FieldRuntime?.mapData;
   if (!state || !map) return;
-  const signature=JSON.stringify([state.activeWorldId,state.timeline?.turnNumber,state.worldEnvironment,
+  const signature=JSON.stringify([state.activeWorldId,state.timeline?.turnNumber,state.worldEnvironment,state.gameSettings?.detectionScoutBonus,
     state.explorationSitesByTile,state.specialtiesByTile,
     (state.players || []).map(player=>[player.id,player.factionState?.research?.progress?.completedByCategoryLevel,
       (player.factionState?.units || []).map(unit=>[unit.id,unit.x,unit.y,unit.worldId,unit.hp,unit.state,resolveDetectionScoutValue(unit,map)])])]);
@@ -298,7 +312,12 @@ function syncNearbyDiscoveries() {
   } finally { syncingProximity=false; }
 }
 window.addEventListener("v39:game-state-changed", () => { syncResearchDiscoveries(); syncNearbyDiscoveries(); render(); });
-window.addEventListener("v39:save-loaded", () => { discoverySignature = ""; proximitySignature=""; syncResearchDiscoveries(); syncNearbyDiscoveries(); render(); });
+window.addEventListener("v39:save-loaded", () => {
+  const state=window.getV39GameState?.(),map=window.__v39FieldRuntime?.mapData;
+  const repaired=restoreV39InitialTerritorySurveys(state,map);
+  if(repaired!==state)window.setV39GameState?.({players:repaired.players},{reason:'initial-territory-survey-restored'});
+  discoverySignature = ""; proximitySignature=""; syncResearchDiscoveries(); syncNearbyDiscoveries(); render();
+});
 window.addEventListener("v39:unit-selected", render);
 window.addEventListener("v39:operation-ui-ready", render);
 window.addEventListener("v39:squad-detail-rendered", render);

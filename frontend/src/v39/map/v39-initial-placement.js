@@ -7,6 +7,7 @@ import { classData } from "../../lib/game-data-registry.js";
 import { RACE_CLASS_NAME_MAP } from "../../constants/unitCommon.js";
 import { runV39FieldUpdate } from "../ui/v39-field-update-loading.js";
 import { seedV39FacilityRecruitmentTest } from "../../lib/v39-facility-recruitment.js";
+import {surveyV39InitialTerritory} from '../../lib/v39-exploration-rules.js';
 
 const MODE_BANNER_ID = "modeBanner";
 let pendingPlacement = null;
@@ -620,6 +621,9 @@ function placeInitialBase(tile, options = {}) {
     ...factionState,
     villagePlacementMode:!complete
   };
+  const surveyed=surveyV39InitialTerritory({...stateWithTerritory,players:state.players.map(row=>row.id===player.id?{...row,factionState}:row)},
+    player.id,territoryTiles.map(tile=>tile.key),fieldMapData());
+  factionState=surveyed.players.find(row=>row.id===player.id).factionState;
   const players = state.players.map(row => row.id === player.id
     ? { ...row, factionState }
     : row);

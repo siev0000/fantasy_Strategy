@@ -234,17 +234,6 @@ body,
   display: none !important;
 }
 
-.phaser-map-panel *,
-.phaser-map-panel *::before,
-.phaser-map-panel *::after {
-  scrollbar-width: none;
-}
-.phaser-map-panel *::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
 .phaser-map-panel .phaser-map-canvas {
   border: 0 !important;
   border-radius: 0 !important;

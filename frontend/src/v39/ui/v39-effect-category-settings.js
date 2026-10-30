@@ -170,6 +170,7 @@ function applyModeVisibility() {
   hiddenRow("v39-effect-setting-scale", attributeMode);
   hiddenRow("v39-effect-setting-orientation", attributeMode);
   hiddenRow("v39-effect-setting-placement", attributeMode);
+  hiddenRow("v39-effect-setting-power-axis", attributeMode);
   element("v39-effect-setting-placement-hint").hidden=attributeMode;
   for (const id of ["rotation", "offset-x", "offset-y"]) hiddenRow(`v39-effect-setting-${id}`, attributeMode);
   hiddenRow("v39-effect-setting-decoration", !attributeMode);

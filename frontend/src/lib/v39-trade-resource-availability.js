@@ -16,6 +16,7 @@ export function getV39TradeResourceAvailability(state,side,mapData=null){
     ?inspectV39NeutralVillageEconomy(bank,mapData)
     :player?collectV39TerritoryIncome(state,{...player,factionState:{...player.factionState,selectedSettlementId:side.settlementId}},mapData):null):null;
   const income={...(metrics?.income?.food||metrics?.food),...(metrics?.income?.material||metrics?.material)};
+  if(side.kind==='player')for(const [key,value] of Object.entries(metrics?.facilityFixedIncome||{}))income[key]=(Number(income[key])||0)+value;
   if(bank&&player&&side.kind==='player'){
     for(const entry of getV39SpecialtyEntries(state,side.partyId,{settlementId:side.settlementId,ownedOnly:true}).filter(isV39HarvestResource)){
       if(mapData?.lavaMap?.[entry.y]?.[entry.x])continue;

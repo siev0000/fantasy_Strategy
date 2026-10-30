@@ -1,0 +1,30 @@
+#characterModal .list-pane {
+  width: '6px',
+  height: '6px',
+  thumb: 'rgb(100, 129, 140)',
+  display: 'block',
+  standard: 'auto'
+}
+#squadMemberList {
+  width: '6px',
+  height: '6px',
+  thumb: 'rgb(100, 129, 140)',
+  display: 'block',
+  standard: 'auto'
+}
+390: shared 6px vertical/horizontal bars, colored thumbs, actual scrolling and centralized variable passed
+#characterModal .list-pane {
+  width: '6px',
+  height: '6px',
+  thumb: 'rgb(100, 129, 140)',
+  display: 'block',
+  standard: 'auto'
+}
+#squadMemberList {
+  width: '6px',
+  height: '6px',
+  thumb: 'rgb(100, 129, 140)',
+  display: 'block',
+  standard: 'auto'
+}
+1100: shared 6px vertical/horizontal bars, colored thumbs, actual scrolling and centralized variable passed

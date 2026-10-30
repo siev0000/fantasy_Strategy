@@ -1,6 +1,7 @@
 import { renderV39UnitAbility, renderV39DetailTabs } from "../unit/v39-unit-detail.js";
 import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
 import './v39-operation-layout.css';
+import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
 
 (function initializeOperationUi() {
   "use strict";
@@ -146,9 +147,6 @@ import './v39-operation-layout.css';
       html:not(.v39-test-mode) [data-foot="test"]{display:none!important}
       html:not(.v39-test-mode) #footTest{display:none!important}
       #footTest{min-width:0;min-height:0;height:100%;max-height:100%;overflow:hidden;display:flex;flex:1 1 0;flex-direction:column}
-      #footSquad.mobile-squad-panel.is-unit-create-open{display:grid!important;grid-template-rows:minmax(0,1fr)!important;gap:0!important}
-      #footSquad.is-unit-create-open>#v39-squad-main,#footSquad.is-unit-create-open>#v39-squad-content{display:none!important}
-      #footSquad.is-unit-create-open>.v39-unit-create-panel{display:grid;height:100%;min-height:0}
       @media(max-width:600px){
         #footSquad .v39-squad-toolbar{gap:4px}
         #footSquad .v39-squad-shortcuts{gap:4px}
@@ -169,8 +167,7 @@ import './v39-operation-layout.css';
         <section id="footSquad" class="mobile-squad-panel v39-footer-panel-active" aria-hidden="false">
           <div class="v39-squad-toolbar" id="v39-squad-main">
             <div class="v39-squad-shortcuts">
-              <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" data-open="character" data-tooltip="自キャラ" aria-label="自キャラ" title="自キャラ">♟</button>
-              <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" id="v39-squad-unit-create" data-tooltip="ユニット作成" aria-label="ユニット作成" title="ユニット作成">✚</button>
+              <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" data-open="character" data-tooltip="ユニット一覧" aria-label="ユニット一覧" title="ユニット一覧">♟</button>
             </div>
             <div class="squad-selector" id="squadSelector"></div>
           </div>
@@ -185,6 +182,7 @@ import './v39-operation-layout.css';
                   <details class="squad-detail-section" open><summary class="squad-detail-section-title">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
                 </section>
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="basic" role="tabpanel" hidden aria-hidden="true">
+                  <button type="button" id="v39-basic-action-heading" class="v39-basic-action-heading" disabled aria-controls="detailBasicList"><span id="v39-basic-action-label">行動を選択</span></button>
                   <div class="v39-move-confirm" id="moveConfirm" hidden role="region" aria-label="移動確認">
                     <p id="moveInstruction" aria-live="polite"></p>
                     <p id="moveText" hidden></p>
@@ -194,6 +192,23 @@ import './v39-operation-layout.css';
                     </div>
                   </div>
                   <div class="technique-list" id="detailBasicList">
+                    <div id="detailUnitCargoStatus" class="v39-unit-cargo-status" role="status" aria-label="手持ち物資" hidden></div>
+                    <details id="detailCarriedFood" class="v39-carried-food" hidden>
+                      <summary>携帯食料・補給</summary>
+                      <div class="v39-food-stock"><div id="carriedFoodStock"></div><div id="carriedFoodDemand"></div></div>
+                      <label class="v39-food-target">補給目標 <span><input id="carriedFoodTurns" type="number" min="1" step="1" aria-label="補給する食料のターン数"> T分</span></label>
+                      <div id="carriedFoodReason" role="status"></div>
+                      <div class="v39-carried-food-buttons">
+                        <button type="button" id="carriedFoodTake" class="v39-food-primary">補給する</button>
+                        <button type="button" id="carriedFoodCraft" hidden disabled>保存食を作る</button>
+                        <button type="button" id="carriedFoodGive">拠点に預ける</button>
+                        <button type="button" id="carriedFoodField" hidden>現地で採取</button>
+                      </div>
+                      <details class="v39-food-help"><summary>加工・容量の詳細</summary><div id="carriedFoodCraftPreview"></div><div id="carriedFoodCapacity"></div></details>
+                    </details>
+                    <div id="v39-teleport-gate-actions"></div>
+                    <div id="v39-rubble-actions"></div>
+                    <div id="v39-basic-coordination" data-squad-coordination-host></div>
                     <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleMove" data-v39-technique-name="__system_move__" aria-expanded="false">
                       <span class="technique-summary">
                         <span class="technique-icon technique-icon-system-move"><span class="technique-icon-glyph" aria-hidden="true">➜</span></span>
@@ -249,8 +264,13 @@ import './v39-operation-layout.css';
                         <span class="technique-power" id="mobileGatherYield"></span>
                       </span>
                       <span class="technique-detail"><span class="technique-detail-head"><b>説明</b><button type="button" id="mobileBattleGatherUse" data-v39-system-use>使用</button></span>
-                        <span class="technique-detail-description">地上では現在地の森・洞窟から採取します。洞窟内では周囲1マスの鉱石・宝石を選択して使用します。荷物として運び、拠点へ戻って搬入します。</span>
+                        <span class="technique-detail-description">残りAPと積載余力に応じて採取します。地上は現在地の森・洞窟、洞窟内は周囲1マスの鉱石・宝石を選択します。鉱石・宝石は累計APで1個取得し、途中の進捗も残ります。荷物として運び、拠点へ戻って搬入します。</span>
+                        <span class="technique-detail-description" id="mobileGatherCargo"></span>
                       </span>
+                    </div>
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileSoulRecovery" data-v39-technique-name="__system_soul_recovery__" aria-expanded="false" hidden>
+                      <span class="technique-summary"><span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">◇</span></span><b class="technique-name">魂を回収</b><small class="technique-ap" id="mobileSoulRecoveryAp"></small><span class="technique-power" id="mobileSoulRecoveryHint"></span></span>
+                      <span class="technique-detail"><span class="technique-detail-head"><b>周囲1マスの魂回収</b><button type="button" id="mobileSoulRecoveryUse" data-v39-system-use>マスを選択</button><button type="button" id="mobileSoulRecoveryCancel" data-v39-system-use hidden>取消</button></span><span class="technique-detail-description" id="mobileSoulRecoveryReason" role="status" style="white-space:normal;overflow:visible;overflow-wrap:anywhere"></span><span class="technique-detail-description">マスをタップして複数選択・解除。選択マス内の対象死体をまとめて回収します。魂は手持ちに積載し、拠点で搬入。死体と装備は残ります。</span></span>
                     </div>
                     <div id="detailBasicRows"></div>
                   </div>
@@ -263,16 +283,24 @@ import './v39-operation-layout.css';
           </div>
         </section>
         <section id="footTile" class="land-panel" hidden aria-hidden="true">
+          <header class="v39-land-head"><strong id="v39-land-heading">マスを選択</strong><small id="v39-land-heading-owner"></small></header>
+          <nav class="v39-land-tabs" role="tablist" aria-label="土地の表示内容">${V39_LAND_TABS.map((tab,index)=>`<button type="button" role="tab" id="v39-land-tab-${tab.id}" data-land-tab="${tab.id}" aria-controls="v39-land-page-${tab.id}" aria-selected="${index===0}" tabindex="${index===0?0:-1}">${tab.label}</button>`).join('')}</nav>
+          <div id="v39-land-scroll">
+          ${V39_LAND_TABS.map((tab,index)=>`<section id="v39-land-page-${tab.id}" data-land-page="${tab.id}" role="tabpanel" aria-labelledby="v39-land-tab-${tab.id}"${index?' hidden':''}>
+            ${data.landItems.filter(item=>getV39LandFieldTab(item.label)===tab.id).map(item => `<div class="land-item"><span>${item.label}</span><b${item.valueId ? ` id="${item.valueId}"` : ""}>${item.value}</b></div>`).join('')}
+            ${tab.id==='production'?'<div id="v39-land-production"></div>':''}
+            ${tab.id==='facilities'?`
           <div class="v39-land-shortcuts">
             <button type="button" class="v39-footer-shortcut" data-land-construction-open>⌂ 建築</button>
             <button type="button" class="v39-footer-shortcut" id="v39-land-settlement-convert" disabled>居住化</button>
-            <button type="button" class="v39-footer-shortcut" data-foot="interaction">交流へ</button>
             <span id="v39-land-settlement-convert-status" aria-live="polite">マスを選択</span>
           </div>
-          ${data.landItems.map(item => `<div class="land-item"><span>${item.label}</span><b${item.valueId ? ` id="${item.valueId}"` : ""}>${item.value}</b></div>`).join("")}
+            `:''}
+          </section>`).join('')}
+          </div>
         </section>
         <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>
-        <section id="footInteraction" class="v39-interaction-panel" hidden aria-hidden="true"><header><strong>交流</strong><span>地図で相手のマスを選択</span></header><p data-interaction-empty>村・放浪者・守護者のマスを選ぶと、利用できる交流を表示します。</p><div id="v39-interaction-actions"></div></section>
+        <section id="footInteraction" class="v39-interaction-panel" hidden aria-hidden="true"><header><strong>交流</strong><span>相手の領土・隣接ユニットを選択</span></header><p data-interaction-empty>村・勢力の領土に隣接するユニット、または相手のマスを選択してください。</p><div id="v39-interaction-actions"></div></section>
         <section id="footLogistics" hidden aria-hidden="true"></section>
         <section id="footTest" class="v39-test-footer-panel" hidden aria-hidden="true"></section>
         <section id="footManage" class="mobile-manage-panel" hidden aria-hidden="true">

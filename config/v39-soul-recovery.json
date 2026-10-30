@@ -1,0 +1,7 @@
+{
+  "pointsPerSoul": 100,
+  "pointsPerPerson": 30,
+  "pointsByKind": { "動物": 10, "蟲": 3, "昆虫": 3 },
+  "manualApCost": 20,
+  "manualRadius": 1
+}

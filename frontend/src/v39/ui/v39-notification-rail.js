@@ -1,4 +1,5 @@
 import { V39_LOG_PREVIEW_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import {buildV39EnvironmentDamageLogs,mergeV39EnvironmentDamageLogs} from '../../lib/v39-environment-damage-log.js';
 
 const CHANNELS = ["notification", "battle", "chat"];
 const LABELS = { notification:"通知", battle:"戦闘", chat:"チャット" };
@@ -28,6 +29,7 @@ function currentTurn() {
 }
 
 function canSeeMessage(entry) {
+  if(entry.audiencePlayerId&&entry.audiencePlayerId!==(window.getV39GameState?.({includeWorlds:false})||window.getV39EnemyTurnState?.())?.activePlayerId)return false;
   if(entry.environmentVisibility){
     const state=window.getV39EnemyTurnState?.(),visibility=entry.environmentVisibility;
     if(visibility.playerId!==state?.activePlayerId)return false;
@@ -85,9 +87,17 @@ function renderMessage(entry) {
   return `<article class="v39-side-log-entry ${tone}" data-v39-side-log-id="${escapeHtml(entry.id)}">
     <div class="v39-side-log-entry-head">${turn}<b>${escapeHtml(entry.title || LABELS[entry.channel])}</b></div>
     <p>${multilineHtml(entry.message)}</p>
+    ${entry.action?.kind==='diplomacy'?`<button type="button" class="v39-side-diplomacy-link" data-v39-side-diplomacy="${escapeHtml(entry.id)}">外交を開く</button>`:''}
     ${renderDetails(entry)}
     ${meta}
   </article>`;
+}
+
+export function openV39SideLogDiplomacy(entry){
+  const state=window.getV39GameState?.({includeWorlds:false});
+  if(!entry||!canSeeMessage(entry)||entry.action?.kind!=='diplomacy'||entry.audiencePlayerId!==state?.activePlayerId
+    ||!state.players?.some(player=>player.id===entry.action.targetPlayerId)||typeof window.openV39FactionDiplomacy!=='function')return false;
+  window.openV39FactionDiplomacy(entry.action.targetPlayerId);return true;
 }
 
 function hideChatPreview() {
@@ -101,8 +111,8 @@ function renderPreviews() {
   for (const channel of CHANNELS) {
     const preview = document.getElementById(`v39-${channel}-preview`);
     if (!(preview instanceof HTMLElement)) continue;
-    const rows = collapsed ? previews.filter(entry => entry.channel === channel) : [];
-    preview.innerHTML = rows.map(entry => `<button type="button" style="order:${-entry.previewOrder}" data-preview-channel="${entry.channel}"><strong>${escapeHtml(entry.title)}</strong><p>${multilineHtml(entry.message)}</p></button>`).join("");
+    const rows = collapsed ? previews.filter(entry => entry.channel === channel&&canSeeMessage(entry)) : [];
+    preview.innerHTML = rows.map(entry => `<button type="button" style="order:${-entry.previewOrder}" data-preview-channel="${entry.channel}" data-preview-log-id="${escapeHtml(entry.id)}"><strong>${escapeHtml(entry.title)}</strong><p>${multilineHtml(entry.message)}</p></button>`).join("");
     preview.classList.toggle("show", rows.length > 0);
   }
   if (previews.length) chatPreviewTimer = window.setTimeout(renderPreviews, Math.max(1, Math.min(...previews.map(entry => entry.expiresAt)) - Date.now()));
@@ -167,6 +177,8 @@ export function pushV39SideRailMessage(input, options = {}) {
     channel,
     combatVisibility:source.combatVisibility,
     environmentVisibility:source.environmentVisibility,
+    audiencePlayerId:source.audiencePlayerId,
+    action:source.action?.kind==='diplomacy'?{kind:'diplomacy',targetPlayerId:source.action.targetPlayerId}:null,
     title:text(source.title, LABELS[channel]),
     message,
     details:text(source.details ?? options.details),
@@ -210,7 +222,9 @@ export function updateV39SideRailMessage(id, patch = {}) {
     details:text(patch.details ?? messages[index].details),
     collapsible:patch.collapsible === undefined ? messages[index].collapsible : patch.collapsible === true
   };
+  previews=previews.map(entry=>entry.id===id?{...entry,...messages[index],expiresAt:entry.expiresAt,previewOrder:entry.previewOrder}:entry);
   render();
+  renderPreviews();
   return true;
 }
 
@@ -244,9 +258,10 @@ function installStyles() {
     #v39-side-log.collapsed .v39-side-log-channel-label{display:none}
     #v39-side-log.collapsed .v39-side-log-head{grid-template-columns:1fr;gap:0;padding:1px;border-bottom:0;background:rgba(17,31,36,.35)}
     #v39-side-log.collapsed .v39-side-log-collapse{width:13px;min-width:13px;min-height:24px;height:24px;border-radius:4px;font-size:var(--font-log)}
-    #v39-side-log-list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px;display:grid;gap:2px;align-content:start;scrollbar-width:thin}
+    #v39-side-log-list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px;display:grid;gap:2px;align-content:start;}
     #v39-side-log.collapsed #v39-side-log-list{display:none}
     .v39-side-log-entry{border:1px solid rgba(57,75,82,.82);border-left:3px solid #5eb8c6;border-radius:6px;background:rgba(18,31,36,.35);padding:2px;display:grid;gap:2px}
+    .v39-side-diplomacy-link{border:1px solid #be9d4b;border-radius:4px;padding:2px 4px;background:#302b19;color:#ffe197;font:inherit;text-align:left;cursor:pointer}
     #v39-side-log:hover,#v39-side-log:focus-within{background:linear-gradient(180deg,rgba(10,20,24,.45),rgba(7,14,17,.35))}
     #v39-side-log:hover .v39-side-log-head,#v39-side-log:focus-within .v39-side-log-head{background:rgba(17,31,36,.50)}
     .v39-side-log-entry.success{border-left-color:#67c887}.v39-side-log-entry.warn{border-left-color:#d6b45f}.v39-side-log-entry.danger{border-left-color:#d87365}.v39-side-log-entry.debug{border-left-color:#9c87d8}
@@ -313,6 +328,7 @@ function install() {
     preview.addEventListener("click", event => {
       const button = event.target.closest("[data-preview-channel]");
       if (!button) return;
+      if(openV39SideLogDiplomacy(messages.find(entry=>entry.id===button.dataset.previewLogId)))return;
       activeChannel = button.dataset.previewChannel;collapsed = false;
       rail.querySelector(".v39-side-log-collapse").textContent = "›";
       render();
@@ -333,6 +349,8 @@ function install() {
   };
   rail.addEventListener("click", event => {
     event.stopPropagation();
+    const action=event.target instanceof Element?event.target.closest('[data-v39-side-diplomacy]'):null;
+    if(action){openV39SideLogDiplomacy(messages.find(entry=>entry.id===action.dataset.v39SideDiplomacy));return;}
     if (event.target instanceof Element && event.target.closest(".v39-side-log-collapse")) {
       collapsed = !collapsed;
       rail.querySelector(".v39-side-log-collapse").textContent = collapsed ? "‹" : "›";
@@ -380,6 +398,26 @@ window.addEventListener("v39:combat-log", event => {
 });
 
 let logViewKey = "";
+const environmentDamageGroups=new Map();
+window.addEventListener('v39:field-generated',()=>environmentDamageGroups.clear());
+window.addEventListener('v39:save-loaded',()=>environmentDamageGroups.clear());
+for(const [eventName,fallback]of [['v39:natural-events-resolved','災害'],['v39:terrain-damage','地形・災害'],['v39:territory-hazard-damage','領土災害']]){
+  window.addEventListener(eventName,event=>{
+    const state=window.getV39EnemyTurnState?.()||window.getV39GameState?.({includeWorlds:false});
+    const logs=buildV39EnvironmentDamageLogs(event.detail||{},state,{fallback,testMode:window.isV39TestMode?.()===true,
+      background:window.__v39BackgroundWorldTurn===true,isVisible:(x,y)=>window.isV39TileInCurrentVision?.(x,y)===true,isDetected:unit=>window.isV39EntityDetected?.(unit)!==false});
+    for(const log of logs){
+      const visibility=log.combatVisibility,key=JSON.stringify([visibility.playerId,visibility.worldId,log.turn,log.title]);
+      const previous=environmentDamageGroups.get(key);
+      const combined=previous&&messages.some(entry=>entry.id===previous.id)?mergeV39EnvironmentDamageLogs(previous.log,log):log;
+      const {environmentDamageEntries,...message}=combined;
+      let id=previous?.id;
+      if(!id||!updateV39SideRailMessage(id,message))id=pushV39SideRailMessage(message);
+      environmentDamageGroups.delete(key);environmentDamageGroups.set(key,{id,log:combined});
+      while(environmentDamageGroups.size>MAX_MESSAGES)environmentDamageGroups.delete(environmentDamageGroups.keys().next().value);
+    }
+  });
+}
 function refreshLogVisibility() {
   if (window.__v39BackgroundWorldTurn) return;
   const state = window.getV39EnemyTurnState?.();

@@ -1,3 +1,4 @@
+import {addV39FieldSymbol} from './v39-field-symbols.js';
 import Phaser from "phaser";
 import { visibleV39CaveTerrainLabel } from "../../lib/v39-cave-entrance-rules.js";
 import { createTerrainMapData, terrainDefinitions } from "../../lib/map-generator.js";
@@ -365,8 +366,7 @@ function drawRivers(scene, riverData) {
 
 function drawSpecialTerrain(scene, data) {
   const labels = {
-    "沼地": "沼",
-    "峡谷": "峡"
+    "峡谷": "canyon"
   };
   const tileW = Number(HEX_TILE_CONFIG?.width) || 40;
   const tileH = Number(HEX_TILE_CONFIG?.height) || 48;
@@ -379,14 +379,7 @@ function drawSpecialTerrain(scene, data) {
       if (!label) continue;
       const cx = (x * tileW) + ((y % 2 === 1) ? oddRowOffsetX : 0) + tileW / 2;
       const cy = (y * rowStep) + tileH / 2;
-      scene.add.text(cx, cy, label, {
-        fontFamily: '\"Noto Sans JP\", \"Yu Gothic\", sans-serif',
-        fontSize: "11px",
-        fontStyle: "bold",
-        color: "#f6f0d2",
-        stroke: "#071014",
-        strokeThickness: 3
-      }).setOrigin(0.5).setDepth(4);
+      addV39FieldSymbol(scene,null,label,cx,cy,14,{label:special}).setDepth(4);
     }
   }
 }
@@ -503,6 +496,7 @@ function installCameraControls(scene, host, playfield, data) {
     const worldPoint = cameraPointToWorld(camera, cameraPoint);
     const tile = resolveTileAtWorldPoint(data, worldPoint.x, worldPoint.y);
     if (!tile) return null;
+    if(window.handleV39WallConstructionTap?.(tile,worldPoint))return null;
 
     const points = hexPoints(tile.x, tile.y);
     selectionGraphics.clear();

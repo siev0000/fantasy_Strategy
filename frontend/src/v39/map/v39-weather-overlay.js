@@ -36,7 +36,7 @@ function render(){
   if(!profile||weather?.profileId!==profile.id){clear(scene);lastSignature='';window.__v39WeatherOverlayStatus={active:false,renderCount};return;}
   const selected=scene.v39SelectedTile,size=profile.regionSize;
   const selectedRegion=selected?`${Math.floor(selected.x/size)},${Math.floor(selected.y/size)}`:'';
-  const signature=JSON.stringify([profile.id,selectedRegion,weather.regions]);
+  const signature=JSON.stringify([profile.id,selectedRegion,weather.regions,window.getV39DisplaySettings?.().mapQuality]);
   if(scene===lastScene&&map===lastMap&&signature===lastSignature&&scene.children.list.some(c=>c.name===LABELS))return;
   lastScene=scene;lastMap=map;lastSignature=signature;
   clear(scene);

@@ -4,14 +4,25 @@ import './v39-squad-coordination-ui.css';
 
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let picking=null;
+window.addEventListener('v39:basic-action-changed',event=>{
+  if(event.detail?.key!=='v39-basic-coordination')picking=null;
+});
+const collapsedUnits=new Set();
+document.addEventListener('toggle',event=>{
+  const target=event.target;
+  if(!target?.matches?.('details.v39-squad-coordination'))return;
+  if(target.open)collapsedUnits.delete(target.dataset.unitId);
+  else collapsedUnits.add(target.dataset.unitId);
+},true);
 export function renderV39SquadCoordination(unit,faction) {
   const squad=faction?.squads?.find(row=>!['solo','単独'].includes(row.id)&&row.unitIds?.includes(unit?.id));
   if(!squad||!(Number(unit?.hp??unit?.currentHp)>0))return '';
   const members=faction.units.filter(member=>squad.unitIds.includes(member.id)&&Number(member.hp??member.currentHp)>0&&(member.worldId||'surface')===(unit.worldId||'surface'));
   const pending=members.filter(member=>v39SquadMoveMode(member)==='gather');
   const ready=members.filter(member=>v39SquadMoveMode(member)==='follow'&&!v39SquadAutomaticDuty(faction,member)).length;
-  const button=(action,label)=>`<button type="button" data-squad-coordination="${action}" data-squad-id="${escape(squad.id)}" data-member-id="${escape(unit.id)}">${label}</button>`;
-  return `<details class="v39-squad-coordination"><summary>${escape(v39SquadMoveLabel(unit))}${pending.length?` · 集合 ${ready}/${ready+pending.length}`:''} <span>部隊操作</span></summary><div>${button(v39SquadMoveMode(unit)==='independent'?'follow':'independent',v39SquadMoveMode(unit)==='independent'?'追従に戻る':'単独行動')}${button('scatter','全員散開')}${button('gather','先頭へ集合')}${button('pick','集合先を指定')}${pending.length?button('cancel','集合を中止'):''}</div>${unit.squadGather?.reason?`<p>${escape(unit.squadGather.reason)}</p>`:''}</details>`;
+  const mode=v39SquadMoveMode(unit);
+  const button=(action,label,icon,description,current=false)=>`<button type="button" class="technique-card technique-select-card system-action-card v39-squad-order-card" data-squad-coordination="${action}" data-squad-id="${escape(squad.id)}" data-member-id="${escape(unit.id)}"${current?' disabled aria-pressed="true"':''}><span class="technique-summary"><span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">${icon}</span></span><b class="technique-name">${label}</b>${current?'<small class="technique-ap">現在</small>':''}</span><span class="v39-squad-order-description">${description}</span></button>`;
+  return `<details class="v39-squad-coordination" data-unit-id="${escape(unit.id)}"${collapsedUnits.has(String(unit.id))?'':' open'} aria-label="部隊行動"><summary>部隊行動：${escape(v39SquadMoveLabel(unit))}${pending.length?` · 集合 ${ready}/${ready+pending.length}`:''}</summary><div>${button('follow','追従','↪','移動先頭に合わせて移動する',mode==='follow')}${button('independent','単独行動','➜','部隊に所属したまま個別に移動する',mode==='independent')}${button('scatter','全員散開','↗','部隊の全員を単独行動にする')}${button('gather','先頭へ集合','↩','部隊の移動先頭に集まる')}${button('pick','集合先を指定','⌖','フィールドのマスを選んで集合する')}${pending.length?button('cancel','集合を中止','×','未到着メンバーの集合を取り消す'):''}</div>${unit.squadGather?.reason?`<p>${escape(unit.squadGather.reason)}</p>`:''}</details>`;
 }
 async function advanceActive({move=true}={}) {
   if(move&&window.isV39MapInputLocked?.())return false;
@@ -42,7 +53,6 @@ async function command(squadId,action,unitId='',point=null) {
 }
 document.addEventListener('click',event=>{
   const button=event.target.closest?.('[data-squad-coordination]');if(!button)return;
-  const details=button.closest('details');if(details)details.open=false;
   if(button.dataset.squadCoordination==='pick') {
     const state=window.getV39GameState({includeWorlds:false});
     if(window.isV39MapInputLocked?.()||state.timeline.phase!=='player')return;

@@ -2,6 +2,7 @@ import {getV39FacilityStorageRule} from './v39-facility-storage.js';
 import {applyV39DerivedCharacterData} from '../v39/unit/v39-character-derived-rules.js';
 import {getHexDistance} from './hex-grid.js';
 import {canV39UnitLeaveOrganicCorpse} from './v39-corpse-types.js';
+import {addV39SoulApp,resolveV39UnitSoulApp} from './v39-soul-app.js';
 
 const world=u=>u?.worldId||'surface';
 const dead=u=>u&&(u.state==='死亡'||Number(u.hp??u.currentHp)<=0);
@@ -20,7 +21,7 @@ export function inspectV39SoulCollection(state,playerId,target){
   const bodies=[...(state.players||[]).flatMap(p=>p.factionState?.units||[]),...(state.enemies||[]),
     ...(state.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])];
   const turn=state.timeline?.turnNumber||0;
-  const corpse=bodies.find(u=>canV39UnitLeaveOrganicCorpse(u)&&dead(u)&&!u.soulCollected&&!u.summon&&!(u.combatProfile?.memberCount>1)
+  const corpse=bodies.find(u=>canV39UnitLeaveOrganicCorpse(u)&&dead(u)&&!u.soulCollected&&!u.soulResourceRecoveredPoints&&!u.summon&&!(u.combatProfile?.memberCount>1)
     &&world(u)===(state.activeWorldId||'surface')&&u.x===target.x&&u.y===target.y
     &&(!u.deadExpireTurn||u.deadExpireTurn>turn));
   if(!corpse)return {ok:false,reason:'回収可能な単体の死体がありません（回収済み・召喚体・軍隊は対象外）'};
@@ -29,7 +30,7 @@ export function inspectV39SoulCollection(state,playerId,target){
     'strongAnimalClassLevel','fusionGrowth','promotionGrowthStart','classGrowthStart','undeadGrowthStart','reincarnationGrowthStart','reincarnationInheritedSkillNames','reincarnationSecondClassName',
     'fusionAppearanceClass','image','imageFile','imageIndex','testOnly'];
   const identity=Object.fromEntries(fields.filter(field=>corpse[field]!==undefined).map(field=>[field,structuredClone(corpse[field])]));
-  const soul=applyV39DerivedCharacterData({...identity,id:`soul-${playerId}-${corpse.id}`,name:corpse.name,
+  const soul=applyV39DerivedCharacterData({...identity,soulApp:resolveV39UnitSoulApp(corpse,state.gameSettings),id:`soul-${playerId}-${corpse.id}`,name:corpse.name,
     sourceUnitId:corpse.id,soulStored:true,storedAtTurn:turn,state:'死亡',hp:0,currentHp:0,equipment:[]});
   if(!soul.derivedCharacter?.ok)return {ok:false,reason:'死体の種族・クラス情報を取得できません'};
   if((state.players||[]).some(p=>(p.factionState?.soulStorage||[]).some(s=>s.sourceUnitId===corpse.id)))
@@ -40,7 +41,7 @@ export function collectV39Soul(state,playerId,target){
   const check=inspectV39SoulCollection(state,playerId,target);
   if(!check.ok)return {...check,state};
   const mark=u=>u.id===check.corpse.id?{...u,soulCollected:{playerId,turn:state.timeline?.turnNumber||0}}:u;
-  const players=state.players.map(p=>({...p,factionState:{...p.factionState,
+  const players=state.players.map(p=>({...p,factionState:{...(p.id===playerId?addV39SoulApp(p.factionState,[check.soul.soulApp]):p.factionState),
     units:p.factionState.units.map(mark),
     ...(p.id===playerId?{soulStorage:[...(p.factionState.soulStorage||[]),check.soul]}:{})}}));
   const villages=(state.neutralVillages||[]).map(v=>({...v,defenseUnits:(v.defenseUnits||[]).map(mark)}));

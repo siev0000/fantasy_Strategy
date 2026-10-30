@@ -19,7 +19,7 @@ try{
     const map=window.__v39FieldRuntime.mapData;
     map.grid=map.grid.map(row=>row.map(()=> '洞窟'));map.fogMap=[];map.hazardZones=[];
     window.updateV39FieldData(map);
-    window.setV39GameState({enemies:[{...actor,id:'hidden-in-fog',x:8,y:6,aggressive:false}],
+    window.setV39GameState({gameSettings:{...state.gameSettings,fieldVisionBonusTiles:0},enemies:[{...actor,id:'hidden-in-fog',x:8,y:6,aggressive:false}],
       players:[{...player,factionState:{...player.factionState,units:[{...actor,x:6,y:6}],selectedUnitId:actor.id,visibility:{exploredTileKeys:[]}}}]});
     await window.setV39TestMode(false);await window.waitForV39MapRenderSettled();
   });

@@ -19,7 +19,7 @@ export function resolveV39CombatEffect(skillRow = {}, attacker = {}, categories 
       || weaponTypes[text(source.装備名 || weapon?.name || weapon?.equipmentName)];
     category = categories.find(item => item.id === DAMAGE_CATEGORIES[type]);
   } else {
-    category = categories.find(item => item.name === method);
+    category = categories.find(item => item.name === method || item.aliases?.includes(method));
   }
   category ||= categories.find(item => item.id === (method === "武器" ? "weapon" : "slash"));
   let attribute = null;
@@ -43,6 +43,7 @@ export function resolveV39CombatEffect(skillRow = {}, attacker = {}, categories 
       rotationDeg:category?.rotationDeg || 0, offsetX:category?.offsetX || 0, offsetY:category?.offsetY || 0,
       orientToAttack:category?.orientToAttack === true,
       placementMode:category?.placementMode || 'target',
+      powerScaleAxis:category?.powerScaleAxis || 'both',
       scaleMultiplierPercent:category?.scaleMultiplierPercent ?? 100,
       tint:attribute?.tint || "", gradientEnabled:attribute?.gradientEnabled === true,
       gradientColorA:attribute?.gradientColorA, gradientColorB:attribute?.gradientColorB,

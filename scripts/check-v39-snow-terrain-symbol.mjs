@@ -23,14 +23,15 @@ try{
       const inspect=()=>{
         const active=window.__v39FieldRuntime,nodes=active.game.scene.getScenes(true)[0].children.list;
         return {snowSymbols:nodes.find(node=>node.name==='v39-terrain-icon-overlay')?.list.filter(node=>node.getData('terrain')==='雪原').length||0,
-          snowfall:nodes.filter(node=>node.name==='v39-snowfall-item').length,
+          snowfallMarkers:nodes.filter(node=>node.name==='v39-snowfall-item').length,
+          snowfall:nodes.find(node=>node.name==='v39-rain-layer')?.getData('rain')?.snowTileCount||0,
           snowCover:!!nodes.find(node=>node.name==='v39-snow-cover-layer'),terrain:active.mapData.grid[4][4],covered:active.mapData.snowCoverMap[4][4]};
       };
       const before=inspect();window.importV39SaveJson(window.exportV39SaveJson());await window.waitForV39MapRenderSettled();window.renderV39TerrainIcons();
       return {before,after:inspect(),definition:window.getV39TerrainIconDefinitions().base.雪原};
     });
     for(const check of [result.before,result.after]){
-      assert.equal(check.snowSymbols,0);assert.equal(check.snowfall,1);assert(check.snowCover&&check.covered);assert.equal(check.terrain,'雪原');
+      assert.equal(check.snowSymbols,0);assert.equal(check.snowfallMarkers,0);assert.ok(check.snowfall>=1);assert(check.snowCover&&check.covered);assert.equal(check.terrain,'雪原');
     }
     assert.equal(result.definition,undefined);
     await page.screenshot({path:`${out}/snow-${width}.png`});

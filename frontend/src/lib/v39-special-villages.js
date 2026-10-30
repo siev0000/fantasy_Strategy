@@ -1,3 +1,4 @@
+import {isV39VillageContactUnit} from './v39-village-contacts.js';
 import settings from '../../../config/v39-special-villages.json';
 import {resolveV39RitualRaceEffects} from './v39-ritual-facilities.js';
 import {resolvePopulationClassDefinition} from './v39-population-economy.js';
@@ -7,7 +8,6 @@ import {buildV39UnitEntity,buildV39ClassEquipment} from './v39-unit-creation-rul
 import {resolveUnitCreateMode} from '../composables/militaryUnitUtils.js';
 import {resolveV39SummonPlacements} from './v39-summon-rules.js';
 import {replaceIncidentVillage} from './v39-village-incidents.js';
-import {getHexDistance} from './hex-grid.js';
 import {isV39VillageHostileToPlayer} from './v39-village-hostility.js';
 import {mergeV39Cargo} from './v39-logistics-state.js';
 import {deriveV39CharacterFromRaceClass,applyV39DerivedCharacterData} from '../v39/unit/v39-character-derived-rules.js';
@@ -40,7 +40,7 @@ export function inspectV39SpecialVillageReincarnation(state,playerId,villageId,r
   const derived=actor?deriveV39CharacterFromRaceClass(actor):null,reasons=[];
   if(!rule?.enabled)reasons.push('転生を交渉できる特殊村ではありません');
   if(state.activePlayerId!==playerId||state.timeline?.phase!=='player'||(state.activeWorldId||'surface')!=='surface')reasons.push('地上の自分の操作ターンに実行してください');
-  if(!actor||!alive(actor)||(actor.worldId||'surface')!=='surface'||actor.pendingWorldExit||getHexDistance(actor,village||{})>1)reasons.push('村の中心から1マス以内に生存中の交渉役が必要です');
+  if(!isV39VillageContactUnit(actor,village))reasons.push('村の領土内または隣接マスに生存中の交渉役が必要です');
   if(actor?.summon||actor?.specialVillageOrigin||actor?.animalArmy||String(actor?.unitType||'').includes('軍隊')||['army','elite_army','territory_guard'].includes(actor?.combatProfile?.mode)||Number(actor?.combatProfile?.memberCount)>1)reasons.push('転生できるのは交渉者本人の個体です。軍隊・召喚体・契約軍隊は対象外です');
   if(player?.factionState.combatRuntime?.pendingActionsByUnitId?.[actor?.id])reasons.push('予約中の行動を解決してから転生してください');
   if(village?.abandoned||isV39VillageHostileToPlayer(village,playerId)||village?.raidState?.active)reasons.push('廃村・敵対中の村とは転生を交渉できません');
@@ -110,7 +110,7 @@ export function inspectV39SpecialVillageOffering(state,playerId,villageId,reques
   const actor=faction?.units?.find(unit=>unit.id===(request.unitId||faction.selectedUnitId));
   if(!config)reasons.push('奉納で軍隊が加入する特殊村ではありません');
   if(state.activePlayerId!==playerId||state.timeline?.phase!=='player'||(state.activeWorldId||'surface')!=='surface')reasons.push('地上の自分の操作ターンに実行してください');
-  if(!actor||!alive(actor)||(actor.worldId||'surface')!=='surface'||actor.pendingWorldExit||getHexDistance(actor,village||{})>1)reasons.push('村の中心から1マス以内に生存中の交渉役が必要です');
+  if(!isV39VillageContactUnit(actor,village))reasons.push('村の領土内または隣接マスに生存中の交渉役が必要です');
   if(village?.abandoned||isV39VillageHostileToPlayer(village,playerId)||village?.raidState?.active)reasons.push('廃村・敵対中の村とは契約できません');
   if(!Number.isSafeInteger(count)||count<1||count>integer(config?.maxArmiesPerOffering))reasons.push(`加入数は1〜${integer(config?.maxArmiesPerOffering)}軍隊です`);
   if(previous?.status==='active'&&count<activeCount)reasons.push('契約数の削減は契約解除後に設定してください');

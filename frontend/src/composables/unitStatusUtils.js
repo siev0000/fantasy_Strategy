@@ -1,3 +1,5 @@
+import {V39_SIZ_STATUS_BALANCE} from '../lib/v39-gameplay-balance.js';
+
 export function formatStatusCompact(status) {
   if (!status) return "-";
   return `HP${status.HP} 攻${status.攻撃} 防${status.防御} 魔${status.魔力} 精${status.精神} 速${status.速度} 命${status.命中} SIZ${status.SIZ}`;
@@ -15,8 +17,10 @@ export function rowStatusVector(row, options = {}) {
 
   const out = {};
   for (const key of fields) {
-    const raw = Math.max(0, resolveFieldNumericValue(row, key, toSafeNumber, 0));
-    out[key] = Math.max(0, Math.round(raw / Math.max(divisor, 1)));
+    const value = resolveFieldNumericValue(row, key, toSafeNumber, 0);
+    const raw = key === 'APP' ? value : Math.max(0, value);
+    const growth = Math.sign(raw) * Math.round(Math.abs(raw) / Math.max(divisor, 1));
+    out[key] = key === 'APP' ? growth : Math.max(0, growth);
   }
   return out;
 }
@@ -96,7 +100,8 @@ function multiplyStatusVector(vector, factor, toSafeNumber) {
   const out = {};
   const scale = Math.max(0, Math.round(toSafeNumber(factor, 0)));
   for (const key of Object.keys(vector || {})) {
-    out[key] = Math.max(0, Math.round(toSafeNumber(vector[key], 0) * scale));
+    const value = Math.round(toSafeNumber(vector[key], 0) * scale);
+    out[key] = key === 'APP' ? value : Math.max(0, value);
   }
   return out;
 }
@@ -120,7 +125,8 @@ function addStatusVectors(vectors, fields, toSafeNumber) {
   for (const vec of vectors) {
     if (!vec) continue;
     for (const field of fields) {
-      out[field] += Math.max(0, Math.round(toSafeNumber(vec[field], 0)));
+      const value = Math.round(toSafeNumber(vec[field], 0));
+      out[field] += field === 'APP' ? value : Math.max(0, value);
     }
   }
   return out;
@@ -180,7 +186,7 @@ export function buildCharacterStatusFromRules(input) {
     toSafeNumber
   );
   const mergedGrowth = addStatusVectors([raceGrowth, classGrowth], statusGrowthFields, toSafeNumber);
-  const sizBase = Math.max(1, Math.round(toSafeNumber(raceRow?.SIZ, toSafeNumber(classRow?.SIZ, defaultSizBase))));
+  const sizBase = Math.max(V39_SIZ_STATUS_BALANCE.minimumSiz, Math.round(toSafeNumber(raceRow?.SIZ, toSafeNumber(classRow?.SIZ, defaultSizBase))));
   const status = {
     ...mergedGrowth,
     SIZ: sizBase

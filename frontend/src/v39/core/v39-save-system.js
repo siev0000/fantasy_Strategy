@@ -1,6 +1,10 @@
+import {isV39AutoFoodResupplyEnabled} from '../../lib/v39-carried-food.js';
 const SAVE_FORMAT = "fantasy-strategy-v39";
+import {V39_SOUL_APP_FIELDS,normalizeV39SoulAppSettings} from '../../lib/v39-soul-app.js';
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {normalizeV39RecoveryWaitPercent,updateV39RecoveryWaitSettings} from '../../lib/v39-recovery-wait.js';
+import {normalizeV39DetectionScoutBonus,V39_DETECTION_BONUS_MIN,V39_DETECTION_BONUS_MAX} from '../../lib/v39-detection-settings.js';
+import {normalizeV39DamageMultiplier,V39_DAMAGE_MULTIPLIER_MIN,V39_DAMAGE_MULTIPLIER_MAX,V39_DAMAGE_MULTIPLIER_STEP} from '../../lib/v39-combat-settings.js';
 import { GAME_START_FIELD_VISION_BONUS_MAX, GAME_START_FIELD_VISION_BONUS_MIN, normalizeFieldVisionBonusTiles, normalizeGameStartSettings } from '../../lib/game-start-settings.js';
 
 const SAVE_VERSION = 4;
@@ -260,12 +264,30 @@ export function importV39SaveJson(jsonText) {
   validateSaveData(save);
   const migration = migrateSaveData(save);
   save = validateSaveData(migration.save);
+  const recovery=window.recoverV39MissingCaves?.(hydrateRuntimeDefinitions(save.gameState),save.field?.mapData);
+  if(recovery){
+    save.gameState=recovery.state;
+    const active=recovery.state.explorationWorlds?.[recovery.state.activeWorldId||'surface'];
+    if(!save.field?.mapData?.grid&&active?.map)save.field={mapData:active.map,settings:active.settings||{}};
+  }
+  const activeRegenerated=recovery?.reports.some(report=>report.worldId===save.gameState.activeWorldId);
+  if(activeRegenerated)save.view=null;
   if (save.field) window.loadV39FieldSnapshot?.(save.field.mapData, save.field.settings || {}, {layerChange:true,worldId:save.gameState.activeWorldId||'surface',resetWorldLayers:true});
   window.setV39GameState?.(hydrateRuntimeDefinitions(save.gameState), { reason:"save-loaded" });
   restoreView(save.view);
   window.dispatchEvent(new CustomEvent("v39:save-loaded", {
     detail:{ version:save.version, sourceVersion:migration.sourceVersion, savedAt:save.savedAt || "" }
   }));
+  if(recovery?.reports.length)window.logV39CaveRecovery?.(recovery.reports);
+  if(activeRegenerated){
+    const player=window.getV39ActivePlayer?.();
+    if(player?.factionState.selectedUnitId)window.viewV39OwnedUnitWorld?.(player.factionState.selectedUnitId);
+  }
+  const missingWorlds=new Set(save.gameState.players.flatMap(player=>player.factionState?.units||[])
+    .filter(unit=>Number(unit.hp??unit.currentHp)>0&&(unit.worldId||'surface')!=='surface'
+      &&unit.worldId!==save.gameState.activeWorldId&&!save.gameState.explorationWorlds?.[unit.worldId]?.map)
+    .map(unit=>unit.worldId));
+  if(missingWorlds.size)window.showV39TurnBanner?.(`セーブ内で${missingWorlds.size}件のユニット所属マップが欠けています。洞窟データを含むバックアップが必要です。`,true);
   return window.getV39GameState?.();
 }
 
@@ -291,16 +313,101 @@ function installSettingsUi() {
       <label>待機を終えるHP <input id="v39-recovery-wait-percent" type="number" min="1" max="100" step="1" aria-label="回復待機の目標HP率"> %</label>
       <p>基本行動の「回復まで待機」で使用します。初期値100%。変更は待機中のユニットにも適用され、セーブに保存されます。</p>
     </section>
+    <section><h3>携帯食料</h3><label><input id="v39-food-auto-resupply" type="checkbox"> 自領土で自動補給</label><p>初期ON。ターン開始時と移動後、所属拠点の在庫から目標分（初期15T）を補給します。在庫・積載・APの制限は手動補給と同じ。保存食の加工は手動です。</p></section><section><h3>戦闘ダメージ</h3>
+      <label>最終ダメージ倍率 <input id="v39-combat-damage-multiplier" type="number" min="${V39_DAMAGE_MULTIPLIER_MIN}" max="${V39_DAMAGE_MULTIPLIER_MAX}" step="${V39_DAMAGE_MULTIPLIER_STEP}" aria-label="最終ダメージ倍率"> 倍</label>
+      <p>共通式の最終HPダメージに適用します。属性威力による災害被害も対象。初期1.5倍。武器威力や能力成長は変更しません。</p>
+      <p id="v39-combat-setting-note"></p>
+    </section>
+    <section><h3>索敵の発見判定</h3>
+      <label>索敵発見補正 <input id="v39-detection-scout-bonus" type="number" min="${V39_DETECTION_BONUS_MIN}" max="${V39_DETECTION_BONUS_MAX}" step="1" aria-label="索敵発見補正"></label>
+      <p>索敵＋補正−距離/霧の減衰が、相手の隠密以上なら発見します。初期値50。索敵範囲は変わりません。</p>
+      <p id="v39-detection-setting-note"></p>
+    </section>
     <section><h3>フィールド視界</h3>
     <label>追加マス <input id="v39-field-vision-bonus" type="number" min="${GAME_START_FIELD_VISION_BONUS_MIN}" max="${GAME_START_FIELD_VISION_BONUS_MAX}" step="1" aria-label="フィールド視界追加マス"> マス</label>
     <p>地形を見渡せる範囲だけを追加します。初期値2マス。索敵・敵発見距離は広がらず、高低差で視界が遮られます。</p>
   </section>
+    <section><h3>魂APP</h3>
+      ${Object.entries(V39_SOUL_APP_FIELDS).map(([key,rule])=>`<label>${rule['表示名']} <input id="v39-soul-${key}" type="number" min="${rule['最小']}" max="${rule['最大']}" step="1"></label>`).join('')}
+      <p>ユニットはAPP÷除数、村の人口は友好度÷除数。正負を別集計します。必要APPは上位種化用の設定値で、進化先・消費処理は未接続です。</p>
+      <p id="v39-soul-setting-note"></p>
+      <p id="v39-soul-app-totals"></p>
+    </section>
     <section><h3>部隊編制</h3><p>ユニット一覧の「部隊」タブから部隊の作成・メンバー変更・解散ができます。</p></section>
   </div>`;
   const status = document.getElementById("v39-save-status");
   const input = document.getElementById("v39-save-file");
+  const foodAuto=document.getElementById('v39-food-auto-resupply');
+  const syncFoodAuto=()=>{foodAuto.checked=isV39AutoFoodResupplyEnabled({gameSettings:window.getV39GameSettings?.()});};
+  syncFoodAuto();
+  foodAuto.addEventListener('change',()=>{
+    if(window.isV39MapInputLocked?.()){syncFoodAuto();return;}
+    window.setV39GameState({gameSettings:{...window.getV39GameSettings(),carriedFoodAutoResupply:foodAuto.checked}},{reason:'food-auto-resupply-setting'});
+  });
+  window.addEventListener('v39:game-state-changed',syncFoodAuto);
   const recoveryInput = document.getElementById('v39-recovery-wait-percent');
   const fieldVisionInput = document.getElementById('v39-field-vision-bonus');
+  const detectionInput=document.getElementById('v39-detection-scout-bonus');
+  const damageInput=document.getElementById('v39-combat-damage-multiplier');
+  const syncSoulSettings=()=>{
+    const access=window.getV39CombatSettingsAccess?.()||{multiplayer:false,canEdit:true};
+    const settings=normalizeV39SoulAppSettings(window.getV39GameSettings?.());
+    for(const key of Object.keys(V39_SOUL_APP_FIELDS)){
+      const element=document.getElementById(`v39-soul-${key}`);
+      element.disabled=!access.canEdit||!!window.isV39MapInputLocked?.();
+      if(document.activeElement!==element||access.multiplayer)element.value=settings[key];
+    }
+    document.getElementById('v39-soul-setting-note').textContent=access.multiplayer?'ホスト設定を使用します。':'変更後の変換から適用し、既に取得したAPPは再計算しません。';
+    const state=window.getV39GameState?.({includeWorlds:false});
+    const totals=state?.players?.find(player=>player.id===state.activePlayerId)?.factionState?.soulAppTotals;
+    document.getElementById('v39-soul-app-totals').textContent=`取得APP: 正 ${Number(totals?.positive)||0} / 負 ${Number(totals?.negative)||0}（絶対値・相殺なし）`;
+  };
+  for(const key of Object.keys(V39_SOUL_APP_FIELDS)){
+    const element=document.getElementById(`v39-soul-${key}`);
+    element.addEventListener('change',()=>{
+      if(element.disabled||window.isV39MapInputLocked?.())return;
+      const patch=normalizeV39SoulAppSettings({...window.getV39GameSettings?.(),[key]:element.value});
+      if(window.setV39SoulAppSettings)window.setV39SoulAppSettings(patch);
+      else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),...patch}},{reason:'soul-app-setting',returnState:false});
+      element.value=patch[key];
+    });
+  }
+  for(const name of ['v39:game-state-changed','v39:shared-rule-settings-changed','v39:map-input-lock-changed'])window.addEventListener(name,syncSoulSettings);
+  syncSoulSettings();
+  const syncCombatSetting=()=>{
+    const access=window.getV39CombatSettingsAccess?.()||{multiplayer:false,canEdit:true};
+    damageInput.disabled=!access.canEdit||!!window.isV39MapInputLocked?.();
+    if(document.activeElement!==damageInput||access.multiplayer)damageInput.value=normalizeV39DamageMultiplier(window.getV39GameSettings?.()?.combatDamageMultiplier);
+    document.getElementById('v39-combat-setting-note').textContent=access.multiplayer
+      ?access.canEdit?'ホスト設定を全参加者に共有します。':'マルチではホストの設定を使用します。'
+      :'全勢力へ共通で適用し、セーブにも保存します。';
+  };
+  damageInput.addEventListener('change',()=>{
+    if(damageInput.disabled||window.isV39MapInputLocked?.())return;
+    const value=normalizeV39DamageMultiplier(damageInput.value);
+    if(window.setV39CombatDamageMultiplier)window.setV39CombatDamageMultiplier(value);
+    else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),combatDamageMultiplier:value}},{reason:'combat-setting',returnState:false});
+    damageInput.value=value;
+  });
+  for(const name of ['v39:game-state-changed','v39:shared-rule-settings-changed','v39:map-input-lock-changed'])window.addEventListener(name,syncCombatSetting);
+  syncCombatSetting();
+  const syncDetectionSetting=()=>{
+    const access=window.getV39DetectionSettingsAccess?.()||{multiplayer:false,canEdit:true};
+    detectionInput.disabled=!access.canEdit||!!window.isV39MapInputLocked?.();
+    if(document.activeElement!==detectionInput||access.multiplayer)detectionInput.value=normalizeV39DetectionScoutBonus(window.getV39GameSettings?.()?.detectionScoutBonus);
+    document.getElementById('v39-detection-setting-note').textContent=access.multiplayer
+      ?access.canEdit?'ホスト設定を全参加者に共有します。':'マルチではホストの設定を使用します。変更はホストのゲーム開始設定／ゲーム設定から行います。'
+      :'全勢力の索敵判定に共通で適用し、セーブにも保存します。';
+  };
+  detectionInput.addEventListener('change',()=>{
+    if(detectionInput.disabled||window.isV39MapInputLocked?.())return;
+    const bonus=normalizeV39DetectionScoutBonus(detectionInput.value);
+    if(window.setV39DetectionScoutBonus)window.setV39DetectionScoutBonus(bonus);
+    else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),detectionScoutBonus:bonus}},{reason:'detection-setting',returnState:false});
+    detectionInput.value=bonus;
+  });
+  for(const name of ['v39:game-state-changed','v39:shared-rule-settings-changed','v39:map-input-lock-changed'])window.addEventListener(name,syncDetectionSetting);
+  syncDetectionSetting();
   const syncRecoverySetting = () => {
     if (document.activeElement !== recoveryInput) recoveryInput.value = normalizeV39RecoveryWaitPercent(window.getV39GameSettings?.()?.recoveryWaitHpPercent);
   };
@@ -353,7 +460,7 @@ recoveryInput.addEventListener('change',()=>{
 
 function installStyles() {
   const style = document.createElement("style");
-  style.textContent = `#v39-recovery-wait-percent,#v39-field-vision-bonus{width:5em;min-height:36px;background:#0d171b;color:#edf5f3;border:1px solid #54717a;border-radius:6px;padding:3px 6px;font:inherit}.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:var(--font-size-16)}.v39-save-settings p,.v39-save-settings output{font-size:var(--font-body);color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:var(--font-body);font-weight:700}`;
+  style.textContent = `.v39-save-settings input[type="number"]{width:5em;min-height:36px;background:#0d171b;color:#edf5f3;border:1px solid #54717a;border-radius:6px;padding:3px 6px;font:inherit}.v39-save-settings{display:grid;gap:10px}.v39-save-settings section{border:1px solid #3b4d54;border-radius:8px;background:#121e23;padding:12px}.v39-save-settings h3{margin:0 0 6px;font-size:var(--font-size-16)}.v39-save-settings p,.v39-save-settings output{font-size:var(--font-body);color:#afbec1}.v39-save-settings section>div{display:flex;gap:8px;margin:10px 0}.v39-save-settings button{min-height:40px;border:1px solid #54717a;border-radius:7px;background:#173039;color:#edf5f3;padding:6px 12px;font-size:var(--font-body);font-weight:700}`;
   document.head.appendChild(style);
 }
 

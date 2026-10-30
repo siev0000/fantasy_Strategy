@@ -3,6 +3,7 @@ import { formatV39NestName, V39_INITIAL_NEST_TERRITORY_RADIUS } from "./v39-nest
 import { V39_SQUAD_MOVEMENT_BALANCE, V39_CORPSE_LIFETIME_BALANCE } from "./v39-gameplay-balance.js";
 import {normalizeV39CorpseResourceBatches} from './v39-corpse-lifetime.js';
 import {resolveV39CityUnitModifiers} from './v39-city-specialization-rules.js';
+import {v39CargoResourceDisplayAmount} from './v39-soul-resource-value.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -37,6 +38,7 @@ export function mergeV39Cargo(left = {}, right = {}) {
   const resourcesByType = { ...a.resourcesByType };
   for (const [name, amount] of Object.entries(b.resourcesByType)) {
     resourcesByType[name] = number(resourcesByType[name]) + number(amount);
+    if(name==='魂')resourcesByType[name]=Math.round(resourcesByType[name]*100)/100;
   }
   return {
     resourcesByType,
@@ -54,7 +56,30 @@ export function resolveV39UnitCargoCapacity(unit,state) {
 export function resolveV39CargoLoad(value = {}) {
   const cargo = normalizeV39Cargo(value);
   const resourceLoad = Object.values(cargo.resourcesByType).reduce((sum, amount) => sum + Math.max(0, number(amount)), 0);
-  return Math.round((resourceLoad + cargo.equipmentInventory.length) * 10) / 10;
+  return Math.round((resourceLoad + cargo.equipmentInventory.length) * 100) / 100;
+}
+
+export function resolveV39FactionUnitCargoStatus(faction, unitId, state) {
+  const unit = faction?.units?.find(row => text(row.id) === text(unitId));
+  const squad = faction?.squads?.find(row => getV39SquadUnitIds(row).includes(text(unitId)))
+    || faction?.squads?.find(row => text(row.id) === text(unit?.squadId));
+  const individual = !squad || ['solo', '単独'].includes(text(squad.id)) || !!unit?.transportAssignment || unit?.squadMoveMode==='independent';
+  const cargo = normalizeV39Cargo(individual ? squad?.cargoByUnitId?.[unitId] : squad?.cargo);
+  const ids = new Set(getV39SquadUnitIds(squad));
+  const members = individual ? [unit].filter(Boolean) : (faction?.units || []).filter(row => ids.has(text(row.id))
+    && text(row.worldId || 'surface') === text(unit?.worldId || 'surface') && !row.transportAssignment && row.squadMoveMode!=='independent');
+  const carriers = members.filter(row => number(row.hp ?? row.currentHp) > 0 && text(row.state || row.statusName) !== '死亡');
+  const capacity = Math.round(carriers.reduce((sum, row) => sum + resolveV39UnitCargoCapacity(row, state), 0) * 10) / 10;
+  const load = resolveV39CargoLoad(cargo);
+  return {unit, squad, individual, members, cargo, capacity, load, remaining:Math.max(0, Math.round((capacity - load) * 100) / 100)};
+}
+
+export function formatV39CargoStatus(status,{includeSoul=false,showScope=false}={}) {
+  const contents = Object.entries(status.cargo.resourcesByType).filter(([name])=>!includeSoul||name!=='魂').map(([name, amount]) => `${name} ${v39CargoResourceDisplayAmount(name,amount)}`);
+  if(includeSoul)contents.unshift(`魂 ${v39CargoResourceDisplayAmount('魂',number(status.cargo.resourcesByType.魂))}`);
+  if (status.cargo.equipmentInventory.length) contents.push(`装備 ${status.cargo.equipmentInventory.length}`);
+  const scope=showScope?(status.individual?'（個人）':'（部隊共通）'):'';
+  return `手持ち${scope} ${showScope?'積載 ':''}${status.load}/${status.capacity}${contents.length ? ` / ${contents.join(' / ')}` : ''}`;
 }
 
 export function resolveV39EnemySquadCargoStatus(state, squad) {
@@ -72,9 +97,11 @@ export function fitV39CargoToCapacity(value = {}, capacity = 0) {
   const overflow = { resourcesByType:{}, equipmentInventory:[] };
   for (const [name, amount] of Object.entries(source.resourcesByType)) {
     const take = Math.min(amount, remaining);
-    if (take > 0) accepted.resourcesByType[name] = Math.round(take*10)/10;
-    if (amount > take) overflow.resourcesByType[name] = Math.round((amount-take)*10)/10;
-    remaining = Math.max(0, Math.round((remaining-take)*10)/10);
+    const precision=name==='魂'?100:10;
+    const acceptedAmount=Math.floor((take+1e-8)*precision)/precision;
+    if (acceptedAmount > 0) accepted.resourcesByType[name] = acceptedAmount;
+    if (amount > acceptedAmount) overflow.resourcesByType[name] = Math.round((amount-acceptedAmount)*precision)/precision;
+    remaining = Math.max(0, Math.round((remaining-acceptedAmount)*100)/100);
   }
   for (const item of source.equipmentInventory) {
     if (remaining >= 1) {
@@ -97,13 +124,18 @@ export function addV39CargoToFactionUnit(faction = {}, unitId = "", cargoToAdd =
   if (!id || isV39CargoEmpty(cargoToAdd)) return { ok:false, faction };
   const unit = (Array.isArray(faction?.units) ? faction.units : []).find(row => text(row?.id) === id);
   const squads = Array.isArray(faction?.squads) ? faction.squads : [];
-  const squad = squads.find(row => getV39SquadUnitIds(row).includes(id))
+  let squad = squads.find(row => getV39SquadUnitIds(row).includes(id))
     || squads.find(row => text(row?.id) === text(unit?.squadId));
+  if (unit && !squad && ['', 'solo', '単独'].includes(text(unit.squadId))) {
+    const existing = squads.find(row => text(row.id) === 'solo');
+    squad = {...existing, id:'solo', unitIds:[...new Set([...getV39SquadUnitIds(existing), id])]};
+    return addV39CargoToFactionUnit({...faction, squads:[...squads.filter(row => row !== existing), squad]}, id, cargoToAdd);
+  }
   if (!unit || !squad) return { ok:false, faction };
-  const solo = text(squad.id) === "solo" || text(unit.squadId) === "solo";
+  const solo = ['solo', '単独'].includes(text(squad.id)) || ['solo', '単独'].includes(text(unit.squadId));
   const nextSquads = squads.map(row => {
     if (text(row?.id) !== text(squad.id)) return row;
-    if (!solo && !unit.transportAssignment) return { ...row, cargo:mergeV39Cargo(row?.cargo, cargoToAdd) };
+    if (!solo && !unit.transportAssignment && unit.squadMoveMode!=='independent') return { ...row, cargo:mergeV39Cargo(row?.cargo, cargoToAdd) };
     return {
       ...row,
       cargoByUnitId:{

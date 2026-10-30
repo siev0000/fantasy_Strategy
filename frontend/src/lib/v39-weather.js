@@ -1,11 +1,22 @@
 import config from '../../../config/v39-weather.json';
+import {resolveV39RainConditions} from './v39-rain-rules.js';
 import {normalizeV39MapScope,V39_MAP_SCOPES} from './v39-map-scope.js';
+import {HEX_CLOCKWISE_NEIGHBOR_INDICES} from './hex-grid.js';
 
 export const V39_WEATHER_TYPES=Object.freeze(Object.keys(config.weathers));
 const clamp=(n,min=0,max=100)=>Math.min(max,Math.max(min,n));
 const hash=value=>{let h=2166136261;for(const c of String(value)){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;h=Math.imul(h,0x846ca68b);return (h^(h>>>16))>>>0;};
 const roll=key=>hash(key)/4294967296;
 const CLIMATE_VERSION=3;
+function windDirection(profile,region,row){
+  return Number.isInteger(row?.windDirection)&&row.windDirection>=0&&row.windDirection<6?row.windDirection
+    :HEX_CLOCKWISE_NEIGHBOR_INDICES[Math.floor(roll(`${profile.id}:${region.id}:wind:${row?.weatherStartedTurn||0}`)*6)];
+}
+export function resolveV39WindDirectionAt(map,weather,x,y){
+  const profile=ensureV39ClimateProfile(map),region=getV39ClimateRegion(profile,x,y);
+  if(!region)return null;
+  return windDirection(profile,region,weather?.profileId===profile.id?weather.regions?.[region.id]:null);
+}
 export function v39ClimateLatitudeAt(row,height,mapScope){
   const latitude=Math.abs(row/height*2-1);
   return mapScope==='world'?Math.max(0,latitude-2*V39_MAP_SCOPES.world.polarInsetRatio):latitude;
@@ -77,10 +88,14 @@ export function advanceV39Weather(profile,previous,turn) {
   const regions=Object.fromEntries(Object.entries(weather.regions||{}).map(([id,row])=>[id,{...row}]));
   for(let t=weather.lastTurn+1;t<=turn;t++)for(const region of Object.values(profile.regions)){
     let row=regions[region.id]||{humidity:region.humidity,dryness:100-region.humidity,dryTurns:0,wetTurns:0,weatherUntilTurn:0};
+    const previousWind=windDirection(profile,region,row);
     if(row.weatherUntilTurn<t||!config.weathers[row.weather]){
       const duration=config.durationMin+Math.floor(roll(`${profile.id}:${region.id}:duration:${t}`)*(config.durationMax-config.durationMin+1));
-      row={...row,weather:chooseWeather(profile,region,t),weatherStartedTurn:t,weatherUntilTurn:t+duration-1};
+      const maximum=Math.max(0,Math.min(3,Math.floor(config.wind.maximumChangeSteps)));
+      const change=Math.floor(roll(`${profile.id}:${region.id}:wind-change:${t}`)*(maximum*2+1))-maximum;
+      row={...row,windDirection:HEX_CLOCKWISE_NEIGHBOR_INDICES[(HEX_CLOCKWISE_NEIGHBOR_INDICES.indexOf(previousWind)+change+6)%6],weather:chooseWeather(profile,region,t),weatherStartedTurn:t,weatherUntilTurn:t+duration-1};
     }
+    if(!Number.isInteger(row.windDirection))row={...row,windDirection:previousWind};
     const rule=config.weathers[row.weather];
     regions[region.id]={...row,temperature:weatherTemperature(region,row.weather),
       humidity:clamp(row.humidity+rule.humidityDelta),dryness:clamp(row.dryness+rule.drynessDelta),
@@ -93,7 +108,8 @@ export function inspectV39WeatherAt(map,weather,x,y) {
   const profile=ensureV39ClimateProfile(map),region=getV39ClimateRegion(profile,x,y);
   if(!region)return null;
   const current=weather?.profileId===profile.id?weather.regions?.[region.id]:null;
-  return {regionId:region.id,climateTemperature:region.temperature,climateHumidity:region.humidity,...current};
+  const area=weather?.disasterAreas?.find(area=>area.tileKeys?.includes(`${x},${y}`));
+  return {regionId:region.id,climateTemperature:region.temperature,climateHumidity:region.humidity,...current,windDirection:windDirection(profile,region,current),...(area?{weather:area.weather,humidity:area.humidity??current?.humidity,dryness:0,wetTurns:Math.max(current?.wetTurns||0,weather.lastTurn-area.startedAtTurn+1),weatherStartedTurn:area.startedAtTurn}:{} )};
 }
 
 export function setV39WeatherAt(map,previous,turn,x,y,type) {
@@ -101,10 +117,12 @@ export function setV39WeatherAt(map,previous,turn,x,y,type) {
   const profile=ensureV39ClimateProfile(map),weather=advanceV39Weather(profile,previous,turn);
   const region=getV39ClimateRegion(profile,x,y);if(!weather||!region)return null;
   const row=weather.regions[region.id],same=row.weather===type;
-  return {...weather,regions:{...weather.regions,[region.id]:{...row,weather:type,
+  const next={...weather,regions:{...weather.regions,[region.id]:{...row,weather:type,
     temperature:weatherTemperature(region,type),
     weatherStartedTurn:same?row.weatherStartedTurn:turn,weatherUntilTurn:turn+config.durationMax-1,
     dryTurns:same?row.dryTurns:0,wetTurns:same?row.wetTurns:0}}};
+  map.rainConditions=resolveV39RainConditions(map,next);
+  return next;
 }
 
 export function resolveV39DisasterWeather(rule,map,weather,point) {

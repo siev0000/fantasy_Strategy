@@ -5,6 +5,7 @@ import {
 import { V39_CAVE_BALANCE, V39_ATTACK_STEALTH_RECOVERY_TURNS } from "./v39-gameplay-balance.js";
 import { applyV39TerrainModifiers } from "./v39-terrain-modifiers.js";
 import { resolveV39FogPenalty, isV39FogVisionAllowed } from "./v39-fog-rules.js";
+import {resolveV39DetectionScoutBonus} from './v39-detection-settings.js';
 
 export const V39_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
 // ユニットは最低1マスを見通す。地上は索敵75、地下は設定値37.5ごとに1マス広げる。
@@ -88,15 +89,15 @@ export function resolveDetectionGroupSenseFromValues(scoutValues = [], stealthVa
   };
 }
 
-export function resolveEffectiveScoutAtDistance(scout, distance, mapData = null, from = null, to = null) {
+export function resolveEffectiveScoutAtDistance(scout, distance, mapData = null, from = null, to = null, gameSettings = null) {
   const bonus=mapData?.isUnderground?V39_CAVE_BALANCE.visionBonusTiles:0;
   const decayRate=mapData?.isUnderground?V39_CAVE_BALANCE.visionScoutStep/V39_UNIT_VISION_SCOUT_STEP:1;
   const penalty = Math.max(0, Math.floor(number(distance)) - 1 - bonus) * V39_SCOUT_DISTANCE_DECAY_PER_TILE * decayRate;
   // 視界内で隠密0の対象まで見失わないよう、距離減衰後も索敵の下限は0。
-  return Math.max(0, roundTo1(number(scout) - penalty - resolveV39FogPenalty(mapData,from,to).scout));
+  return Math.max(0, roundTo1(number(scout) + resolveV39DetectionScoutBonus(gameSettings) - penalty - resolveV39FogPenalty(mapData,from,to).scout));
 }
 
-export function isDetectedByScout({ scout = 0, stealth = 0, distance = 0, inRange = true, mapData = null, from = null, to = null, visionRange = Infinity } = {}) {
+export function isDetectedByScout({ scout = 0, stealth = 0, distance = 0, inRange = true, mapData = null, from = null, to = null, visionRange = Infinity, gameSettings = null } = {}) {
   return inRange === true && isV39FogVisionAllowed(mapData,from,to,visionRange,distance)
-    && resolveEffectiveScoutAtDistance(scout, distance, mapData,from,to) >= Math.max(0, number(stealth));
+    && resolveEffectiveScoutAtDistance(scout, distance, mapData,from,to,gameSettings) >= Math.max(0, number(stealth));
 }

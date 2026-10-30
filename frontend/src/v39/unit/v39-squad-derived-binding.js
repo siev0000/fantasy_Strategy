@@ -1,14 +1,18 @@
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
 import { focusV39MapTile } from '../map/v39-map-focus.js';
-import { resolveV39BaseMoveApCost } from "../../lib/v39-gameplay-balance.js";
+import { resolveV39BaseMoveApCost, resolveV39MovementMultiplier } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import { updateV39UnitAbility } from "./v39-unit-detail.js";
 import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
+import {renderV39RubbleActions} from '../world/v39-terrain-destruction.js';
 import {renderV39UnitHeading} from './v39-unit-heading.js';
+import {renderV39TeleportGateActions} from './v39-teleport-ui.js';
+import {createV39BasicActionNavigation} from './v39-basic-action-navigation.js';
 
 const renderedMarkup = new WeakMap();
 let renderingFaction;
+let basicNavigation;
 function updateMarkup(host, markup) {
   if (!host || renderedMarkup.get(host) === markup) return;
   host.innerHTML = markup;
@@ -287,7 +291,7 @@ function persistSelectedUnit(targetUnitId, reason = "squad-unit-selected") {
     window.updateV39ActiveFactionState({ selectedUnitId:id }, { reason });
   }
   window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail:{ unitId:id, unit } }));
-  focusV39MapTile(unit,{worldId:unit.worldId||'surface'});
+  focusV39MapTile(unit,{worldId:unit.worldId||'surface',select:true,notify:false});
 }
 
 function updateSelectorCounts() {
@@ -337,6 +341,9 @@ function renderDetail() {
   const unit = units.find((item, index) => unitId(item, index) === selectedUnitId) || units[0];
   const pane = document.getElementById("squadDetailPane");
   if (!unit) {
+    updateMarkup(document.getElementById('v39-rubble-actions'),'');
+    updateMarkup(pane?.querySelector('[data-squad-coordination-host]'),'');
+    updateMarkup(document.getElementById('v39-teleport-gate-actions'),'');
     updateMarkup(document.getElementById('detailUnitHeading'),'');
     if (pane) pane.dataset.empty = "1";
     updateV39UnitAbility(document.getElementById("detailAbilitySections"), null, {fieldIds:true});
@@ -353,21 +360,16 @@ function renderDetail() {
     return;
   }
   if (pane) delete pane.dataset.empty;
-  const head=pane?.querySelector('.squad-detail-minihead');
-  if(head){
-    let controls=head.querySelector('[data-squad-coordination-host]');
-    if(!controls){controls=document.createElement('div');controls.dataset.squadCoordinationHost='';controls.style.cssText='flex-basis:100%;min-width:0';head.append(controls);}
-    const open=controls.querySelector('details')?.open;
-    updateMarkup(controls,renderV39SquadCoordination(unit,renderingFaction));
-    if(open&&controls.querySelector('details'))controls.querySelector('details').open=true;
-  }
+  updateMarkup(pane?.querySelector('[data-squad-coordination-host]'),renderV39SquadCoordination(unit,renderingFaction));
 
   updateMarkup(document.getElementById('detailUnitHeading'),renderV39UnitHeading(unit));
 
   const movementGroup = resolveV39SquadMovementGroup(getFactionState() || {}, selectedUnitId,
     {followFormation:true});
   const moveValue = movementGroup?.ok ? Math.max(1, num(movementGroup.movement, 1)) : Math.max(1, num(movementValue(unit), 1));
-  const moveBaseAp = Math.ceil(resolveV39BaseMoveApCost(moveValue));
+  const mapData=window.__v39FieldRuntime?.mapData;
+  const moveBaseAp = Math.ceil(resolveV39BaseMoveApCost(moveValue,mapData));
+  const moveMultiplier=resolveV39MovementMultiplier(mapData);
   const moveApEl = document.getElementById("mobileMoveAp");
   const moveMetaEl = document.getElementById("mobileMoveMeta");
   const moveRemainEl = document.getElementById("mobileMoveRemain");
@@ -376,7 +378,7 @@ function renderDetail() {
     moveApEl.hidden = false;
   }
   if (moveMetaEl) {
-    moveMetaEl.textContent = `移${moveValue}`;
+    moveMetaEl.textContent = `移${moveValue}${moveMultiplier!==1?` ×${moveMultiplier}`:''}`;
     moveMetaEl.hidden = false;
   }
   if (moveRemainEl) {
@@ -388,6 +390,8 @@ function renderDetail() {
     mapData:window.__v39FieldRuntime?.mapData, fieldIds:true
   });
   renderEquipment(unit);
+  updateMarkup(document.getElementById('v39-rubble-actions'),renderV39RubbleActions(unit));
+  updateMarkup(document.getElementById('v39-teleport-gate-actions'),renderV39TeleportGateActions(unit,window.__v39FieldRuntime?.mapData));
 
   const tech = document.getElementById("detailTechniqueRows");
   if (tech) {
@@ -405,6 +409,7 @@ function render() {
     updateSelectorCounts();
     renderMemberList();
     renderDetail();
+    basicNavigation?.sync();
     window.refreshV39SquadCardVitals?.();
   } finally {
     renderingFaction = undefined;
@@ -432,6 +437,18 @@ function install() {
   }
 
   const active = selector.querySelector("[data-squad-select].active");
+  const basicList=document.getElementById('detailBasicList');
+  if(basicList&&!basicNavigation){
+    basicNavigation=createV39BasicActionNavigation({
+      panel:basicList.closest('[data-squad-detail-panel="basic"]'),list:basicList,
+      heading:document.getElementById('v39-basic-action-heading'),label:document.getElementById('v39-basic-action-label'),
+      onBack:()=>{window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.('basic-action-back');setExpandedTechnique('');},
+      onChange:key=>window.dispatchEvent(new CustomEvent('v39:basic-action-changed',{detail:{key}}))
+    });
+    window.openV39BasicAction=id=>basicNavigation.select(document.getElementById(id));
+    const observer=new MutationObserver(()=>basicNavigation.sync());
+    observer.observe(basicList,{childList:true,subtree:true});
+  }
   selectedSquadKey = active?.dataset?.squadSelect || "";
   syncSelectionFromGameState();
 
@@ -463,7 +480,7 @@ function install() {
     const card = event.target instanceof Element ? event.target.closest("[data-v39-technique-name]") : null;
     if (!card) return;
     const name = text(card.dataset.v39TechniqueName);
-    if (["__system_wait__", "__system_recovery_wait__", "__system_survey__", "__system_gather__"].includes(name) || name.startsWith("__cave_site_")) {
+    if (["__system_wait__", "__system_recovery_wait__", "__system_survey__", "__system_gather__", "__system_soul_recovery__"].includes(name) || name.startsWith("__cave_site_")) {
       window.cancelV39SelectedUnitMove?.("system-action-preview");
       window.cancelV39SelectedUnitAttack?.("system-action-preview");
     }
@@ -492,6 +509,7 @@ function install() {
     document.querySelector('[data-squad-detail-tab="basic"]')?.click();
     setExpandedTechnique(name);
     const card = [...document.querySelectorAll("[data-v39-technique-name]")].find(row => row.dataset.v39TechniqueName === name);
+    basicNavigation?.select(card);
     card?.scrollIntoView({ block:"nearest" });
   };
   window.getV39SelectedSquadUnit = () => {

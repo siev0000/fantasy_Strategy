@@ -4,7 +4,7 @@ import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/no
 const out='output/web-game/squad-coordination';mkdirSync(out,{recursive:true});
 const browser=await chromium.launch();
 try {
-  for(const width of [320,390,1100]) {
+  for(const width of (process.env.V39_TEST_WIDTHS?.split(',').map(Number)||[320,390,1100])) {
     const page=await browser.newPage({viewport:{width,height:844}}),errors=[];page.setDefaultTimeout(15000);
     page.on('pageerror',error=>{errors.push(String(error));console.error(String(error));});
     await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:3022',{waitUntil:'networkidle'});
@@ -101,7 +101,25 @@ try {
     assert(result.faction.units.find(unit=>unit.id==='far').x<11);assert(result.faction.units.find(unit=>unit.id==='far').ap<100);
     await page.evaluate(()=>{window.updateV39ActiveFactionState({selectedUnitId:'near'});window.refreshV39SquadDerivedUI();});
     const controls=page.locator('#squadDetailPane .v39-squad-coordination');
-    await controls.locator('summary').click();await controls.locator('[data-squad-coordination="independent"]').click();
+    assert.equal(await page.locator('#squadDetailPane .squad-detail-minihead [data-squad-coordination]').count(),0);
+    await page.locator('[data-squad-detail-tab="status"]').click();
+    const lineage=await page.locator('#detailAbilitySections .v39-unit-lineage-pair span').evaluateAll(nodes=>nodes.map(n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));
+    assert.equal(lineage[0].y,lineage[1].y);assert(lineage[1].x>lineage[0].x);
+    await page.locator('[data-squad-detail-tab="basic"]').click();
+    assert(await controls.locator('[data-squad-coordination="follow"]').isDisabled());
+    const centers=await controls.locator('[data-squad-coordination="gather"] .technique-icon').evaluate(icon=>{
+      const box=icon.getBoundingClientRect(),glyph=icon.querySelector('.technique-icon-glyph').getBoundingClientRect();
+      return {x:Math.abs(box.x+box.width/2-glyph.x-glyph.width/2),y:Math.abs(box.y+box.height/2-glyph.y-glyph.height/2)};
+    });assert(centers.x<.6&&centers.y<.6,JSON.stringify(centers));
+    await controls.locator('summary').click();
+    assert(!await controls.locator('[data-squad-coordination="gather"]').isVisible());
+    await page.waitForTimeout(30);
+    await page.evaluate(()=>window.refreshV39SquadDerivedUI());
+    assert(!await controls.evaluate(node=>node.open));
+    await controls.locator('summary').click();
+    await page.screenshot({path:`${out}/basic-${width}.png`});
+    await controls.locator('[data-squad-coordination="independent"]').click();
+    await page.waitForFunction(()=>document.querySelector('#detailBasicList [data-squad-coordination="independent"]')?.disabled);
     await page.evaluate(()=>window.startV39SelectedUnitMove());
     assert.deepEqual(await page.evaluate(()=>window.getV39UnitMovePreview().unitIds),['near']);
     await page.evaluate(()=>{window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x:2,y:5}}));document.getElementById('moveOk').click();});
@@ -112,13 +130,20 @@ try {
     await page.evaluate(()=>window.commandV39SquadMovement('team','scatter'));
     assert(await page.evaluate(()=>window.getV39ActiveFactionState().units.every(unit=>unit.squadMoveMode==='independent')));
     await page.evaluate(()=>{const faction=window.getV39ActiveFactionState();window.updateV39ActiveFactionState({units:faction.units.map(unit=>({...unit,ap:100,currentAp:100}))});window.refreshV39SquadDerivedUI();});
-    if(!await controls.locator('summary').evaluate(node=>node.parentElement.open))await controls.locator('summary').click();
+    await page.locator('[data-squad-detail-tab="basic"]').click();
     await controls.locator('[data-squad-coordination="pick"]').click();
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x:10,y:5}})));
     await page.waitForFunction(()=>!window.isV39MapInputLocked?.());
     await page.screenshot({path:`${out}/rally-${width}.png`});
     const saved=await page.evaluate(()=>{const before=window.getV39ActiveFactionState();window.importV39SaveJson(window.exportV39SaveJson());const after=window.getV39ActiveFactionState();return {before:before.units.map(unit=>[unit.id,unit.squadMoveMode,unit.x,unit.y,unit.ap]),after:after.units.map(unit=>[unit.id,unit.squadMoveMode,unit.x,unit.y,unit.ap])};});
     assert.deepEqual(saved.after,saved.before,'save retains state and AP');
+    await page.evaluate(()=>window.openV39CharacterModal());
+    await page.locator('[data-v39-character-tab="squad"]').click();
+    await page.locator('#characterModal [data-v39-character-detail-tab="basic"]').click();
+    assert(await page.locator('#characterModal .v39-squad-coordination').isVisible());
+    assert.equal(await page.locator('#characterModal .v39-char-unit-head [data-squad-coordination]').count(),0);
+    await page.screenshot({path:`${out}/modal-basic-${width}.png`});
+    await page.locator('#characterModal [data-close]').click();
     if(width===390) {
       const before=await page.evaluate(()=>window.getV39ActiveFactionState().units.find(unit=>unit.id==='lead').x);
       await page.evaluate(async()=>{await window.advanceV39Turn({skipUnactedFocus:true});await window.advanceV39Turn({skipUnactedFocus:true});});

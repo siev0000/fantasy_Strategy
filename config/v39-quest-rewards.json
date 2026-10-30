@@ -13,5 +13,18 @@
   "maximumStrengthBonus":0.15,
   "offerValidTurns":5,
   "minimumVillagePopulation":1,
-  "maximumAmount":100000
+  "maximumAmount":100000,
+  "relationScaling":{"deliveryReferenceAmount":20,"watchReferenceTurns":3,"maximumReward":100},
+  "automatic":{
+    "minimumBudget":5,
+    "maximumBudget":60,
+    "valuePerObjective":{"delivery":0.5,"contract":0.5,"hunt":15,"watch":10,"construction":20,"composite":20},
+    "goldBudgetShare":0.5,
+    "surplusShare":0.25,
+    "maximumMaterialKinds":2,
+    "foodReserveTurns":10,
+    "materialReserve":30,
+    "goldReserve":10,
+    "resources":["穀物","野菜","肉","魚","木材","石材","鉄"]
+  }
 }

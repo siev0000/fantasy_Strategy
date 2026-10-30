@@ -1,0 +1,14 @@
+{
+  "defaultTurns": 15,
+  "autoResupply": true,
+  "maxTurns": 30,
+  "resupplyApCost": 0,
+  "shareRadius": 1,
+  "preservedFood": {
+    "resourceName": "保存食",
+    "nutritionValue": 5,
+    "inputPerItem": 5,
+    "craftApCost": 0,
+    "requiredResearchId": "経済Lv:2:料理Ⅱ"
+  }
+}

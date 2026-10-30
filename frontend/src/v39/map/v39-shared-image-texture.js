@@ -1,9 +1,9 @@
 const pendingByGame=new WeakMap();
 
 // Sleeping world scenes share one TextureManager; enqueue each source only once.
-export function loadV39SharedImageTexture(scene,key,url,onReady) {
+export function loadV39SharedImageTexture(scene,key,url,onReady=()=>{}) {
   const game=scene.game;
-  if(game.textures.exists(key)){onReady();return;}
+  if(game.textures.exists(key)){onReady();return Promise.resolve(true);}
   let pending=pendingByGame.get(game);
   if(!pending){pending=new Map();pendingByGame.set(game,pending);}
   if(!pending.has(key)){
@@ -19,7 +19,8 @@ export function loadV39SharedImageTexture(scene,key,url,onReady) {
     });
     pending.set(key,promise);
   }
-  void pending.get(key).then(loaded=>{
+  return pending.get(key).then(loaded=>{
     if(loaded&&!game.pendingDestroy&&scene.sys?.game===game)onReady();
+    return loaded&&!game.pendingDestroy;
   });
 }

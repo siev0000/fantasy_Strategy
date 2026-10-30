@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-before-ui154.xlsx",
+  "output_dir": "output\\ui154-before-json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "災害"
+  ],
+  "source_sheets": {
+    "災害": "災害"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 36,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "災害",
+      "output": "災害.json",
+      "input_rows": 999,
+      "records": 36,
+      "skipped_blank_rows": 960,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 3,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

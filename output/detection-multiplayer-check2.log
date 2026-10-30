@@ -1,0 +1,30 @@
+host after save {
+  settings: {
+    recoveryWaitHpPercent: 100,
+    detectionScoutBonus: 50,
+    npcFactionCount: 0,
+    fieldVisionBonusTiles: 2,
+    turnProgressionMode: 'standard',
+    maxCombatTurnsPerWorldTurn: 6
+  },
+  access: { multiplayer: true, canEdit: false },
+  notes: [
+    '各プレイヤーは自分の担当勢力の開始種族を選択します。選択肢は 種族.json を使用します。',
+    'ゲーム設定: 未設定',
+    '操作勢力数は参加者数以上です。参加者が増えると自動で勢力枠を追加し、新しい参加者へ担当を割り当てます。',
+    'ゲーム開始設定だけを変更しても準備完了は維持します。勢力数・担当者を変更した場合は準備を解除します。',
+    '参加者 1人 / 準備待ち / 接続 正常'
+  ],
+  status: 'ゲーム開始設定を共有保存中...'
+}
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.waitForFunction: Timeout 30000ms exceeded.
+    at C:\Users\skkt3\ドキュメント\Github\fantasy_Strategy\scripts\check-v39-multiplayer-detection.mjs:25:13 {
+  log: [],
+  name: 'TimeoutError'
+}
+
+Node.js v22.20.0

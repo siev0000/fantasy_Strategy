@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
+import {build} from 'esbuild';
+process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-diplomacy-rules.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
+  builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+    const dir=resolve('data/source/export/json'),modules=Object.fromEntries(readdirSync(dir).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${dir}/${name}`,'utf8'))]));
+    return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
+  });
+  builder.onLoad({filter:/(?:icon-library|facility-icon-artwork|map-entity-artwork|monster-sheet-artwork|unit-sheet-artwork)\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/g,'{};'),resolveDir:dirname(args.path),loader:'js'}));
+}}]});
+globalThis.document={addEventListener(){}};globalThis.window={};
+const warn=console.warn;let m;try{console.warn=()=>{};m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);}finally{console.warn=warn;}
+let current={activePlayerId:'b',timeline:{turnNumber:1,phase:'player'},players:['a','b','c'].map(id=>({id,label:id,race:'只人',isPlayer:true,factionState:{units:[]}})),diplomacyRelations:{}};
+const proposed=m.proposeV39Treaty(current,'a','b','passage',1,5);assert(proposed.ok,proposed.reason);current=proposed.state;
+assert.equal(m.getV39IncomingTreatyProposals(current).length,1);
+assert.equal(m.getV39IncomingTreatyProposals(current,'a').length,0);
+assert.equal(m.getV39IncomingTreatyProposals(current,'c').length,0);
+const incoming=m.getV39IncomingTreatyProposals(current)[0];
+assert.equal(m.getV39IncomingTreatyProposals({...current,timeline:{turnNumber:incoming.expiresAtTurn}}).length,0);
+assert.equal(m.getV39IncomingTreatyProposals(m.respondV39Treaty(current,'b','a',true,1).state).length,0);
+assert.equal(m.getV39IncomingTreatyProposals(m.respondV39Treaty(current,'b','a',false,1).state).length,0);
+const notifications=[],destinations=[];
+const win={getV39GameState:()=>current,pushV39SideRailMessage:entry=>{notifications.push(entry);return `n${notifications.length}`;},openV39FactionDiplomacy:id=>destinations.push(id)};
+const buttons=Array.from({length:3},()=>({dataset:{},badge:null,querySelector(){return this.badge;},appendChild(badge){this.badge=badge;badge.parent=this;}}));
+const doc={querySelectorAll:()=>buttons,createElement:()=>({dataset:{},attributes:{},setAttribute(k,v){this.attributes[k]=v;},remove(){this.parent.badge=null;}})};
+const nation=readFileSync('frontend/src/v39/world/v39-nation-diplomacy-ui.js','utf8');
+const syncSource=nation.slice(nation.indexOf('function syncTreatyNotices('),nation.indexOf('function ensurePanel('));
+const sync=new Function('window','document','getV39IncomingTreatyProposals',`const notifiedProposals=new Set(),pendingIdsByPlayer=new Map();${syncSource};return syncTreatyNotices;`)(win,doc,m.getV39IncomingTreatyProposals);
+sync();sync();assert.equal(notifications.length,1,'no duplicate on rerender');assert(buttons.every(button=>button.badge.textContent==='!'&&button.dataset.v39DiplomacyPending==='1'));
+assert.equal(notifications[0].audiencePlayerId,'b');assert.equal(notifications[0].action.targetPlayerId,'a');assert(notifications[0].preview);assert(notifications[0].message.includes(`T${incoming.expiresAtTurn}`));
+const rail=readFileSync('frontend/src/v39/ui/v39-notification-rail.js','utf8');
+const visibility=rail.slice(rail.indexOf('function canSeeMessage('),rail.indexOf('function combatVisibility('));
+const openSource=rail.slice(rail.indexOf('export function openV39SideLogDiplomacy('),rail.indexOf('function hideChatPreview(')).replace('export ','');
+const open=new Function('window',`${visibility};${openSource};return openV39SideLogDiplomacy;`)(win);
+assert(open(notifications[0]));assert.deepEqual(destinations,['a']);sync();assert(buttons[0].badge,'opening does not resolve a proposal');
+current={...current,activePlayerId:'c'};sync();assert(buttons.every(button=>!button.badge));assert(!open(notifications[0]),'another player cannot see/use this notification');
+current={...current,activePlayerId:'b'};sync();assert.equal(notifications.length,1,'switch back does not duplicate');
+current=m.respondV39Treaty(current,'b','a',false,1).state;sync();assert(buttons.every(button=>!button.badge&&!button.dataset.v39DiplomacyPending),'reply removes all markers');
+current=m.proposeV39Treaty({...current,timeline:{turnNumber:2}},'a','b','passage',2,5).state;sync();assert.equal(notifications.length,2,'a new proposal notifies again');
+current={...current,timeline:{turnNumber:m.getV39IncomingTreatyProposals(current)[0].expiresAtTurn}};sync();assert(buttons.every(button=>!button.badge),'expiry removes markers');
+assert(rail.includes('data-v39-side-diplomacy='));assert(rail.includes('openV39SideLogDiplomacy(messages.find(entry=>entry.id===button.dataset.previewLogId))'),'preview tap uses same safe navigation');
+assert(nation.includes("['v39:save-loaded','v39:operation-ui-ready','v39:footer-tab-changed']"));
+console.log('PASS: real treaty proposal/reply/expiry, scoped single notifications, clickable destination, persistent pending badges, reply/remount/switch handling and preview navigation. No browser.');

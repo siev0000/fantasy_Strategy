@@ -1,9 +1,7 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import {resolveV39MapQuality} from '../../lib/v39-map-quality.js';
 
 const CACHE_NAME_SUFFIX = "-cache";
-// 通常表示はマップ全体が縮小されるため、半解像度で焼き込んでも視認性を維持できる。
-// これにより地形・高低差・Fogの3層をキャッシュしてもVRAM増加を抑える。
-const CACHE_RESOLUTION = 0.5;
 // 1枚あたりの上限。RGBA換算で約36MiBを超える大きなマップでは、
 // VRAMを増やさず従来のGraphics描画を使う。
 const MAX_CACHE_PIXELS = 9_000_000;
@@ -45,10 +43,14 @@ export function removeStaticGraphicsCache(scene, sourceName) {
 export function cacheStaticGraphicsLayer(scene, data, graphics, options = {}) {
   if (!scene || !graphics) return false;
   const sourceName = String(options.name || graphics.name || "v39-static-layer");
+  const resolution=resolveV39MapQuality(globalThis.window?.getV39DisplaySettings?.().mapQuality).cacheResolution;
+  if(resolution===null){
+    removeStaticGraphicsCache(scene,sourceName);graphics.setScale(1).setVisible(true);return false;
+  }
   const world = resolveWorldSize(data);
   const size = {
-    width:Math.max(1, Math.ceil(world.width * CACHE_RESOLUTION)),
-    height:Math.max(1, Math.ceil(world.height * CACHE_RESOLUTION))
+    width:Math.max(1, Math.ceil(world.width * resolution)),
+    height:Math.max(1, Math.ceil(world.height * resolution))
   };
   if (!supportsCache(scene, size)) {
     removeStaticGraphicsCache(scene, sourceName);
@@ -67,7 +69,7 @@ export function cacheStaticGraphicsLayer(scene, data, graphics, options = {}) {
   cache.setDepth(Number.isFinite(Number(options.depth)) ? Number(options.depth) : graphics.depth);
   cache.setDisplaySize(world.width, world.height);
   graphics.setVisible(true);
-  graphics.setScale(CACHE_RESOLUTION);
+  graphics.setScale(resolution);
   cache.clear();
   cache.draw(graphics);
   graphics.setScale(1);

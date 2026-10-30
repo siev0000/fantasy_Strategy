@@ -1,3 +1,4 @@
+import {replaceV39CastOnAction} from './v39-casting-rules.js';
 import {getGameDataRows} from "./game-data-registry.js";
 import {buildV39UnitEntity,buildV39ClassEquipment} from "./v39-unit-creation-rules.js";
 import {getV39UnitTestTechniques} from "./v39-test-skill-rules.js";
@@ -166,7 +167,7 @@ export function inspectV39Summon(state,playerId,unitId,skillName,map) {
   if(n(caster?.ap ?? caster?.currentAp)<cost)reasons.push('AP不足');
   if(n(caster?.hp ?? caster?.currentHp)<=hpCost)reasons.push('HP不足');
   const runtime=player?.factionState.combatRuntime || {};
-  if(runtime.pendingActionsByUnitId?.[unitId])reasons.push('別の行動を発動待機中');
+  if(runtime.pendingActionsByUnitId?.[unitId]&&!runtime.pendingActionsByUnitId[unitId].aimAfterCast)reasons.push('別の行動を発動待機中');
   if(n(runtime.cooldownsByUnitId?.[unitId]?.[entry?.sourceSkillName||skillName])>turn)reasons.push('使用済みまたはCT中');
   const tiles=map&&caster&&preview?resolveV39SummonPlacements(state,map,caster,preview):[];
   if(entry?.spec&&tiles.length<entry.spec.count)reasons.push(`隣接する配置可能マスが${entry.spec.count}マス必要`);
@@ -197,7 +198,7 @@ export function summonV39Units(state,playerId,unitId,skillName,map) {
         nextUpkeepTurn:turn+resolveV39FacilitySummonCosts(derived).upkeepIntervalTurns,
         baseLevel:check.entry.spec.level,bonusLevel:check.facility.bonusLevel,createdTurn:turn,expiresAtTurn:turn+check.duration}});
   }
-  const runtime=faction.combatRuntime || {},hp=n(check.caster.hp ?? check.caster.currentHp)-check.hpCost,ap=n(check.caster.ap ?? check.caster.currentAp)-check.cost;
+  const runtime=replaceV39CastOnAction(faction.combatRuntime,unitId),hp=n(check.caster.hp ?? check.caster.currentHp)-check.hpCost,ap=n(check.caster.ap ?? check.caster.currentAp)-check.cost;
   const squads=rows.map(row=>{
     if(row.id===squadId)return {...row,unitIds:[...row.unitIds,...created.map(unit=>unit.id)]};
     if(existing||!row.unitIds.includes(unitId))return row;

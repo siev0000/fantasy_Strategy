@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import {mkdirSync} from 'node:fs';
+import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
+
+mkdirSync('output/web-game/teleport',{recursive:true});
+const browser=await chromium.launch();
+try{for(const width of [390,1100]){
+ const page=await browser.newPage({viewport:{width,height:900}}),errors=[];page.on('pageerror',e=>errors.push(String(e.stack)));
+ await page.goto(process.env.V39_TEST_URL||'http://127.0.0.1:5173',{waitUntil:'networkidle'});
+ await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);const r=window.startV39TeleportTest();if(!r.ok)throw Error(r.reason);await window.waitForV39MapRenderSettled();});
+ const checks=await page.evaluate(async uiOnly=>{
+  if(uiOnly){
+    const state=window.getV39GameState(),base=window.getV39ActiveFactionState().settlements.find(s=>s.placed);
+    return {pid:state.activePlayerId,targetId:`base:${base.settlementId}`};
+  }
+  const r=await import('/src/lib/v39-teleport-rules.js');
+  const combat=await import('/src/lib/v39-combat-engine.js');
+  const check=(v,label)=>{if(!v)throw Error(label);};
+  const state=window.getV39GameState(),pid=state.activePlayerId,map=window.__v39FieldRuntime.mapData,id='teleport-test';
+  check(!combat.resolveAttackRows(state.players[0].factionState.units.find(u=>u.id===id)).some(row=>String(row.効果).startsWith('転移')),'teleport must not become a damage attack');
+  check(r.parseV39TeleportEffect({効果:'転移_森'}).terrain==='森','terrain parser');
+  check(!r.parseV39TeleportEffect({効果:'転移_森_不明'}),'invalid suffix');
+  const reg=r.registerV39TeleportLocation(state,pid,id,'帰還地点');check(reg.ok,'register');
+  const target=r.getV39TeleportTargets(reg.state,pid,id).find(t=>t.base);
+  const inspect=(s=reg.state,m=map,skill='次元の扉',mode='self')=>r.inspectV39Teleport(s,pid,id,skill,target.id,m,mode);
+  check(inspect().available,'baseline teleport');check(inspect().range===10,'surface range100 =10 tiles');
+  check(inspect(reg.state,map,'TEST_木々渡り').available,'forest allowed');
+  const plain=structuredClone(map);plain.grid[6][12]='平原';
+  check(!inspect(reg.state,plain,'TEST_木々渡り').available,'forest destination condition');
+  check(inspect(reg.state,plain).available,'unrestricted teleport works on plain');
+  const far=structuredClone(reg.state);far.players[0].factionState.units.find(u=>u.id===id).x=30;
+  check(inspect(far).reasons.includes('射程外'),'out of range');
+  const low=structuredClone(reg.state);low.players[0].factionState.units.find(u=>u.id===id).ap=0;
+  check(!inspect(low).available,'AP required');
+  const foreign=structuredClone(reg.state);foreign.players[0].factionState.units.find(u=>u.id===id).teleportLocations[0].worldId='cave:test:1';
+  check(!r.inspectV39Teleport(foreign,pid,id,'次元の扉','memory:1',map).available,'other world forbidden');
+  const occupied=structuredClone(reg.state);occupied.enemies=map.grid.flatMap((row,y)=>row.map((_,x)=>({id:`e-${x}-${y}`,hp:10,x,y,worldId:'surface'})));
+  check(!inspect(occupied).available,'occupied arrival forbidden');
+  const started=r.beginV39Teleport(reg.state,pid,id,'次元の扉',target.id,map,'squad');check(started.ok,'party cast');
+  const caster=started.state.players[0].factionState.units.find(u=>u.id===id);check(caster.ap===0&&caster.x===6,'pay once and defer');
+  const done=r.advanceV39Teleports(started.state,state.timeline.turnNumber+1,map);
+  const units=done.players[0].factionState.units;check(new Set(units.map(u=>`${u.x},${u.y}`)).size===2,'no stacked party');
+  check(units.every(u=>u.x>=11&&u.x<=13),'party arrival');
+  check(!units.find(u=>u.id===id).pendingTeleport,'cast cleared');
+  const blocked=r.advanceV39Teleports({...started.state,enemies:occupied.enemies},state.timeline.turnNumber+1,map);
+  check(blocked.players[0].factionState.units.find(u=>u.id===id).x===6,'arrival revalidated');
+  window.setV39GameState({players:started.state.players});
+  const damaged=window.getV39GameState();const victim=damaged.players[0].factionState.units.find(u=>u.id===id);victim.hp-=1;
+  window.setV39GameState({players:damaged.players},{reason:'teleport-test-hit'});
+  check(window.getV39GameState().players[0].factionState.units.find(u=>u.id===id).pendingTeleport.interrupted,'damage interrupts');
+  const stopped=r.advanceV39Teleports(window.getV39GameState(),state.timeline.turnNumber+1,map);
+  check(stopped.players[0].factionState.units.find(u=>u.id===id).x===6,'interrupted cast cannot move');
+  window.setV39GameState({players:reg.state.players});
+  window.refreshV39SquadDerivedUI();
+  return {pid,targetId:target.id};
+ },process.env.V39_UI_ONLY==='1');
+ await page.locator('[data-squad-detail-tab="action"]').click();
+ const open=page.locator('[data-v39-teleport-open="teleport-test"]');await open.waitFor();assert.equal(await open.count(),1);await open.click();
+ await page.locator('[data-teleport-name]').fill('森の目印');await page.locator('[data-teleport-register]').click();
+ assert.equal(await page.locator('[data-teleport-target]').inputValue(),'memory:1');
+ await page.locator('[data-teleport-target]').selectOption(checks.targetId);
+ await page.locator('[data-teleport-mode]').selectOption('squad');
+ await page.screenshot({path:`output/web-game/teleport/panel-${width}.png`});
+ await page.locator('[data-teleport-cast="次元の扉"]').click();
+ assert(await page.evaluate(()=>!!window.getV39ActiveFactionState().units.find(u=>u.id==='teleport-test').pendingTeleport));
+ await page.evaluate(()=>window.importV39SaveJson(window.exportV39SaveJson(0)));
+ assert(await page.evaluate(()=>!!window.getV39ActiveFactionState().units.find(u=>u.id==='teleport-test').pendingTeleport));
+ await page.evaluate(async()=>{await window.advanceV39TestTurns(1);await window.waitForV39MapRenderSettled();});
+ const actual=await page.evaluate(()=>window.getV39ActiveFactionState().units.find(u=>u.id==='teleport-test'));
+ assert.equal(actual.pendingTeleport,null);assert(actual.x>=11&&actual.x<=13,`actual turn did not teleport: ${actual.x},${actual.y}`);
+ assert.equal(actual.teleportLocations[0].name,'森の目印');
+ assert.deepEqual(errors,[]);await page.screenshot({path:`output/web-game/teleport/arrival-${width}.png`});
+ console.log(`${width}: ${process.env.V39_UI_ONLY==='1'?'production UI, shared location, party transfer, save/load and real turn':'shared locations, conditional skills, range/AP/world checks, party placement, interruption, UI, save/load and real turn'} passed`);
+ await page.close();
+}}finally{await browser.close();}

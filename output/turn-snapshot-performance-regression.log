@@ -1,0 +1,1 @@
+PASS performance contracts { turnQueries: 1000, hiddenEvents: 1000, fullReads: 0, captures: 0 }

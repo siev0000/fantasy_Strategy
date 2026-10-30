@@ -1,6 +1,5 @@
 import {
   advanceV39EconomyTurn,
-  buildV39ResourceSnapshot,
   facilityDefinitions,
   resolveV39FacilityEffectsAtTile,
   resolveV39FacilityYieldMultiplier,
@@ -8,10 +7,14 @@ import {
   inspectV39SettlementDevelopment,
   normalizeV39Village,
   startV39Construction,
+  startV39WallConstruction,
   startV39SettlementDevelopment
 } from "../../lib/v39-economy-rules.js";
 import { getSelectedSettlement,getFactionSettlementById } from "../../lib/settlement-state.js";
 import {V39_INITIAL_STOCK_BALANCE} from '../../lib/v39-gameplay-balance.js';
+import {buildV39HeaderResourceSnapshot} from '../../lib/v39-settlement-resource-flow.js';
+import {usesV39OperationPhases,isV39TerritoryPhase} from '../../lib/v39-operation-phases.js';
+import {queueV39OperationPlan} from '../../lib/v39-operation-plans.js';
 import { getVillageScaleDefinitions, resolveVillageScaleDefinition } from "../../composables/villageCoreUtils.js";
 import { getHexOffsetNeighbors } from "../../lib/hex-grid.js";
 import './v39-land-construction-ui.js';
@@ -101,7 +104,7 @@ function renderBuildModal() {
     developmentPanel.innerHTML = `<div class="v39-development-head"><strong>拠点発展: ${escapeHtml(development.current?.name || context.village?.type || "-")} ${development.next ? `→ ${escapeHtml(development.next.name)}` : ""}</strong><span>${project ? `工事中 残り${project.remainingTurns}/${project.totalTurns}T` : (development.next ? `工期 ${development.next.buildTurns}T` : "最大規模")}</span></div>
       ${requirements ? `<div class="v39-development-requirements">${requirements}</div>` : ""}
       ${development.materialPayment?.substitutions?.length ? `<div>${escapeHtml(substitutionText(development.materialPayment))}</div>` : ""}
-      <div class="v39-development-actions"><span class="v39-development-reason">${escapeHtml(development.reason)}</span>${development.next ? `<button type="button" id="v39-development-start" ${development.available ? "" : "disabled"}>${project ? "発展工事中" : "拡張位置を選択"}</button>` : ""}</div>`;
+      <div class="v39-development-actions"><span class="v39-development-reason">${escapeHtml(development.reason)}</span>${development.next ? `<button type="button" id="v39-development-start" ${development.available||(isV39TerritoryPhase(context.state)&&development.next&&!project) ? "" : "disabled"}>${project ? "発展工事中" : "拡張位置を選択"}</button>` : ""}</div>`;
   }
 }
 
@@ -160,7 +163,7 @@ function clearDevelopmentSelection({ reopen = false } = {}) {
 function beginDevelopmentSelection() {
   const context = activeContext(true);
   const inspection = inspectV39SettlementDevelopment(context.state, context.player?.id, context.village?.settlementId || context.village?.id);
-  if (!inspection.available) {
+  if (!inspection.available && !(isV39TerritoryPhase(context.state)&&inspection.next&&!context.village?.developmentProject)) {
     window.showV39TurnBanner?.(`発展不可: ${inspection.reason}`);
     renderBuildModal();
     return { ok:false, reason:inspection.reason, inspection };
@@ -185,6 +188,12 @@ function beginDevelopmentSelection() {
 function confirmDevelopmentSelection() {
   if (!developmentSelection || developmentSelection.selectedTileKeys.size !== developmentSelection.requiredTiles) return { ok:false, reason:"必要マス数を選択してください" };
   const context = activeContext(true);
+  if(usesV39OperationPhases(context.state)){
+    const result=queueV39OperationPlan(context.state,developmentSelection.playerId,developmentSelection.settlementId,
+      {kind:'development',facilityName:developmentSelection.targetName,tile:{x:context.village.x,y:context.village.y},residentialTileKeys:[...developmentSelection.selectedTileKeys]});
+    if(result.ok){window.setV39GameState({players:result.state.players},{reason:'development-planned'});clearDevelopmentSelection();}
+    window.showV39TurnBanner?.(result.ok?'拠点発展を計画に追加しました':result.reason);return result;
+  }
   const result = startV39SettlementDevelopment(
     context.state,
     developmentSelection.playerId,
@@ -249,7 +258,20 @@ function startSelectedConstruction(explicitTile=null) {
   const context = activeContext();
   const tile = explicitTile||targetTile(context);
   const definition = facilityDefinitions().find(row => row.name === selectedFacilityName);
+  if(['防壁','城壁'].includes(definition?.name)){
+    window.openV39LandConstruction?.(tile);
+    return {ok:false,reason:'土地の建築画面で壁の辺を選択してください'};
+  }
   const check = definition ? inspectV39Construction(context.state, context.player, definition, tile) : null;
+  if(usesV39OperationPhases(context.state)){
+    if(!definition)return {ok:false,reason:'施設データがありません'};
+    if(check?.replacesResidential&&!window.confirm('予約した施設へ居住地を変更しますか？ 資材は着手時に消費します。'))return {ok:false,cancelled:true};
+    const plannedBase=context.player.factionState.settlements?.find(base=>(base.operationPlans||[]).some(plan=>plan.kind==='expansion'&&plan.tile.x===tile.x&&plan.tile.y===tile.y)||base.landExpansionProjects?.some(plan=>plan.tileKey===`${tile.x},${tile.y}`));
+    const result=queueV39OperationPlan(context.state,context.player.id,plannedBase?.settlementId||check?.village?.settlementId||context.village?.settlementId,
+      {kind:'construction',facilityName:selectedFacilityName,tile:{x:tile.x,y:tile.y},confirmResidentialReplacement:check?.replacesResidential===true});
+    if(result.ok)window.setV39GameState({players:result.state.players},{reason:'construction-planned'});
+    window.showV39TurnBanner?.(result.ok?'建設を計画に追加しました':result.reason);return result;
+  }
   if (check?.available && check.replacesResidential && !window.confirm(`居住地を${selectedFacilityName}へ変更しますか？\n村表示を施設に置き換え、建設資材を消費します。\n工期は${definition.buildTurns}ターンです。施設があるマスの基礎産出は土地用途の設定に従います。`)) return { ok:false, cancelled:true };
   const result = startV39Construction(context.state, context.player?.id, selectedFacilityName, tile, window.__v39FieldRuntime?.mapData, { confirmResidentialReplacement:check?.replacesResidential === true });
   if (!result.ok) {
@@ -264,10 +286,17 @@ function startSelectedConstruction(explicitTile=null) {
   return result;
 }
 
+let cachedHeaderSnapshot=null,cachedHeaderMap=null;
 function currentResourceSnapshot() {
   // Before the initial village is placed, the player's resource bags are empty rather than sample data.
-  const player = window.getV39ActivePlayer?.();
-  return buildV39ResourceSnapshot(normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race) || {});
+  const map=window.__v39FieldRuntime?.mapData;
+  if(cachedHeaderSnapshot&&cachedHeaderMap===map)return cachedHeaderSnapshot;
+  const state=window.getV39GameState?.({includeWorlds:false});
+  const player=state?.players?.find(row=>row.id===state.activePlayerId)||window.getV39ActivePlayer?.();
+  const village=normalizeV39Village(getSelectedSettlement(player?.factionState),player?.race);
+  const snapshot=buildV39HeaderResourceSnapshot(state,player,village,map);
+  if(map&&village?.placed){cachedHeaderSnapshot=snapshot;cachedHeaderMap=map;}
+  return snapshot;
 }
 
 function handleTurn() {
@@ -294,7 +323,9 @@ function handleTurn() {
       window.showV39TurnBanner?.(`開拓完了: ${result.landExpansionCompleted.map(row => row.tileKey).join(" / ")}`);
     }
     if (result.completed.length) {
-      window.showV39TurnBanner?.(`建設完了: ${result.completed.map(row => row.facilityName).join("、")}`);
+      const counts=new Map();
+      for(const row of result.completed){const name=`${row.facilityName}${row.edge?'（辺）':''}`;counts.set(name,(counts.get(name)||0)+1);}
+      window.showV39TurnBanner?.(`建設完了: ${[...counts].map(([name,count])=>`${name}${count>1?`×${count}`:''}`).join('、')}`);
       window.dispatchEvent(new CustomEvent("v39:construction-completed", { detail:{ completed:result.completed } }));
     }
     if (result.developmentCompleted?.length) {
@@ -331,7 +362,9 @@ function handleTurn() {
   }
 }
 
-function refresh() {
+function refresh(event) {
+  if(event?.detail?.reason==='activity-log')return;
+  cachedHeaderSnapshot=null;
   window.renderV39ResourceTop?.();
   if (modal?.classList.contains("open")) renderBuildModal();
 }
@@ -357,6 +390,20 @@ window.startV39Construction = (facilityName, tile = targetTile()) => {
   selectedFacilityName = text(facilityName);
   selectedTile = tile;
   return startSelectedConstruction(tile);
+};
+window.startV39WallConstruction=(facilityName,edges)=>{
+  const context=activeContext();
+  if(usesV39OperationPhases(context.state)){
+    const result=queueV39OperationPlan(context.state,context.player.id,getFactionSettlementById(context.player.factionState,context.state.territoryStateByTile?.[`${edges[0]?.from?.x},${edges[0]?.from?.y}`]?.settlementId)?.settlementId||context.village.settlementId,{kind:'wall',facilityName,edges,tile:edges[0]?.from});
+    if(result.ok)window.setV39GameState({players:result.state.players},{reason:'wall-planned'});
+    window.showV39TurnBanner?.(result.ok?'壁の建設を計画に追加しました':result.reason);return result;
+  }
+  const result=startV39WallConstruction(context.state,context.player?.id,facilityName,edges,window.__v39FieldRuntime?.mapData);
+  if(result.ok){
+    window.setV39GameState?.({players:result.state.players},{reason:'wall-construction-started'});
+    window.showV39TurnBanner?.(`${facilityName} ${result.queueItems.length}辺の建築を開始しました`);
+  }
+  return result;
 };
 window.openV39SettlementDevelopment = (settlementId='') => {
   developmentSettlementId=settlementId;

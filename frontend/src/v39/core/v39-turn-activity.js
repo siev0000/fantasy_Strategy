@@ -4,7 +4,7 @@ const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(
 function markUnitActivity(unitIds, field, reason) {
   const ids = new Set((Array.isArray(unitIds) ? unitIds : [unitIds]).map(text).filter(Boolean));
   if (!ids.size) return false;
-  const state = window.getV39GameState?.();
+  const state = window.getV39GameState?.({includeWorlds:false});
   if (!state) return false;
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   let changed = false;
@@ -18,7 +18,7 @@ function markUnitActivity(unitIds, field, reason) {
     factionState:{ ...player.factionState, units:player.factionState.units.map(apply) }
   }));
   const enemies = state.enemies.map(apply);
-  if (changed) window.setV39GameState?.({ players, enemies }, { reason });
+  if (changed) window.setV39GameState?.({ players, enemies }, { reason,returnState:false });
   return changed;
 }
 

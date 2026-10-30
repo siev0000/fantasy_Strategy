@@ -115,6 +115,7 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
     if (['resource-demand','resource-receive'].includes(objective.type) && getHexDistance(unit, objective) <= 1) continue;
     if (objective.type === 'resource-return' && isV39NpcResourceReturnComplete(player, objective)) continue;
     const group = resolveV39SquadMovementGroup(player.factionState, unitId(unit));
+    if(group.participants?.some(member=>player.factionState.combatRuntime?.pendingActionsByUnitId?.[member.id]?.aimAfterCast))continue;
     if (!group.ok || group.moveAp <= 0) continue;
     const start = { x:group.x, y:group.y };
     if(objective.type==='victory-landmark'&&getHexDistance(start,objective)===0)continue;
@@ -131,7 +132,7 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
       let valid = true;
       for (const member of group.participants) {
         const position = positions.find(row => row.id === unitId(member));
-        const stepCost = resolveV39UnitMovementStepCost(mapData, member.x, member.y, position.x, position.y, member);
+        const stepCost = resolveV39UnitMovementStepCost(mapData, member.x, member.y, position.x, position.y, member, state);
         if (!Number.isFinite(stepCost)) { valid = false; break; }
         cost = Math.max(cost, stepCost);
       }
@@ -173,6 +174,7 @@ function findNpcScoutStep(state, player, mapData) {
     if(workers.has(unit.id))continue;
     if (!alive(unit) || unit.tradeAssignment || unit.transportAssignment || player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id) || unit.surveyTask || unit.pendingWorldExit || (unit.worldId || 'surface') !== 'surface') continue;
     const group = resolveV39SquadMovementGroup(player.factionState, unit.id);
+    if(group.participants?.some(member=>player.factionState.combatRuntime?.pendingActionsByUnitId?.[member.id]?.aimAfterCast))continue;
     if (!group.ok || group.moveAp <= 0) continue;
     const groupKey = group.participants.map(member => member.id).sort().join('|');
     if (checkedGroups.has(groupKey)) continue;
@@ -193,7 +195,7 @@ function findNpcScoutStep(state, player, mapData) {
         let cost = 0;
         for (const member of current.members) {
           const to = positions.find(row => row.id === member.id);
-          cost = Math.max(cost, resolveV39UnitMovementStepCost(mapData, member.x, member.y, to.x, to.y, member));
+          cost = Math.max(cost, resolveV39UnitMovementStepCost(mapData, member.x, member.y, to.x, to.y, member, state));
         }
         if (!Number.isFinite(cost) || (!current.first && cost > group.moveAp)) continue;
         const first = current.first || { group, target:{ ...target, positions }, cost };
@@ -254,9 +256,11 @@ function planAiCombat(state, player, objective) {
   const attackers = (player?.factionState?.units || []).filter(unit=>alive(unit)&&(unit.worldId||'surface')===(state.activeWorldId||'surface')&&!unit.pendingWorldExit)
     .sort((left, right) => text(left?.id).localeCompare(text(right?.id), "ja"));
   for (const attacker of attackers) {
-    const rows = resolveAttackRows(attacker)
+    const pending=player.factionState.combatRuntime?.pendingActionsByUnitId?.[attacker.id];
+    if(pending?.aimAfterCast&&Number(pending.resolvesAtTurn)>Number(state.timeline.turnNumber))continue;
+    const rows = (pending?.aimAfterCast?[pending.skillRow]:resolveAttackRows(attacker))
       .filter(row => !isV39SupportSkill(row, attacker))
-      .filter(row => number(attacker?.ap ?? attacker?.currentAp) >= resolveAttackApCost(row, attacker));
+      .filter(row => pending?.aimAfterCast||number(attacker?.ap ?? attacker?.currentAp) >= resolveAttackApCost(row, attacker));
     for (const skillRow of rows) {
       const range = resolveAttackRange(skillRow, attacker, window.__v39FieldRuntime?.mapData);
       const foreignTargets = (state?.players || [])

@@ -1,5 +1,5 @@
 // Drawing only. Playback, visibility and cancellation are owned by v39-effect-settings.js.
-import { resolveEffectSheetLayout } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
+import { resolveEffectSheetLayout, resolveEffectFrameRange, resolveEffectPowerAxes } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
 import { resolveV39EffectPlaybackDescriptor } from "../combat/v39-effect-player.js";
 import { effectPreviewGeometry } from "./v39-effect-preview-combatants.js";
 import { V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
@@ -132,8 +132,9 @@ export async function drawIdlePreview({ fullImage = false } = {}) {
     const geometry = effectPreviewGeometry(element("v39-effect-preview-stage"), descriptor);
     const scale = fullImage ? baseScale : geometry.fitDiameterPx>0?geometry.fitDiameterPx/Math.min(sourceWidth,sourceHeight)
       : geometry.zoom * V39_EFFECT_BASE_SCALE_PERCENT / 100 * settingScale * source.sourceScaleMultiplier;
-    const drawWidth = Math.max(1, !fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='x'?geometry.stretchLengthPx:sourceWidth * scale);
-    const drawHeight = Math.max(1, !fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='y'?geometry.stretchLengthPx:sourceHeight * scale);
+    const axes=fullImage?{x:1,y:1}:resolveEffectPowerAxes(geometry);
+    const drawWidth = Math.max(1, (!fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='x'?geometry.stretchLengthPx:sourceWidth * scale)*axes.x);
+    const drawHeight = Math.max(1, (!fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='y'?geometry.stretchLengthPx:sourceHeight * scale)*axes.y);
     const x = (fullImage ? canvasWidth / 2 : geometry.x) - drawWidth / 2;
     const y = (fullImage ? canvasHeight / 2 : geometry.y) - drawHeight / 2;
     context.save();
@@ -142,7 +143,8 @@ export async function drawIdlePreview({ fullImage = false } = {}) {
       context.rotate(geometry.angleDeg * Math.PI / 180);
       context.translate(-geometry.x, -geometry.y);
     }
-    context.drawImage(image, 0, 0, sourceWidth, sourceHeight, x, y, drawWidth, drawHeight);
+    const first=fullImage?0:resolveEffectFrameRange(layout.frameCount,descriptor.sequenceSources[0]).start;
+    context.drawImage(image,layout.horizontal?first*layout.frameWidth:0,layout.horizontal?0:first*layout.frameHeight,sourceWidth,sourceHeight,x,y,drawWidth,drawHeight);
     if (!fullImage) applyFirstFrameColor(context, descriptor, x, y, drawWidth, drawHeight);
     context.restore();
     canvas.style.display = "block";

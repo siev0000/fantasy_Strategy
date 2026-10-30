@@ -5,6 +5,7 @@ import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLeve
 import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
 import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
 import { resolveV39MovementStatFromStatus } from "../../lib/v39-gameplay-balance.js";
+import {applyV39SizStatusModifiers} from '../../lib/v39-siz-status-rules.js';
 import { isV39InvalidDataToken } from "../../lib/v39-class-rules.js";
 import { deriveV39BodyWeaponLevels } from "../../lib/v39-body-weapon-rules.js";
 import { getV39PassiveRows, isV39ConditionalPassive, collectV39PassiveBonuses, addV39PassiveValues } from "../../lib/v39-passive-rules.js";
@@ -244,7 +245,8 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   });
   const basePassives=getV39PassiveRows({techniques}).filter(row=>!isV39ConditionalPassive(row));
   const passiveBonuses=collectV39PassiveBonuses(basePassives);
-  const status = addV39PassiveValues(applyMilitaryProfileToStatus(statusResult.status || {}, unit?.combatProfile),passiveBonuses.status);
+  const sized=applyV39SizStatusModifiers(statusResult.status||{},skillLevels);
+  const status = addV39PassiveValues(applyMilitaryProfileToStatus(sized.status, unit?.combatProfile),passiveBonuses.status);
   const bodyWeaponLevels=deriveV39BodyWeaponLevels([raceRow,classRow,secondClassRow,strongAnimalClassRow,...prerequisiteClasses.map(prior=>prior.row)]);
   for (const [key,value] of Object.entries(passiveBonuses.bodyWeaponValues)) {
     bodyWeaponLevels[key]=(bodyWeaponLevels[key]||0)+value/V39_BODY_WEAPON_BALANCE.levelDivisor;
@@ -266,7 +268,8 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     strongAnimalClassLevel,
     initialRaceBonusLevel: INITIAL_RACE_BONUS_LEVEL,
     status,
-    skillLevels:addV39PassiveValues(skillLevels,passiveBonuses.skillLevels),
+    skillLevels:addV39PassiveValues(sized.skillLevels,passiveBonuses.skillLevels),
+    sizModifiers:sized.modifiers,
     resistances:addV39PassiveValues(resistances,passiveBonuses.resistances),
     passiveBaseSkillNames:basePassives.map(row=>row.名前),
     passiveDiagnostics:passiveBonuses.unsupported,
@@ -315,8 +318,15 @@ export function applyV39DerivedCharacterData(unit = {}) {
   });
   status.移動 = movement + number(derived.passiveBonuses?.status?.移動);
   if(unit.testOnly===true)status.移動=Math.max(status.移動,number(unit.testMovementMinimum));
+  const maxHp=number(status.HP,derived.maxHp),oldMax=Number(unit.maxHp??unit.status?.HP),currentHp=Number(unit.hp??unit.currentHp);
+  let hpPatch={};
+  if(oldMax>0&&Number.isFinite(currentHp)&&oldMax!==maxHp){
+    const hp=currentHp<=0||unit.state==='死亡'?0:Math.max(1,Math.min(maxHp,Math.round(maxHp*Math.min(1,currentHp/oldMax))));
+    hpPatch={hp,currentHp:hp};
+  }
   return {
     ...unit,
+    ...hpPatch,
     race: derived.race,
     className: derived.className,
     level: derived.level,
@@ -334,9 +344,11 @@ export function applyV39DerivedCharacterData(unit = {}) {
     techniques: derived.techniques.map(row => ({ ...row })),
     bodyWeaponLevels: { ...derived.bodyWeaponLevels },
     derivedCharacter: derived,
-    maxHp: number(status.HP, derived.maxHp)
+    maxHp
   };
 }
 
-window.deriveV39CharacterFromRaceClass = deriveV39CharacterFromRaceClass;
-window.applyV39DerivedCharacterData = applyV39DerivedCharacterData;
+if(typeof window!=='undefined'){
+  window.deriveV39CharacterFromRaceClass = deriveV39CharacterFromRaceClass;
+  window.applyV39DerivedCharacterData = applyV39DerivedCharacterData;
+}

@@ -15,6 +15,7 @@
         align-items:center!important;gap:1px 4px!important;padding:2px 3px!important
       }
       .squad-detail-pane .technique-icon{
+        position:relative!important;padding:0!important;flex-shrink:0!important;
         grid-area:icon!important;width:28px!important;height:28px!important;display:grid!important;place-items:center!important;
         border:1px solid #40545a!important;border-radius:7px!important;background:#1b2a30!important;
         font-size:var(--font-size-16)!important;line-height:1!important;overflow:hidden!important
@@ -24,9 +25,10 @@
         filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))
       }
       .squad-detail-pane .technique-icon-glyph{
+        position:absolute!important;inset:0!important;grid-area:auto!important;text-align:center!important;
         width:100%!important;height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;
-        margin:0!important;padding:0!important;font-size:var(--font-size-14)!important;line-height:1!important;color:#d5e0df!important;
-        transform:translateY(-1px)!important
+        margin:0!important;padding:0!important;font-size:22px!important;line-height:1!important;color:#d5e0df!important;
+        transform:none!important
       }
       .squad-detail-pane .technique-icon.technique-icon-power{
         border-color:#d27245!important;

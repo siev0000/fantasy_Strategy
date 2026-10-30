@@ -37,6 +37,9 @@ function detail(frame,actor){
   if(session.view==='summary')return `<h3>${esc(actor.name)} <small>${esc(actor.kind)} / ${esc(actor.race)}</small></h3><p>目標: ${esc(actor.goal)}${actor.units.length?'':'（行動可能な戦力なし）'}</p><p>判断理由: ${esc(actor.reasons.join(' / ')||'追加の阻害理由なし')}</p>
     <div class="sim-metrics"><span>人口 ${actor.population}</span><span>生存戦力 ${actor.units.length}</span><span>完成施設 ${actor.buildings.length}</span><span>訓練 ${actor.training.length}</span></div>
     <h4>食料方針</h4>${actor.food.map(row=>`<p>${esc(row.name)}: ${row.active?'食料優先':'通常'} / 収支不足 ${round(row.deficitTotal)} / 備蓄不足 ${round(row.reserveDeficitTotal)}</p>`).join('')||'<p>計画記録なし</p>'}
+    <h4>災害・施設・輸送</h4>${(actor.environment?.disasters||[]).map(row=>`<p>${esc(row.name)} / ${esc(row.worldId)} / 影響${row.affectedTiles}マス</p>`).join('')||(actor.environment?'<p>災害の影響なし</p>':'<p>環境記録なし（旧ログ）</p>')}
+    ${(actor.environment?.facilities||[]).filter(row=>row.hp<row.maxHp).map(row=>`<p>${esc(row.name)} (${esc(row.key)}) HP ${round(row.hp)}/${round(row.maxHp)}${row.hp===0?' / 損壊':''}${row.cause?` / 最終被害: ${esc(row.cause)}`:''}</p>`).join('')}
+    ${(actor.environment?.transports||[]).map(row=>`<p>${esc(row.name)} / 輸送 ${esc(row.status)}${row.reason?` / ${esc(row.reason)}`:''}</p>`).join('')}
     <h4>建設・開拓 / 訓練</h4><p>次の建設: ${esc(actor.nextConstruction||'未決定')}</p>${actor.pending.map(item=>`<p>${esc(item.name)} (${esc(item.tileKey)}) 残${esc(item.remainingTurns)}T</p>`).join('')||'<p>工事なし</p>'}${actor.training.map(item=>`<p>${esc(item.name)} EXP ${esc(item.progress??'?')} / ${esc(item.required??'?')}</p>`).join('')}
     <h4>不足資材（在庫 / 必要）</h4>${actor.needs.map(row=>`<p>${esc(row.name)} ${round(row.stock)} / ${round(row.required)}（不足${round(row.missing)}） ${esc(row.purpose)}</p>`).join('')||'<p>記録なし</p>'}
     <h4>在庫</h4><dl class="sim-stocks">${Object.entries(actor.stocks).map(([key,value])=>{

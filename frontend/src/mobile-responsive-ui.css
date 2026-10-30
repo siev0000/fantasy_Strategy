@@ -6,7 +6,7 @@
    - everything else: right command sidebar
 */
 
-/* Scroll remains available, but scrollbars never consume layout width. */
+/* Scrollbar appearance is owned by v39-scrollbars.css. */
 .field-footer-tabs-overlay,
 .field-footer-tab-body,
 .field-footer-unit-pane,
@@ -17,24 +17,7 @@
 .field-overlay-own-faction-panel,
 .own-faction-navigator-modal,
 .own-faction-navigator-body {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
   scrollbar-gutter: auto !important;
-}
-
-.field-footer-tabs-overlay::-webkit-scrollbar,
-.field-footer-tab-body::-webkit-scrollbar,
-.field-footer-unit-pane::-webkit-scrollbar,
-.field-footer-character-pane::-webkit-scrollbar,
-.field-footer-enemy-pane::-webkit-scrollbar,
-.field-footer-tile-pane::-webkit-scrollbar,
-.field-footer-tile-data-pane::-webkit-scrollbar,
-.field-overlay-own-faction-panel::-webkit-scrollbar,
-.own-faction-navigator-modal::-webkit-scrollbar,
-.own-faction-navigator-body::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
 }
 
 .field-overlay-own-faction-panel {
@@ -57,13 +40,6 @@
   min-height: 38px !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
-  scrollbar-width: none !important;
-}
-
-.field-footer-tab-row::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
 }
 
 .field-footer-tab-btn {

@@ -3,6 +3,8 @@ import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 import "./v39-unit-detail.css";
 import {EQUIPMENT_SLOT_KEYS} from '../../constants/unitCommon.js';
+import {resolveV39UnitWeatherMovement} from '../../lib/v39-terrain-traversal.js';
+import {V39_UNIT_ACHIEVEMENT_FIELDS} from '../../lib/v39-unit-achievements.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -53,11 +55,23 @@ export function renderV39UnitGrowth(unit){
   return `<div class="v39-char-growth-list">${rows.map(([label,value])=>`<div class="v39-char-growth-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>`;
 }
 
+export function renderV39UnitAchievements(unit){
+  const number=value=>Math.max(0,Math.floor(Number(value)||0));
+  const values=unit?.achievements||{};
+  const rows=V39_UNIT_ACHIEVEMENT_FIELDS.map(row=>`<div class="v39-char-growth-row"><span>${escapeHtml(row.label)}</span><b>${row.connected?`${number(values[row.key])}${row.unit}`:'未接続'}</b></div>`).join('');
+  return `<div class="v39-char-growth-list">${rows}</div>
+    <p class="v39-char-note">記録開始後の累計です。転職・転生でリセットしません。過去の行動は遡って集計しません。</p>
+    <details class="v39-char-note"><summary>集計ルール</summary><p>攻撃は範囲・連撃も1行動で1回。反撃も含みます。暗殺は系統「暗殺」の使用時に1回（撃破不要）。クリティカルは敵への物理攻撃で成立したヒット数です。治療は他者の実HP回復を対象ごとに記録。自己・自然回復は除外。状態異常解除の統合は未接続です。調査は完了したマス数、移動は実際に歩いた距離（転移・強制移動を除外）。強敵は自分以上のLvです。仲間を守る回数は、効果「守護」を自分以外の味方に使った対象数です。</p><p>破壊内訳：地形 ${number(values.terrain)} / 壁・結界 ${number(values.walls)} / 施設 未接続。土地/壁は壊れた時だけ記録します。</p><p>状態異常・施設破壊、クラス取得条件への使用は未接続です。</p></details>`;
+}
+
 export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
   const adjusted = applyV39TerrainModifiers(unit, mapData);
+  const weatherMovement=resolveV39UnitWeatherMovement(adjusted,mapData);
   const id = value => fieldIds ? ` id="${value}"` : "";
   const stats = STATUS_FIELDS.map(([label, key, fieldId]) => {
-    const raw = key === "移動"
+    const raw = key==='移動'&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0)?Math.max(1,Math.floor(weatherMovement.movement))
+      :key==='飛行'&&weatherMovement.flightReduction>0?Math.round(weatherMovement.flight*10)/10
+      :key === "移動"
       ? unit?.movement ?? unit?.status?.移動 ?? unit?.move ?? unit?.moveRange ?? unit?.移動
       : key === "飛行" ? adjusted?.skillLevels?.飛行 ?? adjusted?.status?.飛行 ?? unit?.飛行 ?? 0
       : adjusted?.status?.[key] ?? unit?.[key];
@@ -80,7 +94,7 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
   }).join("");
   const empty = message => `<div class="squad-empty">${message}</div>`;
   const level=Math.max(1,Math.floor(Number(unit?.level??unit?.lv??unit?.Lv)||1));
-  const identity=unit?`<div class="v39-unit-lineage"><span>種族：${escapeHtml(unit.race||'-')}</span><span>クラス：${escapeHtml(unit.className||'-')}</span></div>`:'';
+  const identity=unit?`<div class="v39-unit-lineage v39-unit-lineage-pair"><span>種族：${escapeHtml(unit.race||'-')}</span><span>クラス：${escapeHtml(unit.className||'-')}</span></div>`:'';
   const aura=adjusted?.cityAuraSkillNames?.length?`<div class="v39-unit-lineage">都市常時：${escapeHtml(adjusted.cityAuraSkillNames.join(' / '))}</div>`:'';
   return renderV39DetailSection(unit?`ステータス Lv${level}`:'ステータス', `${identity}${aura}<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`)
     + renderV39DetailSection("技能", `<div class="proficiency-grid"${id("detailProficiencyList")}>${skills || empty("技能データなし")}</div>`)

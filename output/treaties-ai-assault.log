@@ -1,0 +1,30 @@
+{
+  "report": {
+    "action": {
+      "skillName": "剣",
+      "tileKey": "12,12"
+    },
+    "result": {
+      "ok": true,
+      "playerId": "npc-1",
+      "attackerId": "npc-1-player-1-leon",
+      "ownerPlayerId": "player-1",
+      "key": "12,12",
+      "skillName": "剣",
+      "apCost": 30,
+      "damage": 72,
+      "hpBefore": 1000,
+      "hp": 928,
+      "completed": false
+    },
+    "beforeAp": 100,
+    "afterAp": 70,
+    "territory": {
+      "status": "領土",
+      "settlementId": "test",
+      "hp": 928,
+      "maxHp": 1000
+    }
+  },
+  "errors": []
+}

@@ -1,12 +1,13 @@
 import {createV39HegemonyWorld,hegemonyEntranceAt,V39_HEGEMONY_EXIT_TURNS} from '../../lib/v39-hegemony-areas.js';
+import {normalizeV39SpatialUnitWorlds} from '../../lib/v39-spatial-unit-worlds.js';
 import {advanceV39WorldExits} from '../../lib/v39-world-exit-rules.js';
 import {prepareV39HegemonyWorlds} from '../../lib/v39-hegemony-land-rules.js';
 import {getHexDistance} from '../../lib/hex-grid.js';
 import {transferV39GuardianLand} from '../../lib/v39-guardian-quests.js';
-import { createCaveCharacter, generateCaveFloor, useCaveSite, caveSiteUnavailable } from "../../lib/v39-cave-adventure.js";
+import { createCaveCharacter, generateCaveFloor, useCaveSite, caveSiteUnavailable, inspectV39CaveSiteGather } from "../../lib/v39-cave-adventure.js";
 import { findV39CavePath, createV39CaveSeed } from "../../lib/v39-cave-generator.js";
 import { createPlayerRecord } from "../../lib/player-state.js";
-import { addV39CargoToFactionUnit } from "../../lib/v39-logistics-state.js";
+import { addV39CargoToFactionUnit, resolveV39FactionUnitCargoStatus } from "../../lib/v39-logistics-state.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { groupV39SurfaceCaves, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
@@ -24,6 +25,7 @@ import { collectV39MovementOccupancy } from "../../lib/v39-movement-occupancy-ru
 import {v39SquadMoveMode} from '../../lib/v39-squad-coordination.js';
 import { playV39UnitMovementPath } from "../unit/v39-unit-movement.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
+import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { assignV39MineDuty, advanceV39MineDuties, advanceV39CaveIntrusions } from "../../lib/v39-cave-operations.js";
 
 const spatialKeys=["enemies","enemySquads","enemyNests","enemyCombatRuntime","settlements","territoryOwnerByTile","territoryStateByTile","recoveryPercentByTile","dangerPercentByTile","facilitiesByTile","neutralVillages","wandererGroups","groundLootByTile","explorationSitesByTile","specialtiesByTile","victoryLandmarksByTile","worldEnvironment"];
@@ -59,7 +61,10 @@ function activateWorld(state,worlds,id,players=state.players){
 
 function createWorld(options){
   if(options.hegemonyArea)return createV39HegemonyWorld(options);
-  const {map,enemies,sites}=generateCaveFloor({seed:options.seed||"expedition-1",templateId:options.templateId||"random",floor:options.floor||1,caveTest:options.caveTest===true,entranceCount:Math.max(2,options.surfaceEntrances?.length||2)});
+  // One surface entrance still needs a second internal endpoint for stairs.
+  const surfaceEntrances=[...(options.surfaceEntrances||[])];
+  if(surfaceEntrances.length===1)surfaceEntrances.push(null);
+  const {map,enemies,sites}=generateCaveFloor({seed:options.seed||"expedition-1",templateId:options.templateId||"random",floor:options.floor||1,caveTest:options.caveTest===true,entranceCount:Math.max(2,surfaceEntrances.length),surfaceEntrances});
   map.caveSites=sites;
   map.caveBossIds=enemies.filter(unit=>unit.isCaveBoss).map(unit=>unit.id);
   map.caveBossRace=enemies.find(unit=>unit.isCaveBoss)?.race||"";
@@ -126,6 +131,7 @@ export function enterV39Cave(options={}){
   }
   const worlds=rememberWorld(state),worldId=options.worldId||`cave:${options.seed||"expedition-1"}:${options.floor||1}`;
   worlds[worldId] ||= createWorld(options);
+  worlds[worldId].spatial=normalizeV39SpatialUnitWorlds(worlds[worldId].spatial,worldId);
   const world=worlds[worldId],entry=world.map.entrances.find(tile=>tile.surfaceEntrance?.x===options.entrySurface?.x&&tile.surfaceEntrance?.y===options.entrySurface?.y)||world.map.entrances[0];
   if(world.map.hegemonyInterior&&options.entrySurface)world.map.parentExit={...options.entrySurface};
   if(world.map.hegemonyInterior)world.map.hegemonyVisited=true;
@@ -163,18 +169,107 @@ export function enterV39Cave(options={}){
   return activateWorld(state,worlds,worldId,players);
 }
 
-// View an owned unit's world without moving the unit or changing its mission.
+// Reuse normal cave generation only when the saved map is absent.
+window.recoverV39MissingCaves=(input,activeMap)=>{
+  const worlds={...input.explorationWorlds},reports=[];
+  const activeId=input.activeWorldId||'surface';
+  if(!worlds[activeId]?.map&&activeMap?.grid){
+    worlds[activeId]={...worlds[activeId],map:clone(activeMap),
+      spatial:Object.fromEntries(spatialKeys.map(key=>[key,clone(input[key])])),
+      visibility:Object.fromEntries(input.players.map(p=>[p.id,clone(p.factionState.visibility)])),
+      exploration:Object.fromEntries(input.players.map(p=>[p.id,clone(p.factionState.exploration)]))};
+  }
+  const missing=[...new Set(input.players.flatMap(p=>p.factionState.units)
+    .filter(u=>Number(u.hp??u.currentHp)>0&&String(u.worldId).startsWith('cave:')&&!worlds[u.worldId]?.map).map(u=>u.worldId))];
+  const generated=new Set();
+  const ensure=id=>{
+    if(worlds[id]?.map)return worlds[id];
+    const match=/^cave:(.*):(\d+)$/.exec(id),seed=match?.[1]||id,floor=Math.max(1,Number(match?.[2])||1);
+    const surfaceMatch=/^entrance-(\d+)-(\d+)$/.exec(seed);
+    const surfaceMap=worlds.surface?.map;
+    const groups=surfaceMap?groupV39SurfaceCaves(surfaceMap):[];
+    const lastSurface=input.players.flatMap(p=>p.factionState.units).find(u=>u.worldId===id)?.locationsByWorld?.surface;
+    const anchor=surfaceMatch?{x:Number(surfaceMatch[1]),y:Number(surfaceMatch[2])}:lastSurface;
+    const group=anchor?groups.find(group=>group.some(tile=>tile.x===anchor.x&&tile.y===anchor.y)):groups[0];
+    const parentWorldId=floor>1?`cave:${seed}:${floor-1}`:null;
+    const parent=parentWorldId?ensure(parentWorldId):null;
+    worlds[id]=createWorld({seed,floor,parentWorldId,parentExit:parent?.map.stairsDown,
+      surfaceEntrances:floor===1?(group||(anchor?[anchor]:[])):[]});
+    worlds[id].spatial=normalizeV39SpatialUnitWorlds(worlds[id].spatial,id);
+    generated.add(id);
+    return worlds[id];
+  };
+  for(const id of missing)ensure(id);
+  let players=input.players;
+  for(const id of generated){
+    const world=worlds[id],map=world.map,entry=map.entrances[0];
+    const queue=[entry],seen=new Set([`${entry.x},${entry.y}`]);
+    for(let i=0;i<queue.length;i++)for(const tile of getHexNeighborCoords(map.w,map.h,queue[i].x,queue[i].y)){
+      if(seen.has(tile.key)||map.grid[tile.y][tile.x]!=='洞窟')continue;
+      seen.add(tile.key);queue.push(tile);
+    }
+    const occupied=new Set(world.spatial.enemies.map(u=>`${u.x},${u.y}`));
+    if(map.caveEventNpc)occupied.add(`${map.caveEventNpc.x},${map.caveEventNpc.y}`);
+    const moved=[];
+    players=players.map(player=>{
+      const ids=new Set();
+      const units=player.factionState.units.map(unit=>{
+        if(!isV39UnitInWorld(unit,id)||Number(unit.hp??unit.currentHp)<=0)return unit;
+        const tile=queue.find(tile=>!occupied.has(`${tile.x},${tile.y}`)&&canUnitEnterV39Tile(map,tile.x,tile.y,unit));
+        if(!tile)throw new Error('再生成した洞窟の入口付近にユニットを配置できません。');
+        occupied.add(`${tile.x},${tile.y}`);ids.add(unit.id);
+        moved.push({playerId:player.id,unitId:unit.id,name:unit.name,from:{x:unit.x,y:unit.y},to:{x:tile.x,y:tile.y}});
+        return {...unit,x:tile.x,y:tile.y,pendingWorldExit:null,
+          locationsByWorld:{...unit.locationsByWorld,[id]:{x:tile.x,y:tile.y}}};
+      });
+      if(!ids.size)return player;
+      const runtime=player.factionState.combatRuntime||{};
+      return {...player,factionState:{...player.factionState,units,
+        moveCommandUnitId:ids.has(player.factionState.moveCommandUnitId)?'':player.factionState.moveCommandUnitId,
+        combatRuntime:{...runtime,pendingActionsByUnitId:Object.fromEntries(Object.entries(runtime.pendingActionsByUnitId||{}).filter(([id])=>!ids.has(id)))}}};
+    });
+    reports.push({worldId:id,floor:map.caveFloor,seed:map.caveSeed,units:moved});
+  }
+  if(generated.has(activeId))players=players.map(player=>({...player,factionState:{...player.factionState,visibility:{},exploration:{}}}));
+  return {state:{...input,explorationWorlds:worlds,players,
+    ...(generated.has(activeId)?worlds[activeId].spatial:{})},reports};
+};
+window.logV39CaveRecovery=reports=>{
+  for(const report of reports){
+    const owners=[...new Set(report.units.map(u=>u.playerId))];
+    const message=`洞窟データ欠損のため地下${report.floor}階を再生成。${report.units.length}体を入口付近へ戻しました。地形・敵・探索状況は再生成されました。`;
+    const audience=[...new Set([...owners,window.getV39GameState({includeWorlds:false}).activePlayerId])];
+    window.appendV39ActivityLog?.(audience,'洞窟復旧',message,report);
+    window.showV39TurnBanner?.(message,true);
+  }
+};
+
+// View an owned unit's world; recover a missing cave before switching layers.
 window.viewV39OwnedUnitWorld=(unitId,{surface=false}={})=>{
   if(window.isV39MapInputLocked?.())return false;
-  const state=window.getV39GameState(),faction=state.players.find(p=>p.id===state.activePlayerId)?.factionState;
+  let state=window.getV39GameState();
+  const missing=state.players.some(p=>p.factionState.units.some(u=>Number(u.hp??u.currentHp)>0&&String(u.worldId).startsWith('cave:')
+    &&u.worldId!==state.activeWorldId&&!state.explorationWorlds?.[u.worldId]?.map));
+  const recovery=missing?window.recoverV39MissingCaves({...state,explorationWorlds:rememberWorld(state)}):null;
+  if(recovery?.reports.length){
+    window.setV39GameState({players:recovery.state.players,explorationWorlds:recovery.state.explorationWorlds},{reason:'cave-regenerated'});
+    window.logV39CaveRecovery(recovery.reports);state=window.getV39GameState();
+  }
+  const faction=state.players.find(p=>p.id===state.activePlayerId)?.factionState;
   const unit=faction?.units.find(u=>u.id===unitId&&Number(u.hp??u.currentHp)>0);
   if(!unit)return false;
-  const id=surface?'surface':unit.worldId||'surface',worlds=rememberWorld(state);
-  if(!worlds[id]?.map)return false;
+  const id=surface?'surface':unit.worldId||'surface';
   const selected=(unit.worldId||'surface')===id?unit:faction.units.find(u=>(u.worldId||'surface')===id&&Number(u.hp??u.currentHp)>0);
   const players=state.players.map(p=>p.id===state.activePlayerId?{...p,factionState:{...p.factionState,selectedUnitId:selected?.id||p.factionState.selectedUnitId}}:p);
-  if(id!==state.activeWorldId)activateWorld(state,worlds,id,players);
-  else window.setV39GameState({players},{reason:'logistics-unit-viewed'});
+  if(id!==state.activeWorldId){
+    const worlds=rememberWorld(state);
+    if(!worlds[id]?.map){
+      window.showV39TurnBanner?.(`${unit.name||'ユニット'}の移動先マップがセーブにありません。洞窟データを含むバックアップからの復旧が必要です。`,true);
+      return false;
+    }
+    activateWorld(state,worlds,id,players);
+  }else if(selected?.id!==faction.selectedUnitId)window.setV39GameState({players},{reason:'logistics-unit-viewed'});
+  if(selected)focusV39MapTile(selected,{worldId:id});
   return true;
 };
 
@@ -424,7 +519,7 @@ function updateMineOptions(select,rows){
 
 function renderMineActions(list,state,actor,map){
   let operations=document.getElementById("v39-mine-operations");
-  if(!operations){operations=document.createElement("div");operations.id="v39-mine-operations";operations.className="system-action-card";(document.getElementById('footTile')||list).appendChild(operations);}
+  if(!operations){operations=document.createElement("div");operations.id="v39-mine-operations";operations.className="system-action-card";(document.getElementById('v39-land-page-facilities')||document.getElementById('footTile')||list).appendChild(operations);}
   operations.hidden=map?.caveMine?.ownerPlayerId!==state.activePlayerId;
   const context=`${state.activePlayerId}:${state.activeWorldId}`;
   if(operations.dataset.context!==context){operations.replaceChildren();operations.dataset.context=context;}
@@ -627,8 +722,8 @@ window.addEventListener("v39:squad-detail-rendered",installActions);
 window.addEventListener("v39:map-input-lock-changed",installActions);
 window.addEventListener("v39:unit-selected",event=>{
   if(switching||window.isV39MapInputLocked?.())return;
-  const state=window.getV39GameState(),worldId=event.detail.unit?.worldId||"surface";
-  if(worldId!==state.activeWorldId&&state.explorationWorlds?.[worldId])activateWorld(state,rememberWorld(state),worldId);
+  const id=event.detail?.unitId||event.detail?.unit?.id;
+  if(id)window.viewV39OwnedUnitWorld(id);
 });
 window.addEventListener("v39:field-layer-changed",()=>{setTimeout(()=>{installActions();renderSites();},100);});
 window.addEventListener("v39:visibility-rendered",renderSites);
@@ -662,10 +757,10 @@ function renderSites(){
 
 function siteGame(state,actor){
   const faction=state.players.find(row=>row.id===state.activePlayerId).factionState;
-  const squad=faction.squads.find(row=>row.unitIds?.includes(actor.id));
+  const cargoStatus=resolveV39FactionUnitCargoStatus(faction,actor.id,state);
   const map=window.__v39FieldRuntime.mapData;
   // 仮の複製で処理し、採取・AP・運搬品をまとめて確定する。
-  return {map,phase:"player",position:actor,party:clone(faction.units.filter(unit=>(squad?.unitIds||[actor.id]).includes(unit.id)&&isV39UnitInWorld(unit,state.activeWorldId))),sites:clone(map.caveSites),inventory:{鉱石:0,宝石:0},floor:map.caveFloor,turn:state.timeline.turnNumber,log:[]};
+  return {map,phase:"player",position:actor,party:clone(cargoStatus.members.filter(unit=>isV39UnitInWorld(unit,state.activeWorldId))),cargoRemaining:cargoStatus.remaining,sites:clone(map.caveSites),inventory:{鉱石:0,宝石:0},floor:map.caveFloor,turn:state.timeline.turnNumber,log:[]};
 }
 
 function renderSiteActions(){
@@ -721,7 +816,7 @@ function interactSite(site){
   try{
     useCaveSite(game,site.id,actor.id);
     let faction={...player.factionState,units:player.factionState.units.map(unit=>game.party.find(member=>member.id===unit.id)||unit)};
-    if(site.wall){
+    if(site.wall&&Object.values(game.inventory).some(amount=>amount>0)){
       const result=addV39CargoToFactionUnit(faction,actor.id,{resourcesByType:game.inventory});
       if(!result.ok)throw new Error("採取物を運ぶ部隊がありません。");
       faction=result.faction;
@@ -745,14 +840,16 @@ function inspectCaveGather(){
   const hasTarget=map.caveSites?.some(row=>row.wall&&row.discovered&&row.remaining>0&&nearby.has(`${row.x},${row.y}`))||false;
   const site=map.caveSites?.find(row=>row.wall&&row.discovered&&row.x===selectedGatherTile?.x&&row.y===selectedGatherTile?.y);
   let reason="周囲1マスの鉱石・宝石を選択してください";
+  let work=null;
   if(site&&actor){
     const game=siteGame(state,actor);
+    work=inspectV39CaveSiteGather(game,site,actor);
     reason=caveSiteUnavailable(game,site,game.party.find(unit=>unit.id===actor.id));
     if(isV39UnitWaiting(actor,state.timeline.turnNumber))reason="このターンは待機済みです";
     if(!isV39UnitInWorld(actor,state.activeWorldId))reason="このキャラクターは別のマップにいます";
     if(window.isV39MapInputLocked?.())reason="処理中です";
   }
-  return {hasTarget,available:!!site&&!!actor&&!reason,reason,site,apCost:V39_CAVE_BALANCE.miningApCost};
+  return {hasTarget,available:!!site&&!!actor&&!reason,reason,site,apCost:work?.apCost||0,work};
 }
 
 window.inspectV39CaveGather=inspectCaveGather;

@@ -1,0 +1,3 @@
+PASS: manual typhoon radius 0-4, fixed/growing, actual footprints/render data, save/turn continuation, bounds and unchanged defaults.
+PASS: five events, weather/magic lightning power, deterministic save ticks, typhoon growth 1..4 and visible-mask placement, penalties and terrain. No browser.
+Existing registry warning batches: 1 (not disaster conversion errors).

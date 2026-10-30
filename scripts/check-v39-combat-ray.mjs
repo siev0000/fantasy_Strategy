@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {build} from 'esbuild';
 const moduleUrl=source=>`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-const hex=moduleUrl(readFileSync("frontend/src/lib/hex-grid.js","utf8"));
-const source=readFileSync("frontend/src/lib/v39-combat-ray.js","utf8").replace('"./hex-grid.js"',JSON.stringify(hex));
+const source=(await build({entryPoints:['frontend/src/lib/v39-combat-ray.js'],bundle:true,write:false,format:'esm',platform:'node'})).outputFiles[0].text;
 const { v39HexRay,traceV39AttackRay,hasV39WallLineOfSight,hasV39SkillEffect }=await import(moduleUrl(source));
 
 const map={w:20,h:20,grid:Array.from({length:20},()=>Array(20).fill("洞窟")),isUnderground:true,defenseStructures:[]};

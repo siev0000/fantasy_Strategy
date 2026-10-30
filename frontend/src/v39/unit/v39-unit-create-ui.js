@@ -1,12 +1,14 @@
+import {renderV39TerritoryGuide} from '../world/v39-operation-plan-ui.js';
 import { createV39Units, getV39UnitCreationOptions, inspectV39UnitCreation, buildV39UnitCreationPreview } from "../../lib/v39-unit-creation-rules.js";
 import {inspectV39RecruitTraining, inspectV39RecruitTrainingQueue, getV39RecruitTrainingSlots} from "../../lib/v39-recruit-training.js";
 import {getV39RecruitInstructorCandidates, assignV39RecruitInstructor, advanceV39RecruitInstructorMovement} from "../../lib/v39-recruit-instructor.js";
 import {getV39ToolLoadout,resolveV39ToolSlots,getV39ConsumableDefinitions} from "../../lib/v39-consumables.js";
+import {getFactionSettlements,selectFactionSettlement} from '../../lib/settlement-state.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
-function ensurePanel() {
-  const host = document.getElementById("footSquad");
+let panelMessage='';
+function ensurePanel(host=document.getElementById('v39-character-create-host')) {
   if (!host) return null;
   let panel = document.getElementById("v39-unit-create-panel");
   if (!panel) {
@@ -42,6 +44,8 @@ function switchTab(panel, tab) {
   }
   panel.querySelector("footer").hidden = panel.dataset.tab !== "create";
   panel.scrollTop = 0;
+  const pane=panel.querySelector(`[data-unit-create-pane="${panel.dataset.tab}"]`);
+  if(pane)pane.scrollTop=0;
 }
 
 function renderTrainingCard(task) {
@@ -59,14 +63,21 @@ function renderTrainingCard(task) {
   </article>`;
 }
 
-function render(statusText = "") {
+function render(statusText) {
+  if(statusText!==undefined)panelMessage=statusText;
   const panel = ensurePanel();
-  if (!panel || panel.hidden) return;
+  if (!panel || panel.hidden||!document.getElementById('characterModal')?.classList.contains('open')) return;
   const state = window.getV39GameState?.();
   const player = window.getV39ActivePlayer?.();
   if (!state || !player) return;
   const tab = panel.dataset.tab || "create";
-  const scrollTop = panel.scrollTop;
+  const scrollTop = panel.querySelector('[data-unit-create-pane]:not([hidden])')?.scrollTop||0;
+  const focusedId=panel.contains(document.activeElement)?document.activeElement.id:'';
+  const settlements=getFactionSettlements(player.factionState).filter(row=>row.placed);
+  if(!settlements.length){
+    panel.innerHTML='<header class="v39-unit-create-head"><strong>作成・訓練</strong></header><section class="v39-unit-create-pane"><p class="v39-training-empty">拠点を配置するとユニットの作成と訓練を行えます。</p></section><footer><output id="v39-unit-create-status">拠点未配置</output><button type="button" id="v39-unit-create-confirm" class="v39-unit-create-confirm" disabled>作成不可</button></footer>';
+    return;
+  }
   const options = getV39UnitCreationOptions(player, state);
   const upperClassCount = options.classes.filter(row => row.recruitmentFacility).length;
   const baseClassCount = options.classes.length - upperClassCount;
@@ -100,7 +111,7 @@ function render(statusText = "") {
   const activeCount = queue.filter(task => task.status === "training").length;
   const waitingTotal = queue.filter(task => task.status === "waiting").length;
   const pausedCount = queue.filter(task => task.status === "paused").length;
-  panel.innerHTML = `<header class="v39-unit-create-head"><button type="button" id="v39-unit-create-back">← 部隊</button><strong>ユニット作成</strong>
+  panel.innerHTML = `<header class="v39-unit-create-head">${renderV39TerritoryGuide(state,'units')}<label class="v39-create-base-label">訓練拠点<select id="v39-create-settlement" aria-label="訓練拠点">${settlements.length?settlements.map(base=>`<option value="${escapeHtml(base.settlementId)}"${base.settlementId===check.village.settlementId?' selected':''}>${escapeHtml(base.name||'拠点')} (${base.x},${base.y})</option>`).join(''):'<option value="">配置済みの拠点がありません</option>'}</select></label>
       <nav class="v39-unit-create-tabs" role="tablist" aria-label="ユニット作成と訓練状況">
         <button type="button" id="v39-create-tab" role="tab" aria-controls="v39-create-pane" data-unit-create-tab="create" title="既存・訓練中のユニット数 / 作成上限">作成 <span class="v39-unit-count-limit">${check.current}/${check.cap}</span></button>
         <button type="button" id="v39-training-tab" role="tab" aria-controls="v39-training-pane" data-unit-create-tab="training">訓練中 <span>${queue.length}</span></button>
@@ -161,35 +172,24 @@ function render(statusText = "") {
       </section>
       ${queue.length ? queue.map(renderTrainingCard).join("") : '<p class="v39-training-empty">訓練中のユニットはありません。<br>「作成」タブで訓練を予約できます。</p>'}
     </section>
-    <footer><output id="v39-unit-create-status">${escapeHtml(statusText || (check.available ? "訓練を開始できます" : check.reasons.join(" / ")))}</output><button type="button" id="v39-unit-create-confirm" class="v39-unit-create-confirm"${check.available ? "" : " disabled"}>${check.available ? `訓練開始⌛${training.turns}` : "作成不可"}</button></footer>`;
+    <footer><output id="v39-unit-create-status">${escapeHtml(panelMessage || (check.available ? "訓練を開始できます" : check.reasons.join(" / ")))}</output><button type="button" id="v39-unit-create-confirm" class="v39-unit-create-confirm"${check.available ? "" : " disabled"}>${check.available ? `訓練開始⌛${training.turns}` : "作成不可"}</button></footer>`;
   switchTab(panel, tab);
-  panel.scrollTop = scrollTop;
+  panel.querySelector(`[data-unit-create-pane="${tab}"]`).scrollTop=scrollTop;
+  if(focusedId)panel.querySelector(`#${CSS.escape(focusedId)}`)?.focus({preventScroll:true});
 }
 
 function open() {
-  const panel = ensurePanel();
-  const squad = document.getElementById("footSquad");
-  if (!panel || !squad) return;
-  document.getElementById("unitCreateModal")?.classList.remove("open");
-  window.activateV39FooterTab?.("squad");
-  document.getElementById("v39-squad-main")?.setAttribute("hidden", "");
-  document.getElementById("v39-squad-content")?.setAttribute("hidden", "");
-  squad.classList.add("is-unit-create-open");
-  panel.hidden = false;
-  render();
+  return window.openV39CharacterModal?.({tab:'create'});
 }
 
-function close() {
-  const panel = ensurePanel();
-  const squad = document.getElementById("footSquad");
-  if (!panel || !squad) return;
-  panel.hidden = true;
-  document.getElementById("v39-squad-main")?.removeAttribute("hidden");
-  document.getElementById("v39-squad-content")?.removeAttribute("hidden");
-  squad.classList.remove("is-unit-create-open");
+export function mountV39UnitCreatePanel(host,visible){
+  const panel=ensurePanel(host);if(!panel)return;
+  panel.hidden=!visible;
+  if(visible)render();
 }
 
 function create() {
+  if(window.isV39MapInputLocked?.())return;
   const panel = ensurePanel();
   const state = window.getV39GameState?.();
   const player = window.getV39ActivePlayer?.();
@@ -208,20 +208,20 @@ function installStyles() {
 }
 
 function install() {
-  const panel = ensurePanel();
   installStyles();
   document.addEventListener("click", event => {
-    const element = event.target instanceof Element ? event.target.closest("#v39-squad-unit-create, [data-open=\"unitCreate\"]") : null;
+    const element = event.target instanceof Element ? event.target.closest("[data-open=\"unitCreate\"]") : null;
     if (!element) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     open();
   }, true);
-  panel?.addEventListener("click", event => {
+  document.addEventListener("click", event => {
+    const panel=document.getElementById('v39-unit-create-panel');
+    if(!panel?.contains(event.target))return;
     const element = event.target instanceof Element ? event.target : null;
     const tab = element?.closest("[data-unit-create-tab]");
     if (tab) switchTab(panel, tab.dataset.unitCreateTab);
-    if (element?.closest("#v39-unit-create-back")) close();
     if (element?.closest("#v39-unit-create-confirm")) create();
     const instructor = element?.closest("[data-v39-instructor-id]");
     if (instructor && !instructor.disabled) {
@@ -239,18 +239,27 @@ function install() {
       render(result.ok ? (instructor.dataset.v39InstructorId ? "教官を設定しました。到着後に指導を開始します" : "教官設定を解除しました") : result.reason);
     }
   });
-  panel?.addEventListener("keydown", event => {
+  document.addEventListener("keydown", event => {
+    const panel=document.getElementById('v39-unit-create-panel');
+    if(!panel?.contains(event.target))return;
     if (!event.target.matches?.("[data-unit-create-tab]") || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const tab = event.key === "Home" ? "create" : event.key === "End" ? "training" : panel.dataset.tab === "create" ? "training" : "create";
     switchTab(panel, tab);
     panel.querySelector(`[data-unit-create-tab="${tab}"]`).focus();
   });
-  panel?.addEventListener("change", event => {
+  document.addEventListener("change", event => {
+    const panel=document.getElementById('v39-unit-create-panel');
+    if(!panel?.contains(event.target))return;
+    if(event.target.id==='v39-create-settlement'){
+      if(window.isV39MapInputLocked?.())return;
+      const player=window.getV39ActivePlayer();
+      window.updateV39ActiveFactionState(selectFactionSettlement(player.factionState,event.target.value),{reason:'unit-create-base-selected'});
+    }
     if (["v39-unit-race", "v39-unit-class", "v39-unit-mode"].includes(event.target.id)) {
       panel.querySelector("#v39-unit-training-level").value = "";
     }
-    render();
+    render('');
   });
   window.addEventListener("v39:turn-advanced", () => render());
   window.openV39UnitCreate = open;

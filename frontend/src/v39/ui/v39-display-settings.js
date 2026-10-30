@@ -5,12 +5,15 @@ import {
   resolveEffectiveMaxZoomFactor
 } from "../../lib/map-camera-zoom-rules.js";
 import { runV39FieldUpdate } from "./v39-field-update-loading.js";
+import {V39_MAP_QUALITY_OPTIONS,normalizeV39MapQuality} from '../../lib/v39-map-quality.js';
 import {normalizeV39AtmosphereOpacity,V39_ATMOSPHERE_OPACITY_KINDS,v39AtmosphereOpacityPercent} from '../../lib/v39-atmosphere-opacity.js';
 import {normalizeV39PlayerColors,resolveV39PlayerColor,v39PlayerColorHex} from '../../lib/v39-player-colors.js';
+import {V39_EFFECT_POWER_DEFAULTS,V39_EFFECT_POWER_FIELDS,normalizeV39EffectPowerScale,resolveV39PowerEffectScale} from '../../lib/v39-effect-power-scale.js';
 
 const STORAGE_KEY = "v39-display-settings-v1";
 const DEFAULTS = Object.freeze({
   fontScalePercent: 100,
+  mapQuality:'standard',
   heightOutlineOnly: true,
   heightShading: true,
   showZoomControls: true,
@@ -21,6 +24,7 @@ const DEFAULTS = Object.freeze({
   testMode: false,
   playerColors: {},
   atmosphereOpacityByKind:{},
+  effectPowerScale:V39_EFFECT_POWER_DEFAULTS,
   maxZoomFactor: MAP_CAMERA_ZOOM_RULES.defaultUserMaxFactor
 });
 
@@ -38,6 +42,7 @@ function loadSettings() {
     return {
       ...DEFAULTS,
       ...saved,
+      mapQuality:normalizeV39MapQuality(saved.mapQuality),
       fontScalePercent: clamp(
         saved.fontScalePercent ?? (Number.isFinite(legacyFont) ? legacyFont * 100 : DEFAULTS.fontScalePercent),
         80,
@@ -46,7 +51,8 @@ function loadSettings() {
       ),
       maxZoomFactor: normalizeUserMaxZoomFactor(saved.maxZoomFactor),
       playerColors:normalizeV39PlayerColors(saved.playerColors),
-      atmosphereOpacityByKind:normalizeV39AtmosphereOpacity(saved.atmosphereOpacityByKind)
+      atmosphereOpacityByKind:normalizeV39AtmosphereOpacity(saved.atmosphereOpacityByKind),
+      effectPowerScale:normalizeV39EffectPowerScale(saved.effectPowerScale)
     };
   } catch {
     return { ...DEFAULTS };
@@ -55,6 +61,22 @@ function loadSettings() {
 
 function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+function ensureMapQualityControl(){
+  const grid=document.querySelector('#v39-display-settings-panel .display-settings-grid');
+  if(!grid||document.getElementById('v39-map-quality'))return;
+  const label=document.createElement('label');label.className='display-setting';
+  label.innerHTML=`<span class="display-setting-title">マップ画質</span><select id="v39-map-quality">${V39_MAP_QUALITY_OPTIONS.map(row=>`<option value="${row.id}">${row.label}</option>`).join('')}</select><small>軽量：半解像度で地形を画像化／標準：等倍で画像化／高画質：地形・境界線を直接描画。拡大時は高画質が鮮明ですが、描画負荷が増えます。初期値は標準。この端末に保存し、すぐに反映します。大きなマップで画像化の上限を超える場合は直接描画に切り替えます。ユニットなどの元画像の解像度は変わりません。</small>`;
+  grid.prepend(label);
+}
+
+function ensurePowerScaleControls(){
+  const grid=document.querySelector('#v39-display-settings-panel .display-settings-grid');
+  if(!grid||document.getElementById('v39-effect-power-settings'))return;
+  const section=document.createElement('section');section.className='display-setting';section.id='v39-effect-power-settings';
+  section.innerHTML=`<strong>威力によるエフェクト拡大</strong>${V39_EFFECT_POWER_FIELDS.map(field=>`<label class="display-setting-title"><span>${field.label}</span><input type="number" id="v39-effect-power-${field.key}" min="${field.min}" max="${field.max}" step="${field.step}" value="${settings.effectPowerScale[field.key]}" aria-label="エフェクト ${field.label}"></label>`).join('')}<small>基準未満は威力÷基準で縮小。基準以上は指定威力ごとに＋1倍。攻撃範囲やダメージは変わりません。この端末に保存します。</small><output id="v39-effect-power-example"></output>`;
+  grid.insertBefore(section,grid.querySelector('#v39-display-settings-reset'));
 }
 
 function currentMapSize() {
@@ -157,6 +179,7 @@ function effectiveTestMode() {
 }
 
 function applySettings({ emit = true, changedKeys } = {}) {
+  const quality=document.getElementById('v39-map-quality');if(quality)quality.value=settings.mapQuality;
   const testModeEnabled = effectiveTestMode();
   document.documentElement.dataset.v39FontScale = String(settings.fontScalePercent / 100);
   document.documentElement.classList.toggle("v39-reduce-motion", !!settings.reduceMotion);
@@ -187,6 +210,9 @@ function applySettings({ emit = true, changedKeys } = {}) {
     testMode.checked = testModeEnabled;
   }
   if (maxZoom) maxZoom.value = String(settings.maxZoomFactor);
+  for(const {key}of V39_EFFECT_POWER_FIELDS){const input=document.getElementById(`v39-effect-power-${key}`);if(input)input.value=String(settings.effectPowerScale[key]);}
+  const example=document.getElementById('v39-effect-power-example');
+  if(example)example.textContent=[50,100,300,500].map(power=>`威力${power}：${Number(resolveV39PowerEffectScale(power,true,settings.effectPowerScale).toFixed(2))}倍`).join(' / ');
 
   const controls = document.getElementById("v39-map-camera-controls");
   if (controls) controls.style.display = settings.showZoomControls === false ? "none" : "grid";
@@ -197,7 +223,7 @@ function applySettings({ emit = true, changedKeys } = {}) {
     window.dispatchEvent(new CustomEvent("v39:display-settings-changed", {
       detail: { ...settings, testMode:testModeEnabled, ...currentMapSize(), changedKeys }
     }));
-    if(!changedKeys?.every(key=>key==='atmosphereOpacityByKind'))window.dispatchEvent(new Event("resize"));
+    if(!changedKeys?.every(key=>['atmosphereOpacityByKind','effectPowerScale','mapQuality'].includes(key)))window.dispatchEvent(new Event("resize"));
   }
 }
 
@@ -222,7 +248,7 @@ function updateSettings(patch) {
     saveSettings();
     applySettings({ changedKeys });
   };
-  if (changedKeys.some(key => ["testMode", "heightOutlineOnly", "heightShading"].includes(key))) {
+  if (changedKeys.some(key => ["testMode", "heightOutlineOnly", "heightShading", "mapQuality"].includes(key))) {
     return runV39FieldUpdate(apply, {
       controls:[...document.querySelectorAll("#v39-display-settings-panel input, #v39-display-settings-panel select, #v39-display-settings-reset")]
     });
@@ -253,6 +279,11 @@ function bindPanelNavigation() {
 }
 
 function bindControls() {
+  document.getElementById('v39-map-quality')?.addEventListener('change',event=>updateControlSetting('mapQuality',normalizeV39MapQuality(event.target.value)));
+  for(const {key}of V39_EFFECT_POWER_FIELDS)document.getElementById(`v39-effect-power-${key}`)?.addEventListener('change',()=>{
+    const raw=Object.fromEntries(V39_EFFECT_POWER_FIELDS.map(field=>[field.key,document.getElementById(`v39-effect-power-${field.key}`)?.value]));
+    updateControlSetting('effectPowerScale',normalizeV39EffectPowerScale(raw));
+  });
   document.getElementById('v39-show-territory-ownership')?.addEventListener('change',event=>updateControlSetting('showTerritoryOwnership',!!event.target.checked));
   document.getElementById('v39-player-colors')?.addEventListener('change',event=>{
     const id=event.target.dataset.playerColor;if(!id)return;
@@ -299,10 +330,12 @@ function installReduceMotionStyle() {
 }
 
 function install() {
+  ensureMapQualityControl();
   ensureMaxZoomControl();
   ensureTestModeControl();
   ensureCoordinateControl();
   ensureTerritoryControl();
+  ensurePowerScaleControls();
   installReduceMotionStyle();
   bindPanelNavigation();
   bindControls();
@@ -313,7 +346,7 @@ function install() {
     requestAnimationFrame(() => applySettings({ emit: false }));
   });
 
-  window.getV39DisplaySettings = () => ({ ...settings, playerColors:{...settings.playerColors}, atmosphereOpacityByKind:{...settings.atmosphereOpacityByKind},testMode:effectiveTestMode() });
+  window.getV39DisplaySettings = () => ({ ...settings, effectPowerScale:{...settings.effectPowerScale},playerColors:{...settings.playerColors}, atmosphereOpacityByKind:{...settings.atmosphereOpacityByKind},testMode:effectiveTestMode() });
   window.setV39AtmosphereOpacity=(kind,percent)=>{
     if(kind==='reset')return updateSetting('atmosphereOpacityByKind',{});
     const ids=kind==='all'?V39_ATMOSPHERE_OPACITY_KINDS.map(row=>row.id):[kind];

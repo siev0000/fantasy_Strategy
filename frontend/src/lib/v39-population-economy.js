@@ -1,4 +1,5 @@
 import { getGameDataRows } from "./game-data-registry.js";
+import {V39_PRESERVED_FOOD_RULE,isV39PreservedFood,roundV39FoodStock} from './v39-preserved-food-rules.js';
 import {resolveV39RaceDefinition} from './v39-race-definitions.js';
 import { V39_CIVIC_BALANCE } from "./v39-gameplay-balance.js";
 
@@ -12,6 +13,8 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const CLASS_ROWS = getGameDataRows("クラス");
 const FACTION_ROWS = getGameDataRows("勢力");
+const NON_MAINTENANCE_RESOURCES=new Set(getGameDataRows('都市基本データ').filter(row=>row.維持食料===false).map(row=>text(row.データ分類)));
+export const isV39MaintenanceFoodResource=key=>!NON_MAINTENANCE_RESOURCES.has(text(key));
 
 function factionForRace(race) {
   const target = text(race);
@@ -30,9 +33,9 @@ export function resolvePopulationClassDefinition(race) {
 export function resolveV39ConsumableFoodKeys(race, foodResourceKeys = [], normalFoodKeys = []) {
   const definition = resolvePopulationClassDefinition(race);
   const normalSet = new Set(normalFoodKeys.map(text));
-  const consumesNormalFood = foodResourceKeys.some(key => normalSet.has(text(key)) && number(definition?.[key]) > 0);
-  return foodResourceKeys.filter(key => (normalSet.has(text(key)) && consumesNormalFood)
-    || (!normalSet.has(text(key)) && number(definition?.[key]) > 0));
+  const consumesNormalFood = foodResourceKeys.some(key => isV39MaintenanceFoodResource(key) && normalSet.has(text(key)) && number(definition?.[key]) > 0);
+  return foodResourceKeys.filter(key => isV39MaintenanceFoodResource(key) && ((normalSet.has(text(key)) && consumesNormalFood)
+    || (!normalSet.has(text(key)) && number(definition?.[key]) > 0)));
 }
 
 function growthCondition(row) {
@@ -54,6 +57,7 @@ function emptyBag(keys) {
 }
 
 export function resolveV39PopulationResourceUnitValue(key) {
+  if(isV39PreservedFood(key))return V39_PRESERVED_FOOD_RULE.nutrition;
   return ["魂", "死体"].includes(text(key)) ? 100 : 1;
 }
 
@@ -62,17 +66,17 @@ function normalizeStock(source, keys) {
 }
 
 function stockValueToStoredUnits(source, keys) {
-  return Object.fromEntries(keys.map(key => [key, round1(Math.max(0, number(source?.[key])) / resolveV39PopulationResourceUnitValue(key))]));
+  return Object.fromEntries(keys.map(key => [key, roundV39FoodStock(Math.max(0, number(source?.[key])) / resolveV39PopulationResourceUnitValue(key),key)]));
 }
 
 function upkeepPerConsumer(row, resourceKeys) {
   return Object.fromEntries(resourceKeys.map(key => [
     key,
-    round1(Math.max(0, number(row?.[key])) / 10 * POPULATION_UPKEEP_SCALE)
+    isV39MaintenanceFoodResource(key)?round1(Math.max(0, number(row?.[key])) / 10 * POPULATION_UPKEEP_SCALE):0
   ]));
 }
 
-export function buildV39PopulationMaintenanceStock(populationByRace, units = [], resourceKeys = [], turns = 1) {
+export function buildV39PopulationMaintenanceStock(populationByRace, units = [], resourceKeys = [], turns = 1, {roundUp=false}={}) {
   const stockValue = emptyBag(resourceKeys);
   const safeTurns = Math.max(0, number(turns, 1));
   const races = new Set([
@@ -86,7 +90,21 @@ export function buildV39PopulationMaintenanceStock(populationByRace, units = [],
     const perConsumer = upkeepPerConsumer(resolvePopulationClassDefinition(race), resourceKeys);
     for (const key of resourceKeys) stockValue[key] = round1(stockValue[key] + perConsumer[key] * (population + unitWeight) * safeTurns);
   }
+  if(roundUp)return Object.fromEntries(resourceKeys.map(key=>[key,Math.max(0,Math.ceil(stockValue[key]/resolveV39PopulationResourceUnitValue(key)*10-1e-8)/10)]));
   return stockValueToStoredUnits(stockValue, resourceKeys);
+}
+
+export function resolveV39UnitMaintenanceDemand(unit,resourceKeys){
+  const demand=upkeepPerConsumer(resolvePopulationClassDefinition(unit?.race),resourceKeys),weight=unitUpkeepWeight(unit);
+  return Object.fromEntries(resourceKeys.map(key=>[key,round1(demand[key]*weight)/resolveV39PopulationResourceUnitValue(key)]));
+}
+
+export function consumeV39CarriedMaintenance(stockByType,demandByType,resourceKeys,normalFoodKeys){
+  const stock=normalizeStock(stockByType,resourceKeys);
+  const baseDemand=Object.fromEntries(resourceKeys.map(key=>[key,isV39MaintenanceFoodResource(key)?Math.ceil(Math.max(0,number(demandByType[key]))*resolveV39PopulationResourceUnitValue(key)*10-1e-8)/10:0]));
+  const result=consumeMaintenance([{race:'unit',baseDemand}],stock,resourceKeys,normalFoodKeys.filter(isV39MaintenanceFoodResource),{});
+  const convert=bag=>Object.fromEntries(resourceKeys.map(key=>[key,Math.round(number(bag[key])/resolveV39PopulationResourceUnitValue(key)*1e6)/1e6]));
+  return {remaining:convert(stock),consumed:convert(result.consumed),fed:Object.values(result.shortages.unit).every(value=>number(value)<=0)};
 }
 
 function growthRequired(population, row) {
@@ -195,6 +213,15 @@ function consumeMaintenance(races, stock, resourceKeys, normalFoodKeys, stages) 
     stock[resourceKey] = round1(Math.max(0, number(stock[resourceKey]) - number(consumed[resourceKey])));
   }
 
+  // Preserved rations cover ordinary nutrition directly, without substitution loss.
+  const rationKey=V39_PRESERVED_FOOD_RULE.name;
+  for(const race of races)for(const key of normalFoodKeys){
+    const taken=round1(Math.min(number(stock[rationKey]),number(shortages[race.race][key])));
+    if(taken<=0)continue;
+    stock[rationKey]=round1(number(stock[rationKey])-taken);
+    consumed[rationKey]=round1(number(consumed[rationKey])+taken);
+    shortages[race.race][key]=round1(number(shortages[race.race][key])-taken);
+  }
   const normalDeficits = races.flatMap(race => normalFoodKeys.map(key => ({
     race:race.race,
     key,
@@ -306,7 +333,7 @@ function applyOvercrowdingOutflow(populationByRace, growthByRace, populationCapa
   };
 }
 
-export function advanceV39PopulationEconomy({ village, units = [], income = {}, resourceKeys = [], normalFoodKeys = [], populationCapacity = Number.POSITIVE_INFINITY } = {}) {
+export function advanceV39PopulationEconomy({ village, units = [], income = {}, resourceKeys = [], normalFoodKeys = [], populationCapacity = Number.POSITIVE_INFINITY,includeUnitFoodShortfalls=false } = {}) {
   const populationByRace = Object.fromEntries(Object.entries(village?.populationByRace || {})
     .map(([race, count]) => [text(race), Math.max(0, Math.floor(number(count)))])
     .filter(([race, count]) => race && count > 0));
@@ -332,14 +359,18 @@ export function advanceV39PopulationEconomy({ village, units = [], income = {}, 
   const incomeValue = Object.fromEntries(resourceKeys.map(key => [key, round1(number(income?.[key]) * resolveV39PopulationResourceUnitValue(key))]));
   for (const key of resourceKeys) stock[key] = round1(number(stock[key]) + incomeValue[key]);
   const stockBeforeMaintenance = { ...stock };
-  const stages = resolveStarvationStages(races, stockBeforeMaintenance, normalFoodKeys);
-  const maintenance = consumeMaintenance(races, stock, resourceKeys, normalFoodKeys, stages);
+  const maintenanceFoodKeys=normalFoodKeys.filter(isV39MaintenanceFoodResource);
+  const stages = resolveStarvationStages(races, stockBeforeMaintenance, maintenanceFoodKeys);
+  const maintenance = consumeMaintenance(races, stock, resourceKeys, maintenanceFoodKeys, stages);
   const totalPopulationBefore = Object.values(populationByRace).reduce((sum, value) => sum + value, 0);
   const atCapacity = totalPopulationBefore >= populationCapacity;
+  const initialFoodReserveTurnsRemaining=Math.max(0,Math.floor(number(village?.initialFoodReserveTurnsRemaining))-1);
+  const reservedStock=initialFoodReserveTurnsRemaining>0
+    ?buildV39PopulationMaintenanceStock(populationByRace,units,resourceKeys,initialFoodReserveTurnsRemaining,{roundUp:true}):{};
   const growthPool = Object.fromEntries(resourceKeys.map(key => [
     key,
     round1(Math.max(0, ["魂", "死体"].includes(key)
-      ? number(stock[key])
+      ? number(stock[key])-number(reservedStock[key])*resolveV39PopulationResourceUnitValue(key)
       : incomeValue[key] - number(maintenance.consumed[key])))
   ]));
   const growthAdditions = distributeGrowthResource(races.filter(race => {
@@ -356,6 +387,7 @@ export function advanceV39PopulationEconomy({ village, units = [], income = {}, 
     let gauge = shortage > 0
       ? round1(Math.max(0, race.growth.gauge - shortage))
       : round1(race.growth.gauge + number(growthAdditions[race.race]));
+    const lastGaugeChange=round1(gauge-race.growth.gauge);
     let population = race.population;
     let delta = 0;
     const stage = stages[race.race]?.stage || 0;
@@ -381,6 +413,7 @@ export function advanceV39PopulationEconomy({ village, units = [], income = {}, 
     populationChanges[race.race] = delta;
     growthByRace[race.race] = {
       gauge,
+      lastGaugeChange,
       lastRequiredGauge:growthRequired(population, race.definition),
       lastPopulation:population,
       condition:race.condition,
@@ -396,15 +429,27 @@ export function advanceV39PopulationEconomy({ village, units = [], income = {}, 
   const overcrowding = applyOvercrowdingOutflow(populationByRace, growthByRace, populationCapacity);
   for (const [race, current] of Object.entries(populationByRace)) {
     populationChanges[race] = number(populationChanges[race]) - Math.max(0, number(populationBeforeOutflow[race]) - current);
+    if(growthByRace[race])growthByRace[race].lastPopulationDelta=populationChanges[race];
   }
   totalPopulation = overcrowding.totalPopulation;
 
   return {
     populationByRace,
+    ...(village?.initialFoodReserveTurnsRemaining!==undefined?{initialFoodReserveTurnsRemaining}:{}),
     population:totalPopulation,
     populationGrowthByRace:growthByRace,
     foodStockByType:stockValueToStoredUnits(stock, resourceKeys),
     consumedByType:stockValueToStoredUnits(maintenance.consumed, resourceKeys),
+    ...(includeUnitFoodShortfalls?{unitMaintenanceShortfallById:Object.fromEntries(units.filter(unit=>number(unit.hp??unit.currentHp)>0).map(unit=>{
+      const race=races.find(row=>row.race===text(unit.race)),weight=unitUpkeepWeight(unit);
+      const demand=upkeepPerConsumer(resolvePopulationClassDefinition(unit.race),resourceKeys);
+      const consumers=number(race?.population)+number(race?.unitWeight),multiplier=(stages[text(unit.race)]?.stage||0)>0?0.5:1;
+      return [unit.id,Object.fromEntries(resourceKeys.map(key=>{
+        const full=demand[key]*weight;
+        const received=race&&consumers>0?Math.max(0,full*multiplier-number(maintenance.shortages[race.race]?.[key])*weight/consumers):0;
+        return [key,Math.round(Math.max(0,full-received)/resolveV39PopulationResourceUnitValue(key)*1e6)/1e6];
+      }))];
+    }))}:{}),
     shortageTotal:round1(Object.values(growthByRace).reduce((sum, row) => sum + number(row.shortage), 0)),
     populationDelta:Object.values(populationChanges).reduce((sum, value) => sum + value, 0),
     populationChanges,

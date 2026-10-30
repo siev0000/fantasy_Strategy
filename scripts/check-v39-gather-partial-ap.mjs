@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
+import {build} from 'esbuild';
+process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-logistics-state.js';export * from './frontend/src/lib/v39-cave-adventure.js';export * from './frontend/src/lib/v39-cargo-deposit.js';export * from './frontend/src/lib/v39-gather-rules.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
+  builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+    const dir=resolve('data/source/export/json'),modules=Object.fromEntries(readdirSync(dir).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${dir}/${name}`,'utf8'))]));
+    return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
+  });
+  builder.onLoad({filter:/(?:icon-library|facility-icon-artwork|map-entity-artwork|monster-sheet-artwork|unit-sheet-artwork)\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/g,'{};'),resolveDir:dirname(args.path),loader:'js'}));
+}}]});
+globalThis.window={addEventListener(){}};
+const warn=console.warn;let m;try{console.warn=()=>{};m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);}finally{console.warn=warn;}
+const actor={id:'a',name:'採取者',squadId:'solo',x:1,y:1,hp:100,maxHp:100,ap:25,currentAp:25,status:{SIZ:170},worldId:'surface'};
+const player={id:'p',race:'只人',factionState:{units:[actor],squads:[{id:'solo',unitIds:['a']}],exploration:{}}};
+const state={activePlayerId:'p',activeWorldId:'surface',timeline:{phase:'player',turnNumber:1},players:[player],neutralVillages:[],territoryOwnerByTile:{}};
+const map={w:5,h:5,grid:Array.from({length:5},()=>Array(5).fill('森'))};
+const check=m.inspectV39Gather(state,'p','a',map);assert(check.available,check.reasons.join('/'));
+for(const [name,value] of Object.entries(check.yields))assert.equal(check.accepted.resourcesByType[name]||0,Math.floor(value*0.25*10+1e-9)/10);
+assert(check.apCost>0&&check.apCost<=25);
+const result=m.gatherV39Resources(state,'p','a',map);assert(result.ok);assert.equal(result.state.players[0].factionState.units[0].ap,25-check.apCost);
+const loaded=m.resolveV39FactionUnitCargoStatus(result.state.players[0].factionState,'a',result.state);
+assert.deepEqual(loaded.cargo.resourcesByType,check.accepted.resourcesByType);
+assert.equal(actor.ap,25,'inspection and execution preserve input state');
+const lowCapacity={...state,players:[{...player,factionState:{...player.factionState,units:[{...actor,ap:100,status:{SIZ:0.17}}]}}]};
+const limited=m.inspectV39Gather(lowCapacity,'p','a',map);assert(limited.available,limited.reasons.join('/'));assert(limited.apCost<100);assert(m.resolveV39CargoLoad(limited.accepted)<=0.1);
+const noAp={...state,players:[{...player,factionState:{...player.factionState,units:[{...actor,ap:0}]}}]};assert(!m.gatherV39Resources(noAp,'p','a',map).ok);
+let game={phase:'player',map:{w:5,h:5},position:actor,party:[structuredClone(actor)],sites:[{id:'ore',key:'2,1',x:2,y:1,name:'鉱石',wall:true,discovered:true,remaining:3}],inventory:{鉱石:0},cargoRemaining:10,turn:1,floor:1,log:[]};
+let site=game.sites[0],unit=game.party[0];
+assert.equal(m.inspectV39CaveSiteGather(game,site,unit).amount,0);
+m.useCaveSite(game,'ore','a');assert.equal(unit.ap,0);assert.equal(site.remaining,3);assert.equal(site.miningProgressByUnitId.a,25);assert.equal(game.inventory.鉱石,0);
+game=JSON.parse(JSON.stringify(game));site=game.sites[0];unit=game.party[0];unit.ap=25;
+m.useCaveSite(game,'ore','a');assert.equal(site.miningProgressByUnitId.a,50);assert.equal(game.inventory.鉱石,0);
+unit.ap=100;game.cargoRemaining=1;
+const preview=m.inspectV39CaveSiteGather(game,site,unit);assert.equal(preview.apCost,50);assert.equal(preview.amount,1);
+m.useCaveSite(game,'ore','a');assert.equal(unit.ap,50);assert.equal(game.inventory.鉱石,1);assert.equal(site.remaining,2);assert.equal(site.miningProgressByUnitId.a,0);
+unit.ap=40;game.cargoRemaining=10;m.useCaveSite(game,'ore','a');assert.equal(site.miningProgressByUnitId.a,40);
+const other={...unit,id:'b',ap:10};game.party.push(other);
+m.useCaveSite(game,'ore','b');assert.equal(site.miningProgressByUnitId.b,10);assert.equal(site.miningProgressByUnitId.a,40,'work cannot transfer between actors');
+const otherSite={...site,id:'gem',name:'宝石',miningProgressByUnitId:{}};game.sites.push(otherSite);unit.ap=10;
+m.useCaveSite(game,'gem','a');assert.equal(otherSite.miningProgressByUnitId.a,10);assert.equal(site.miningProgressByUnitId.a,40,'work cannot transfer between sites');
+unit.ap=100;game.cargoRemaining=0;const frozen=JSON.stringify(game);assert.throws(()=>m.useCaveSite(game,'ore','a'),/運搬上限/);assert.equal(JSON.stringify(game),frozen);
+game.cargoRemaining=10;site.remaining=1;site.miningProgressByUnitId.a=75;
+m.useCaveSite(game,'ore','a');assert.equal(unit.ap,75);assert.equal(site.remaining,0);assert.equal(game.inventory.鉱石,2);
+console.log('PASS: proportional remaining-AP yields, capacity/AP limits, actual/preview parity, per-actor/site mining progress, save restoration, partial work without rewards, no full-cargo charges and no wasted AP on depleted sites. No browser.');

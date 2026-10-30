@@ -30,7 +30,7 @@ const enemyTurnState = () => window.getV39EnemyTurnState?.() || window.getV39Gam
 const nowMs = () => typeof performance?.now === "function" ? performance.now() : Date.now();
 
 function patchEnemyTurnState(patch, reason) {
-  if (window.patchV39EnemyTurnState?.(patch) === true) return;
+  if (window.patchV39EnemyTurnState?.(patch,{reason}) === true) return;
   window.setV39GameState?.(patch, { reason, silent:true });
 }
 
@@ -166,7 +166,7 @@ function applyEnemyPlan(plan, presentationEvents) {
           || window.isV39TileInCurrentVision?.(plan.to.x, plan.to.y) === true
       });
     } else if (plan.type === "queue-attack") {
-      window.dispatchEvent(new CustomEvent("v39:cast-started", { detail:{ unitId:id, enemyAction:true } }));
+      window.dispatchEvent(new CustomEvent("v39:cast-started", { detail:{ unitId:id, enemyAction:true, aimAfterCast:String(plan.skillRow?.攻撃手段).includes('魔法')||String(plan.skillRow?.判定).includes('魔') } }));
       window.dispatchEvent(new CustomEvent("v39:combat-log", {
         detail:{ summary:`${text(enemy.name)} Lv${integer(enemy.level, 1)}：${text(plan.skillName)} 発動待機 ${plan.delay}ターン / AP-${plan.apCost}`, attackerId:id, skillName:text(plan.skillName), apCost:plan.apCost, entries:[], enemyAction:true }
       }));
@@ -233,11 +233,12 @@ function applyEnemyPlan(plan, presentationEvents) {
 function resolvePendingAction(turnNumber, presentationEvents) {
   const state = enemyTurnState();
   const pending = Object.values(state?.enemyCombatRuntime?.pendingActionsByEnemyId || {})
-    .find(row => remainingV39Turns(row?.resolvesAtTurn, turnNumber) <= 0);
+    .find(row => remainingV39Turns(row?.resolvesAtTurn, turnNumber) <= 0&&Number(row.readyCheckedTurn)!==turnNumber);
   if (!pending) return false;
   const enemy = state.enemies.find(row => text(row?.id) === text(pending.enemyId));
   const inspection = enemy ? inspectEnemyAiState(state, enemy.id, turnNumber, window.__v39FieldRuntime?.mapData) : null;
-  const plan = { type:"attack", enemyId:text(pending.enemyId), targetUnitId:text(pending.targetUnitId), skillRow:pending.skillRow, skillName:text(pending.skillName), turnNumber, inspection };
+  const magic=String(pending.skillRow?.攻撃手段).includes('魔法')||String(pending.skillRow?.判定).includes('魔');
+  const plan = { type:"attack", enemyId:text(pending.enemyId), targetUnitId:text(magic?inspection?.targetId:pending.targetUnitId), skillRow:pending.skillRow, skillName:text(pending.skillName), turnNumber, inspection };
   const result = captureEnemyAttack(plan, { apPaid:true });
   const latest = enemyTurnState() || state;
   const runtime = {
@@ -246,6 +247,10 @@ function resolvePendingAction(turnNumber, presentationEvents) {
     lastActionTurnByEnemyId:{ ...(latest.enemyCombatRuntime?.lastActionTurnByEnemyId || {}), [text(pending.enemyId)]:turnNumber },
     cooldownsByEnemyId:{ ...(latest.enemyCombatRuntime?.cooldownsByEnemyId || {}) }
   };
+  if(magic&&enemy&&number(enemy.hp??enemy.currentHp)>0&&!result.resolved){
+    runtime.pendingActionsByEnemyId[text(pending.enemyId)]={...pending,readyCheckedTurn:turnNumber};
+    patchEnemyTurnState({enemyCombatRuntime:runtime},'enemy-cast-ready');return true;
+  }
   delete runtime.pendingActionsByEnemyId[text(pending.enemyId)];
   const cooldown = resolveV39SkillCooldownTurns(pending?.skillRow);
   if (result.resolved && cooldown > 0) runtime.cooldownsByEnemyId[text(pending.enemyId)] = {
@@ -255,7 +260,7 @@ function resolvePendingAction(turnNumber, presentationEvents) {
   patchEnemyTurnState({ enemyCombatRuntime:runtime }, result.resolved ? "enemy-cast-resolved" : "enemy-cast-cancelled");
   window.dispatchEvent(new CustomEvent("v39:cast-ended", { detail:{ unitId:text(pending.enemyId), enemyAction:true, reason:result.resolved ? "resolved" : "cancelled" } }));
   if (result.resolved && enemy) presentationEvents.push({
-    type:"attack", attackerId:text(enemy.id), targetUnitId:text(pending.targetUnitId), from:{ x:integer(enemy.x), y:integer(enemy.y) },
+    type:"attack", attackerId:text(enemy.id), targetUnitId:text(plan.targetUnitId), from:{ x:integer(enemy.x), y:integer(enemy.y) },
     target:result.detail?.target, skillName:text(pending.skillName), effectName:text(pending.skillRow?.アニメ), skillRow:pending.skillRow, attacker:enemy, result:result.detail, combatLogs:result.combatLogs,
     visible:window.isV39TileInCurrentVision?.(result.detail?.target?.x, result.detail?.target?.y) === true
   });

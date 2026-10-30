@@ -1,3 +1,4 @@
+import {replaceV39CastOnAction} from './v39-casting-rules.js';
 import {getGameDataRows} from './game-data-registry.js';
 import {getV39UnitTestTechniques} from './v39-test-skill-rules.js';
 import {resolveV39SummonPlacements} from './v39-summon-rules.js';
@@ -41,7 +42,7 @@ export function inspectV39Call(state,playerId,unitId,skillName,map,selectedIds=[
   if(caster?.waitTurnNumber===turn)reasons.push('待機済みです');
   if(number(caster?.ap??caster?.currentAp)<cost)reasons.push('AP不足');
   if(number(caster?.hp??caster?.currentHp)<=hpCost)reasons.push('HP不足');
-  if(faction?.combatRuntime?.pendingActionsByUnitId?.[unitId])reasons.push('別の行動を発動待機中');
+  if(faction?.combatRuntime?.pendingActionsByUnitId?.[unitId]&&!faction.combatRuntime.pendingActionsByUnitId[unitId].aimAfterCast)reasons.push('別の行動を発動待機中');
   if(number(faction?.combatRuntime?.cooldownsByUnitId?.[unitId]?.[skillName])>turn)reasons.push('使用済みまたはCT中');
   const candidates=(faction?.units||[]).filter(unit=>unit.id!==unitId&&entry?.spec&&matches(unit,entry.spec.target)).map(unit=>{
     const unavailable=[];
@@ -88,7 +89,7 @@ export function callV39Units(state,playerId,unitId,skillName,map,selectedIds=[])
     const tile=locations.get(unit.id);
     return tile?{...unit,...movement,x:tile.x,y:tile.y,position:[tile.x,tile.y]}:unit;
   });
-  const runtime=faction.combatRuntime||{};
+  const runtime=replaceV39CastOnAction(faction.combatRuntime,unitId);
   const squads=faction.squads.map(row=>row.movementLeaderId&&!row.unitIds.includes(row.movementLeaderId)
     ?{...row,movementLeaderId:row.unitIds[0]||''}:row);
   const next={...faction,selectedUnitId:original.selectedUnitId,units,squads,combatRuntime:{...runtime,cooldownsByUnitId:{...runtime.cooldownsByUnitId,[unitId]:{...runtime.cooldownsByUnitId?.[unitId],[skillName]:turn+resolveV39SkillCooldownTurns(check.entry.row)}}}};

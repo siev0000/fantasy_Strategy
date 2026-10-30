@@ -1,9 +1,14 @@
 import { getHexOffsetNeighbors, getHexDistance } from "./hex-grid.js";
 import { parseV39TurnCount } from "./v39-turn-timing.js";
 import { V39_DEFENSE_BALANCE } from "./v39-gameplay-balance.js";
+import {resolveV39WallStepStructures} from './v39-wall-edges.js';
 
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const key = point => `${point.x},${point.y}`;
+
+export function resolveV39DefenseReducedPower(power, defense) {
+  return Math.max(0, number(power)) / (1 + Math.max(0, number(defense)) / 100);
+}
 
 export function resolveV39DefenseKind(row) {
   const effects = String(row?.効果 || "").split(/[\s,:：;；/／|｜、]+/u);
@@ -96,15 +101,10 @@ export function createV39DefenseStructure(map, center, row, caster, turn, facing
   };
 }
 
-export function v39WallStepHeight(map, from, to) {
+export function v39WallStepHeight(map, from, to, {ownerId='',isFriendlyOwner=null} = {}) {
   let height = 0;
-  for (const wall of map?.defenseStructures || []) {
-    if (wall.kind !== "壁" || wall.hp <= 0) continue;
-    const crossed = wall.edge
-      ? (key(wall.edge.from) === key(from) && key(wall.edge.to) === key(to))
-        || (key(wall.edge.to) === key(from) && key(wall.edge.from) === key(to))
-      : wall.tiles.some(tile => key(tile) === key(to) || key(tile) === key(from));
-    if (!crossed) continue;
+  for (const wall of resolveV39WallStepStructures(map,from,to)) {
+    if (ownerId && wall.ownerId && (wall.ownerId===ownerId || isFriendlyOwner?.(wall.ownerId))) continue;
     if (wall.barrierAttached) return Infinity;
     height = Math.max(height, wall.height);
   }

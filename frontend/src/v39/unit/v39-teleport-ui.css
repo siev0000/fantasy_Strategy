@@ -1,0 +1,13 @@
+.v39-teleport-panel{display:flex;flex-direction:column;gap:6px;min-width:0;padding:2px 3px}
+.v39-teleport-panel header{display:flex;align-items:center;gap:8px;position:sticky;top:0;background:#14272e;z-index:1}
+.v39-teleport-panel label{display:flex;flex-direction:column;gap:3px}
+.v39-teleport-panel select,.v39-teleport-panel input{box-sizing:border-box;width:100%;min-width:0;color:#e4eeee;background:#14272e;border:1px solid #55737c;border-radius:5px;padding:5px;font:inherit}
+.v39-teleport-panel button{color:#e4eeee;background:#19333d;border:1px solid #55737c;border-radius:5px;padding:6px;font:inherit;text-align:left}
+.v39-teleport-panel button:disabled{opacity:.5;cursor:not-allowed}
+.teleport-register,.teleport-skills{display:flex;flex-direction:column;gap:4px}
+.teleport-skills button{display:flex;flex-direction:column;gap:3px}
+.teleport-skills small,.teleport-note{color:#a8bdc2;font-size:.85em;overflow-wrap:anywhere}
+.v39-gate-actions{display:flex;flex-direction:column;gap:4px;padding:3px}
+.v39-gate-actions label,.v39-gate-actions button{display:flex;flex-direction:column;gap:3px}
+.v39-gate-actions select,.v39-gate-actions button{background:#19333d;color:#e4eeee;border:1px solid #55737c;border-radius:5px;padding:5px;font:inherit;text-align:left;min-width:0;width:100%;box-sizing:border-box}
+.v39-gate-actions button:disabled{opacity:.5}.v39-gate-actions small{font-size:.85em;color:#a8bdc2}

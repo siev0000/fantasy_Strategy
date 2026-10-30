@@ -1,10 +1,12 @@
+import {isV39VillageContactUnit} from './v39-village-contacts.js';
 import {isV39VillageHostileToPlayer} from './v39-village-hostility.js';
 import {resolveV39SpecialVillage} from './v39-special-villages.js';
 import { getHexNeighborCoords, getHexDistance } from "./hex-grid.js";
 import eventDefaults from "../../../config/v39-event-defaults.json";
 import expeditionDefaults from "../../../config/v39-expedition-defaults.json";
 import { getGameDataRows } from "./game-data-registry.js";
-import {freezeV39QuestReward,payV39QuestReward,describeV39QuestReward} from './v39-quest-rewards.js';
+import {freezeV39QuestReward,payV39QuestReward,describeV39QuestReward,releaseV39QuestReward,getV39QuestRelationReward} from './v39-quest-rewards.js';
+import {attachV39AutomaticQuestReward} from './v39-automatic-quest-rewards.js';
 import {getV39VillageQuests,findV39VillageQuest,syncV39VillageQuestLog} from './v39-village-quest-log.js';
 import { V39_NEUTRAL_VILLAGE_BALANCE, V39_QUEST_BALANCE } from "./v39-gameplay-balance.js";
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy } from "./v39-economy-rules.js";
@@ -434,12 +436,6 @@ function resolveVillageReward(village, mapData, row) {
   };
 }
 
-function relationGainFromEvent(row) {
-  return eventEffects(row)
-    .filter(effect => text(effect?.タイプ) === "一般村友好度変更")
-    .reduce((sum, effect) => sum + number(effect?.設定?.値), 0);
-}
-
 function createQuest(state, village, playerId, turn, mapData, eventId = "", override = null) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const template=!override&&villageQuestTemplates().find(row=>row.ID===eventId);
@@ -448,8 +444,8 @@ function createQuest(state, village, playerId, turn, mapData, eventId = "", over
     if(last!=null&&turn<last+number(template.クールダウン))return null;
     const resolved=resolveV39VillagePlanQuest(state,village,template,mapData);
     if(!resolved||[...new Set([...Object.keys(village.questsByPlayerId||{}),...Object.keys(village.questLogByPlayerId||{})])].some(id=>id!==playerId&&getV39VillageQuests(village,id).some(quest=>quest.accepted&&!quest.completed&&quest.planDefinitionId===resolved.planDefinitionId)))return null;
-    return {...resolved,id:`${village.id}:${eventId}:${playerId}:${turn}`,accepted:true,completed:false,createdTurn:turn,
-      deadlineTurn:template.期限ターン?turn+template.期限ターン:0};
+    return attachV39AutomaticQuestReward(village,{...resolved,id:`${village.id}:${eventId}:${playerId}:${turn}`,accepted:true,completed:false,createdTurn:turn,
+      deadlineTurn:template.期限ターン?turn+template.期限ターン:0});
   }
   const definition=override || VILLAGE_EVENT_ROWS.find(row=>row.ID===eventId);
   if(definition) {
@@ -520,7 +516,7 @@ export function acceptV39NeutralVillageQuest(state, playerId, villageId, mapData
   const turn = Math.max(1, integer(state?.timeline?.turnNumber, 1));
   let quest = createQuest(state, source, playerId, turn, mapData,eventId,definition);
   if (!quest) return { ok:false, reason:"現在受注できる依頼がありません", state };
-  const frozen=freezeV39QuestReward(state,source,playerId,quest);quest=frozen.quest;
+  const frozen=freezeV39QuestReward(state,source,playerId,quest);if(frozen.ok===false)return {ok:false,state,reason:frozen.reason};quest=frozen.quest;
   const village = { ...frozen.village, questsByPlayerId:{ ...(source.questsByPlayerId || {}), [playerId]:quest } };
   return { ok:true, state:updateVillageState(state, village), village, quest:village.questsByPlayerId[playerId], message:"依頼を受注しました" };
 }
@@ -594,16 +590,21 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId, optio
     }
   }
   const row = quest.eventDefinition || VILLAGE_EVENT_ROWS.find(item => text(item?.ID) === text(quest.eventId)) || null;
-  if(quest.rewardTerms){const payment=payV39QuestReward(working,playerId,villageId,quest.rewardTerms);if(!payment.ok)return {...payment,state};working=payment.state;}
+  if(quest.rewardTerms){const payment=payV39QuestReward(working,playerId,villageId,quest.rewardTerms,{quest});if(!payment.ok)return {...payment,state};working=payment.state;}
   if (!quest.rewardTerms && !row && quest.rewardResourceKey && quest.rewardAmount > 0) {
     const reward = changeSettlementResource(working, playerId, quest.rewardStockKind, quest.rewardAmount, quest.rewardResourceKey);
     if (!reward.ok) return reward;
     working = reward.state;
   }
-  const relationGain = row ? relationGainFromEvent(row) : ['watch','construction'].includes(quest.type)?expeditionDefaults.village.関係値報酬:V39_QUEST_BALANCE.villageRelationGain;
+  const relationGain = getV39QuestRelationReward(quest);
   if(row) {
+    let relationApplied=false;
     const effectResult=applyV39EventEffects(working,row.完了効果,{
-      一般村友好度変更:(current,setting)=>({ok:true,state:updateVillageState(current,changeRelation(current.neutralVillages.find(v=>v.id===villageId),playerId,number(setting.値)))}),
+      一般村友好度変更:(current,setting)=>{
+        const amount=quest.automaticRewardItems!==undefined?(relationApplied?0:relationGain):number(setting.値);
+        relationApplied=true;
+        return {ok:true,state:updateVillageState(current,changeRelation(current.neutralVillages.find(v=>v.id===villageId),playerId,amount))};
+      },
       村産出資源受取:current=>!quest.rewardTerms&&quest.rewardResourceKey&&quest.rewardAmount>0?changeSettlementResource(current,playerId,quest.rewardStockKind,quest.rewardAmount,quest.rewardResourceKey):{ok:true,state:current},
       魂要求権付与:(current,setting)=>{const v=current.neutralVillages.find(row=>row.id===villageId);
         if(quest.rewardTerms)return {ok:true,state:current};
@@ -624,7 +625,7 @@ export function completeV39NeutralVillageQuest(state, playerId, villageId, optio
       ...(village.eventCompletedTurnByPlayerId || {}),
       [playerId]:{ ...(village.eventCompletedTurnByPlayerId?.[playerId] || {}), [text(quest.eventId)]:completedTurn }
     },
-    questsByPlayerId:{ ...village.questsByPlayerId, [playerId]:{ ...quest, progress:quest.required,completed:true, completedTurn } }
+    questsByPlayerId:{ ...village.questsByPlayerId, [playerId]:{ ...quest,...(quest.rewardEscrow?{rewardEscrow:{...quest.rewardEscrow,status:'paid'}}:{}), progress:quest.required,completed:true, completedTurn } }
   };
   const rewardText = quest.rewardTerms?` / 報酬 ${describeV39QuestReward(quest.rewardTerms)}`:quest.rewardResourceKey && quest.rewardAmount > 0 ? ` / 謝礼 ${quest.rewardResourceKey} ${quest.rewardAmount}` : "";
   return { ok:true, state:updateVillageState(working, village), village, message:`依頼完了 / 関係 +${relationGain}${rewardText}` };
@@ -648,7 +649,7 @@ export function raidV39NeutralVillage(state, playerId, villageId) {
   const player = state?.players?.find(row => row.id === playerId);
   const unit = player?.factionState?.units?.find(row => row.id === player?.factionState?.selectedUnitId);
   if (!source || !unit) return { ok:false, reason:"襲撃するユニットを選択してください", state };
-  if (!(source.territoryTileKeys || []).includes(keyOf(unit.x, unit.y))) return { ok:false, reason:"村の範囲内にユニットがいません", state };
+  if (!isV39VillageContactUnit(unit,source)) return { ok:false, reason:"村の領土内または隣接マスにユニットがいません", state };
   if(state.activePlayerId!==playerId||state.timeline?.phase!=='player'||(state.activeWorldId||'surface')!=='surface'||(unit.worldId||'surface')!=='surface'||number(unit.hp??unit.currentHp)<=0)return {ok:false,state,reason:'地上の操作中ユニットで襲撃してください'};
   if(isV39VillageHostileToPlayer(source,playerId))return {ok:false,state,reason:'この村とは既に敵対しています'};
   const hostilePlayerIds=[...new Set([...(source.hostilePlayerIds||[]),playerId])];
@@ -702,7 +703,8 @@ export function advanceV39NeutralVillages(state, mapData, turnNumber) {
     for(const playerId of playerIds)for(const quest of getV39VillageQuests(village,playerId)){
       const saveQuest=next=>{village=syncV39VillageQuestLog({...village,questsByPlayerId:{...village.questsByPlayerId,[playerId]:next}});};
       if(quest.accepted&&!quest.completed&&quest.deadlineTurn&&turn>=quest.deadlineTurn) {
-        saveQuest({...quest,completed:true,failed:true,completedTurn:turn});
+        const released=releaseV39QuestReward(village,quest);village=released.village;
+        saveQuest({...released.quest,completed:true,failed:true,completedTurn:turn});
         const loss=(quest.eventDefinition?.失敗効果||[]).filter(effect=>effect.タイプ==='一般村友好度変更').reduce((sum,effect)=>sum+number(effect.設定?.値),0);
         village=changeRelation(village,playerId,loss);
         village={...village,eventCompletedTurnByPlayerId:{...village.eventCompletedTurnByPlayerId,[playerId]:{...village.eventCompletedTurnByPlayerId?.[playerId],[quest.eventId]:turn}}};

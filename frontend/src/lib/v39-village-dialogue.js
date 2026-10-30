@@ -1,3 +1,4 @@
+import {isV39VillageContactUnit} from './v39-village-contacts.js';
 import {openV39NumberedDialogue,viewV39NumberedDialogue,chooseV39NumberedDialogue,backV39NumberedDialogue,inspectV39NumberedDialogue} from './v39-event-dialogue-rules.js';
 import {acceptV39NeutralVillageQuest,completeV39NeutralVillageQuest,changeV39QuestResource,
   changeV39NeutralVillageRelation,updateV39NeutralVillageState,getV39NeutralVillageRelation} from './v39-neutral-village-rules.js';
@@ -21,8 +22,7 @@ function accessReason(state,villageId) {
   if(!village||!player)return '会話相手またはプレイヤーがいません';
   if(village.abandoned)return '廃村には会話できる住民がいません';
   if((state.activeWorldId||'surface')!=='surface'||state.timeline?.phase!=='player')return '地上の操作ターンに会話してください';
-  if(!player.factionState.units.some(unit=>alive(unit)&&(unit.worldId||'surface')==='surface'
-    &&(village.territoryTileKeys||[`${village.x},${village.y}`]).includes(`${unit.x},${unit.y}`)))return '村の領域に生存ユニットを移動してください';
+  if(!player.factionState.units.some(unit=>isV39VillageContactUnit(unit,village)))return '村の領土内または隣接マスに生存ユニットを移動してください';
   return '';
 }
 

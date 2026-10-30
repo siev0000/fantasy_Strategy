@@ -25,6 +25,7 @@ export function resolveV39DisasterRule(value) {
     stationaryDamageMultiplier:Math.max(0,configured(row.滞在ダメージ倍率,1)),
     damageElement:text(row.ダメージ属性),
     damagePower:Math.max(0,configured(row.ダメージ威力)),
+    details:row.災害詳細設定&&typeof row.災害詳細設定==='object'?row.災害詳細設定:{},
     movementDamagePower:Math.max(0,configured(row.移動時ダメージ威力)),
     damagePattern:text(row.被害範囲方式)||'全域',
     randomDamageTileCount:Math.max(0,Math.floor(configured(row.ランダム被害マス数))),

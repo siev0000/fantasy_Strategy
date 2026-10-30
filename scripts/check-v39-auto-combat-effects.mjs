@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync } from "node:fs";
 import { chromium } from "file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs";
+import {build} from 'esbuild';
 
 const json = path => JSON.parse(readFileSync(path, "utf8"));
 const defaults = json("config/v39-effect-composite-defaults.json");
 const categories = Object.entries(defaults.categories).map(([id, row]) => ({ id, ...row }));
 const attributes = Object.entries(defaults.attributes).map(([name, row]) => ({ name, ...row }));
-const source = readFileSync("frontend/src/lib/v39-combat-effect-rules.js", "utf8")
-  .replace(/^import weaponTypes[^\n]+/, `const weaponTypes = ${JSON.stringify(json("config/v39-weapon-effect-types.json"))};`);
+const bundle=await build({entryPoints:['frontend/src/lib/v39-combat-effect-rules.js'],bundle:true,write:false,format:'esm',platform:'node'});
+const source=bundle.outputFiles[0].text;
 const { resolveV39CombatEffect } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 const resolve = (skill, attacker = {}) => resolveV39CombatEffect(skill, attacker, categories, attributes);
 assert.deepEqual(resolve({ アニメ:"炎の雨:火炎2", 攻撃手段:"爪", 炎:40 }), { effectName:"炎の雨:火炎2", reason:"スキル指定" });
@@ -36,17 +37,17 @@ try {
     page.on("console", async message => {
       if (message.text().startsWith("[エフェクト再生]")) plays.push(await message.args()[1].jsonValue());
     });
-    await page.goto("http://127.0.0.1:3000", { waitUntil:"networkidle" });
+    await page.goto(process.env.V39_TEST_URL||"http://127.0.0.1:3000", { waitUntil:"networkidle" });
     // 設定画面を開かずに属性色が使えることも確認する。
-    await page.locator("[data-v39-cave-test]").click();
-    await page.getByRole("button", { name:"探索ゲーム", exact:true }).click();
-    await page.getByRole("button", { name:"探索開始", exact:true }).click();
+    await page.evaluate(async()=>{window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39ExpeditionTest();});
+    await page.waitForFunction(()=>!!window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0]?.v39Input);
     await page.waitForTimeout(600);
     const cases = [
       { skillRow:{攻撃手段:"武器"}, attacker:{equipment:[{slot:"武器1",name:"槍"}]}, category:"thrust", attribute:"" },
       { skillRow:{攻撃手段:"爪",炎:10,雷:25}, category:"claw", attribute:"雷" },
       { skillRow:{攻撃手段:"牙",物理:50}, category:"fang", attribute:"" },
       { skillRow:{攻撃手段:"爪",アニメ:"斬撃",炎:100}, category:"", attribute:"" }
+      ,...['弓','毛皮','射撃攻撃','遠距離攻撃'].map((method,index)=>({skillRow:{攻撃手段:method},category:['bow','fur','shot','shot'][index],attribute:''}))
     ];
     for (const [index, entry] of cases.entries()) {
       await page.evaluate(async ({skillRow, attacker}) => {

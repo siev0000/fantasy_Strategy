@@ -7,6 +7,7 @@ import {V39_FOG_BALANCE} from './v39-gameplay-balance.js';
 
 export const V39_ATMOSPHERE_DISPLAY=config;
 export const isV39AtmosphereDisaster=id=>config.kinds.some(kind=>kind.disasterId===id);
+export const isV39AtmosphereMarkerHidden=id=>config.kinds.some(kind=>kind.disasterId===id&&kind.hideMarker===true);
 
 export function v39AtmospherePalette(){
   return config.kinds.map(kind=>{
@@ -35,8 +36,8 @@ export function collectV39AtmosphereTiles(data,state){
     if(isV39FogTile(data,x,y))add(x,y,isV39DeathFogTile(data,x,y)?'death':'fog');
   }
   for(const event of [...(!data.isUnderground?activeV39AtmosphereDisasters(state).filter(event=>!event.persistentHazard):[]),...projectV39HazardEvents(data,turn).filter(event=>isV39AtmosphereDisaster(event.disasterId))]){
-    const kind=config.kinds.find(row=>row.disasterId===event.disasterId).id;
-    for(const key of event.tileKeys||[]){const [x,y]=String(key).split(',').map(Number);add(x,y,kind);}
+    const kind=config.kinds.find(row=>row.disasterId===event.disasterId);
+    for(const key of event.tileKeys||[]){const [x,y]=String(key).split(',').map(Number);add(x,y,kind.id);}
   }
   return [...tiles.values()].sort((a,b)=>a.y-b.y||a.x-b.x).map(tile=>({...tile,kinds:config.kinds.filter(kind=>tile.kinds.has(kind.id)).map(kind=>kind.id)}));
 }

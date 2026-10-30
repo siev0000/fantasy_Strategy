@@ -34,7 +34,7 @@ function unitsByTile(units = []) {
   return groups;
 }
 
-function addVisionRange(mapData, sourceX, sourceY, range, visible, detectionByTile, scoutValue = 0) {
+function addVisionRange(mapData, sourceX, sourceY, range, visible, detectionByTile, scoutValue = 0, gameSettings = null) {
   const width = Math.floor(number(mapData?.w));
   const height = Math.floor(number(mapData?.h));
   const sx = Math.floor(Number(sourceX));
@@ -53,7 +53,7 @@ function addVisionRange(mapData, sourceX, sourceY, range, visible, detectionByTi
     const previous = Number(detectionByTile.get(key));
     detectionByTile.set(key, Math.max(
       Number.isFinite(previous) ? previous : Number.NEGATIVE_INFINITY,
-      resolveEffectiveScoutAtDistance(scoutValue, current.distance, mapData,{x:sx,y:sy},current)
+      resolveEffectiveScoutAtDistance(scoutValue, current.distance, mapData,{x:sx,y:sy},current,gameSettings)
     ));
     if (current.distance >= maxDistance) continue;
     for (const neighbor of getHexNeighborCoords(width, height, current.x, current.y, mapData?.worldWrapEnabled === true)) {
@@ -73,13 +73,13 @@ export function collectV39FactionVision(state, playerId, mapData) {
   if (!faction || !mapData?.grid) return { visible, detectionByTile };
   const settlements = getFactionSettlements(faction);
   for (const settlement of settlements) {
-    if (settlement?.placed) addVisionRange(mapData, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible, detectionByTile, 0);
+    if (settlement?.placed) addVisionRange(mapData, settlement.x, settlement.y, BASE_VILLAGE_SCOUT_RANGE, visible, detectionByTile, 0,state.gameSettings);
   }
   for (const units of unitsByTile(faction.units).values()) {
     const lead = units[0];
     const sense = resolveDetectionGroupSense(units,{mapData});
     const range = units.reduce((max, unit) => Math.max(max, resolveV39UnitVisionRange(unit, mapData)), V39_UNIT_VISION_BASE_RANGE);
-    addVisionRange(mapData, lead.x, lead.y, range, visible, detectionByTile, sense.scout);
+    addVisionRange(mapData, lead.x, lead.y, range, visible, detectionByTile, sense.scout,state.gameSettings);
   }
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
   for (const settlement of settlements) {
@@ -88,7 +88,7 @@ export function collectV39FactionVision(state, playerId, mapData) {
       const scout = (Array.isArray(names) ? names : []).reduce((sum, name) => sum + Math.max(0, number(definitions.get(text(name))?.effects?.索敵)), 0);
       if (scout <= 0) continue;
       const [x, y] = key.split(",").map(Number);
-      addVisionRange(mapData, x, y, V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout);
+      addVisionRange(mapData, x, y, V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP), visible, detectionByTile, scout,state.gameSettings);
     }
   }
   return { visible, detectionByTile };

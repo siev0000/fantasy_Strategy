@@ -50,7 +50,7 @@ function levelAt(data, x, y) {
   return Number.isFinite(value) ? value : null;
 }
 
-function drawEdge(graphics, p, edgeIndex, difference) {
+function drawEdge(graphics, p, edgeIndex, difference, highCenter) {
   const edgeVertices = [
     [0, 1],
     [1, 2],
@@ -68,13 +68,14 @@ function drawEdge(graphics, p, edgeIndex, difference) {
   const bx = p[bIndex * 2];
   const by = p[(bIndex * 2) + 1];
 
-  if (difference >= 2) {
-    graphics.lineStyle(3, 0x0b171c, 0.98);
-  } else {
-    // A one-level step should be readable without visually fragmenting the map.
-    graphics.lineStyle(1.25, 0x60757e, 0.48);
-  }
-  graphics.lineBetween(ax, ay, bx, by);
+  // Keep the actual border available for ownership colors; draw the contour uphill.
+  const dx=highCenter.x-(ax+bx)/2,dy=highCenter.y-(ay+by)/2;
+  const length=Math.hypot(dx,dy)||1,offset=3;
+  const ox=dx/length*offset,oy=dy/length*offset;
+  graphics.lineStyle(difference>=2?3:2.5,0x15232a,0.9);
+  graphics.lineBetween(ax+ox,ay+oy,bx+ox,by+oy);
+  graphics.lineStyle(difference>=2?1.3:0.8,0xe6ddd0,difference>=2?0.95:0.8);
+  graphics.lineBetween(ax+ox,ay+oy,bx+ox,by+oy);
 }
 
 function renderHeightBoundaries() {
@@ -108,7 +109,8 @@ function renderHeightBoundaries() {
         const difference = Math.abs(current - other);
         if (difference < 1) continue;
 
-        drawEdge(graphics, p, neighbor.edge, difference);
+        const highPoints=current>other?p:hexPoints(neighbor.x,neighbor.y);
+        drawEdge(graphics, p, neighbor.edge, difference,{x:highPoints[0],y:(highPoints[1]+highPoints[7])/2});
         if (difference >= 2) differenceTwoPlusCount += 1;
         else differenceOneCount += 1;
       }
@@ -123,7 +125,7 @@ function renderHeightBoundaries() {
     rendered: true,
     differenceOneCount,
     differenceTwoPlusCount,
-    rule: "diff-1-soft-diff-2plus-strong"
+    rule: "uphill-inset-3px-outlined-contour"
   };
   return true;
 }

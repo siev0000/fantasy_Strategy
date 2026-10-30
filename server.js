@@ -7,6 +7,16 @@ const crypto = require("crypto");
 const chokidar = require("chokidar");
 const { Server } = require("socket.io");
 const V39_RACE_DEFINITIONS = require("./data/source/export/json/種族.json");
+const {fields:V39_SOUL_APP_FIELDS,normalizeSoulAppSettings}=require('./config/v39-soul-app-settings.cjs');
+const V39_DETECTION_CONFIG = require('./config/player_config_options.json')['ゲーム進行設定']['索敵発見補正'];
+const V39_DAMAGE_CONFIG = require('./config/player_config_options.json')['ゲーム進行設定']['最終ダメージ倍率'];
+const normalizeV39DamageMultiplier=value=>{
+  const step=Number(V39_DAMAGE_CONFIG['刻み']);
+  const clamped=Math.max(Number(V39_DAMAGE_CONFIG['最小']),Math.min(Number(V39_DAMAGE_CONFIG['最大']),Number.isFinite(Number(value))&&value!==null&&value!==''?Number(value):Number(V39_DAMAGE_CONFIG['デフォルト'])));
+  return Number((Math.round(clamped/step)*step).toFixed(6));
+};
+const normalizeV39DetectionBonus=value=>Math.max(Number(V39_DETECTION_CONFIG['最小']),Math.min(Number(V39_DETECTION_CONFIG['最大']),
+  Math.floor(Number.isFinite(Number(value))&&value!==null&&value!==''?Number(value):Number(V39_DETECTION_CONFIG['デフォルト']))));
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -409,7 +419,9 @@ function normalizeV39LobbyGameSetup(raw) {
     const encoded = JSON.stringify(raw);
     if (Buffer.byteLength(encoded, "utf8") > V39_LOBBY_GAME_SETUP_MAX_BYTES) return null;
     const cloned = JSON.parse(encoded);
-    return cloned && typeof cloned === "object" && !Array.isArray(cloned) ? cloned : null;
+    if(!cloned||typeof cloned!=="object"||Array.isArray(cloned))return null;
+    cloned.gameSettings={...cloned.gameSettings,...normalizeSoulAppSettings(cloned.gameSettings),detectionScoutBonus:normalizeV39DetectionBonus(cloned.gameSettings?.detectionScoutBonus),combatDamageMultiplier:normalizeV39DamageMultiplier(cloned.gameSettings?.combatDamageMultiplier)};
+    return cloned;
   } catch {
     return null;
   }
@@ -954,6 +966,28 @@ io.on("connection", socket => {
     emitV39RoomSnapshot(context.room);
   });
 
+  socket.on('game:rule-settings',payload=>{
+    const context=validateV39RoomSocket(socket,payload);
+    if(!context)return;
+    const {room,participant}=context;
+    if(room.hostParticipantId!==participant.participantId){emitV39RoomError(socket,'ゲームルール設定を変更できるのはホストだけです。');return;}
+    if(!room.settings?.gameSetup){emitV39RoomError(socket,'先にゲーム開始設定を保存してください。');return;}
+    const patch={};
+    const soulSettings=normalizeSoulAppSettings({...room.settings.gameSetup.gameSettings,...payload});
+    for(const key of Object.keys(V39_SOUL_APP_FIELDS))if(Object.prototype.hasOwnProperty.call(payload,key))patch[key]=soulSettings[key];
+    if(Object.prototype.hasOwnProperty.call(payload,'detectionScoutBonus'))patch.detectionScoutBonus=normalizeV39DetectionBonus(payload.detectionScoutBonus);
+    if(Object.prototype.hasOwnProperty.call(payload,'combatDamageMultiplier'))patch.combatDamageMultiplier=normalizeV39DamageMultiplier(payload.combatDamageMultiplier);
+    if(!Object.keys(patch).length)return;
+    room.settings.gameSetup.gameSettings={...room.settings.gameSetup.gameSettings,...patch};
+    if(room.gameSnapshotJson){
+      const saved=JSON.parse(room.gameSnapshotJson);
+      saved.gameState.gameSettings={...saved.gameState.gameSettings,...patch};
+      room.gameSnapshotJson=JSON.stringify(saved);
+    }
+    room.stateRevision+=1;
+    emitV39RoomSnapshot(room);
+  });
+
   socket.on("game:start", payload => {
     const context = validateV39RoomSocket(socket, payload);
     if (!context) return;
@@ -1053,6 +1087,7 @@ io.on("connection", socket => {
       playerId,
       race:String(room.settings?.playerFactionSelections?.[playerId] || ""),
       className:String(payload?.className || "").trim().slice(0, 40),
+      armyClassName:String(payload?.armyClassName || "").trim().slice(0, 40),
       characterName:String(payload?.characterName || "").trim().slice(0, 20),
       villageName:String(payload?.villageName || "").trim().slice(0, 20)
     };

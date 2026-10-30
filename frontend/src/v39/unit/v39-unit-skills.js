@@ -1,4 +1,5 @@
 import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { getIconSrcByName } from "../../lib/icon-library.js";
 import { resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
@@ -6,6 +7,8 @@ import { inspectV39Passive } from "../../lib/v39-passive-rules.js";
 import {getV39SummonEntries} from "../../lib/v39-summon-rules.js";
 import {getV39CallEntries} from '../../lib/v39-call-rules.js';
 import {getV39FusionSkills,inspectV39FusionAccess} from '../../lib/v39-monster-fusion.js';
+import {getV39TeleportEntries,parseV39TeleportEffect} from '../../lib/v39-teleport-rules.js';
+import {renderV39TeleportPanel} from './v39-teleport-ui.js';
 import "./v39-unit-skills.css";
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const num = (value, fallback = null) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -81,6 +84,8 @@ function techniqueDescription(row, source) {
 
 
 export function renderV39UnitSkills(unit, {mapData, expandedName = "", interactive = false} = {}) {
+    const teleportPanel=interactive&&renderV39TeleportPanel(unit,mapData);
+    if(teleportPanel)return teleportPanel;
     const adjustedUnit = applyV39TerrainModifiers(unit, mapData);
     const rows = techniqueEntries(adjustedUnit);
     const weaponAttackRows = resolveAttackRows(adjustedUnit).filter(row => row?.装備攻撃 === true);
@@ -129,7 +134,7 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
             <span class="technique-summary">
               <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>
               <b class="technique-name">${escapeHtml(name)}</b>
-              <small class="technique-ap">AP ${apValue ?? "-"}</small>
+              <small class="technique-ap">${cast?.aimAfterCast&&cast.skillName===name?'AP 支払済':`AP ${apValue ?? "-"}`}</small>
               ${combatValueText ? `<span class="technique-power">${escapeHtml(combatValueText)}</span>` : ""}
               <span class="technique-range">射 ${rangeValue ?? "-"}</span>
             </span>
@@ -141,14 +146,18 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
     const fusionSkills=getV39FusionSkills(unit);
     const fusionState=interactive?window.getV39GameState?.({includeWorlds:false}):null;
     const fusionFacility=fusionState&&inspectV39FusionAccess(fusionState,fusionState.activePlayerId,unit.id,'facility').reasons.length===0;
-    const activeHtml = activeRows.filter(row=>!interactive||(!/^(召喚|呼集)_/.test(String(techniqueSource(row)?.効果 || ''))&&String(techniqueSource(row)?.効果||'')!=='合体')).map(renderTechnique).join("")
+    const teleports=getV39TeleportEntries(unit);
+    const cast=getV39UnitCast(null,unit.id),castInfo=describeV39Cast(cast,window.getV39TimelineState?.()?.turnNumber);
+    const castHtml=interactive&&cast?.aimAfterCast?`<section class="v39-cast-status"><strong>${escapeHtml(cast.skillName)} / ${castInfo.label}</strong><div>${castInfo.ready?'<button type="button" data-v39-cast-release title="位置を指定して発動">発動</button>':''}<button type="button" data-v39-cast-cancel title="詠唱解除・AP返還なし">解除</button></div></section>`:'';
+    const activeHtml = castHtml+activeRows.filter(row=>!interactive||(!parseV39TeleportEffect(techniqueSource(row))&&!/^(召喚|呼集)_/.test(String(techniqueSource(row)?.効果 || ''))&&String(techniqueSource(row)?.効果||'')!=='合体')).map(renderTechnique).join("")
+      +(interactive&&teleports.length?`<button type="button" class="technique-card action-technique" data-v39-teleport-open="${escapeHtml(unit.id)}"><span class="technique-summary"><b class="technique-name">転移</b><small>${teleports.length}スキル / 地点を選ぶ</small></span></button>`:'')
       +(interactive&&(fusionSkills.length||fusionFacility)?`<button type="button" class="technique-card action-technique" data-v39-fusion-open="${escapeHtml(unit.id)}" data-fusion-mode="${fusionSkills.length?'skill':'facility'}"><span class="technique-summary"><b class="technique-name">合体</b><small>${fusionSkills.length?'素材を選ぶ':'魔術工房'}</small></span></button>`:'')
       +(interactive&&summons.length?`<button type="button" class="technique-card action-technique" data-v39-technique-name="召喚" data-v39-summon-open="${escapeHtml(unit.id)}"><span class="technique-summary"><span class="technique-icon technique-icon-neutral"><span class="technique-icon-glyph">◆</span></span><b class="technique-name">召喚</b><small>候補${summons.length}</small></span></button>`:'')
       +(interactive&&calls.length?`<button type="button" class="technique-card action-technique" data-v39-technique-name="呼集" data-v39-call-open="${escapeHtml(unit.id)}"><span class="technique-summary"><span class="technique-icon technique-icon-neutral"><span class="technique-icon-glyph">↪</span></span><b class="technique-name">呼集</b><small>自軍の呼び寄せ</small></span></button>`:'');
     const passiveHtml = passiveRows.length
       ? `<div class="technique-passive-divider">パッシブ</div>${passiveRows.map(renderTechnique).join("")}`
       : "";
-    return activeRows.length || passiveRows.length || fusionSkills.length || fusionFacility
+    return castHtml || activeRows.length || passiveRows.length || fusionSkills.length || fusionFacility
       ? activeHtml + passiveHtml
       : '<div class="squad-empty">行動データなし</div>';
 

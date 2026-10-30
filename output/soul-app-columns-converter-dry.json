@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-soul-app-columns.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": true,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "クラス"
+  ],
+  "source_sheets": {
+    "クラス": "クラス"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 242,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "クラス",
+      "output": "クラス.json",
+      "input_rows": 1231,
+      "records": 242,
+      "skipped_blank_rows": 789,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 200,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

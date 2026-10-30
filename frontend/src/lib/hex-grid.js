@@ -1,5 +1,15 @@
 const ODD_ROW_DELTAS = Object.freeze([[-1, 0], [1, 0], [0, -1], [1, -1], [0, 1], [1, 1]]);
 const EVEN_ROW_DELTAS = Object.freeze([[-1, 0], [1, 0], [-1, -1], [0, -1], [-1, 1], [0, 1]]);
+export const HEX_CLOCKWISE_NEIGHBOR_INDICES=Object.freeze([1,5,4,0,2,3]);
+
+export function turnV39HexDirectionToward(current,target,steps=1){
+  const from=HEX_CLOCKWISE_NEIGHBOR_INDICES.indexOf(current),to=HEX_CLOCKWISE_NEIGHBOR_INDICES.indexOf(target);
+  if(to<0)return current;
+  if(from<0)return target;
+  const delta=(to-from+6)%6;
+  const shortest=delta>3?delta-6:delta;
+  return HEX_CLOCKWISE_NEIGHBOR_INDICES[(from+Math.sign(shortest)*Math.min(Math.abs(shortest),steps)+6)%6];
+}
 
 export function normalizeWrappedCoordinate(value, size) {
   if (!Number.isFinite(Number(value)) || !Number.isFinite(Number(size)) || Number(size) <= 0) return 0;

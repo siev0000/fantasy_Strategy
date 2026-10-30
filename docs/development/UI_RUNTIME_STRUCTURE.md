@@ -1,5 +1,25 @@
 # UI実行経路と負荷の整理
 
+2026-10-27 UI149 ターン処理の状態取得: `core/v39-turn-system.js` の輸送/訓練/防御/現在世界の敵回復は `getV39GameState({includeWorlds:false})` を使用し、未使用の取得1回を削除。返り値を使わないターン内部の更新は `returnState:false`。開始時の世界一覧・鉱床有無と、終盤の全世界転移/回復はフル状態を維持する。状態bridgeの正規化、イベント順、保存、背景世界の投影/復元は変更しない。`scripts/check-v39-turn-snapshots.mjs` は同一保存データと乱数で地上/洞窟各1Tを計測し、ユニット位置/HP/AP・拠点資材・保存地形を比較する。検証用遠征マップで公開APIの保存世界込み取得41→27回 / 37→27回、フル状態を返す更新27→16回 / 28→17回。単回の所要時間は地上874→803ms / 洞窟896→893msであり、速度改善率の保証値ではない。残る取得元と大規模NPC戦の負荷は未解消。結果は `output/web-game/turn-snapshots/`、再計測は `V39_PROFILE_LABEL=before` / `after` を同じfixtureで実行する。洞窟保存・転移・snapshot契約も回帰確認する。
+
+2026-10-27 UI140: 実ゲームのindex.htmlはmain.js/styles.cssを読み込まないため、共通 `ui/v39-scrollbars.css` をindex.htmlのlinkとVue側styles.cssのimportから使用する。画面ごとのスクロールバー上書き・全体非表示は整理し、既存のoverflowとスクロール処理は維持。幅と色は同ファイルのCSS変数で変更する。Blink/WebKitは標準scrollbar指定をautoに戻して擬似要素を有効化し、それ以外は標準thinへフォールバックする。
+
+2026-10-26 UI139 ユニット作成の移設: `v39-character-modal.js` が常設の作成ホストとタブ選択を所有し、`mountV39UnitCreatePanel` で既存の作成DOMを一か所だけマウントする。下部の＋・作成用置換クラス/表示切替を除去。イベントは作成パネル内に限定した一度の委譲で、再表示ごとに購読しない。作成/訓練/教官APIは変更せず、拠点切替は既存 `selectFactionSettlement` を共用。旧公開入口は新タブへ転送。作成以外のタブや閉じたモーダルでは作成詳細を再描画しない。文言・配置は[UI構成](../rules/ui/GAME_UI_LAYOUT_RULES.md)を参照。
+
+2026-10-26 UI138 転移門・強制転移: 門は状態bridgeの `teleportGates` に保存し、共通ターンで開通/期限を処理。非表示世界の強制転移は該当worldのspatialだけを更新し、表示中の敵へ混在させない。基本欄に門利用を明示的に描画し、門がない場合は詳細描画の追加状態コピーを省略。`v39-map-entities.js` の既存画像キャッシュと署名へ門を追加し、視界内だけ描画する。画像は闇の輪.webpの縦横表示サイズだけ変更し元ファイルは保持。抵抗は共通 `lib/v39-status-resistance.js` に切り出すが、既存の全状態異常へ接続したという意味ではない。
+
+2026-10-26 UI137 転移: `v39-unit-skills.js` が転移系を集約し、`v39-teleport-ui.js` が同じ欄内で地点登録・移動スキル比較を描画する。実行判定/部隊の空きマス割当/準備/発動は `lib/v39-teleport-rules.js`。状態bridgeで準備中の被ダメージを記録し、共通ターン処理で回復前に発動する。通常攻撃候補からは除外。セーブに `unit.teleportLocations / pendingTeleport` を保持。効果記載の正本は[スキル効果対応状況](../rules/units/スキル効果対応状況.md)の転移節。
+
+2026-10-26 UI136 索敵発見補正: `lib/v39-detection-settings.js` がconfigの既定値・範囲を正規化し、既存 `gameSettings.detectionScoutBonus` に保存する。開始設定は `v39-field-settings-final.js`、ゲーム中は `v39-save-system.js`。判定は `v39-detection-rules.js` を共用し、範囲を広げず減衰前に補正する。マルチは `v39-multiplayer-lobby.js` とserverの `game:rule-settings` でホストだけが変更し、room snapshotで同期。再接続用保存データも更新し、ロード時はホスト設定を優先する。確認: `scripts/check-v39-detection-bonus.mjs` / `scripts/check-v39-multiplayer-detection.mjs` / `scripts/check-v39-room-lobby.mjs`。
+
+2026-10-26 UI135 移動後の停止削減: `v39-land-detail.js` / `v39-test-tools.js` / `v39-settlement-ui.js` は非表示中の詳細DOM再構築を省略し、土地の選択座標は保持、タブを開いたとき最新状態へ更新する。拠点はdirtyフラグで未変更の再表示時にはDOMを保持する。土地/移動範囲・接触判定/運搬/行動記録の状態取得は保存済み別世界が不要なので `includeWorlds:false` を使用する。洞窟データを更新・削除する変更ではない。移動後の死亡/索敵/運搬/行動記録や、移動・射程・APのゲームルールは省略しない。
+
+同じT24セーブ由来・390px・Vite・CPUプロファイル有効で1マス移動を測定。移動開始ボタン〜移動完了/描画安定（演出込み）は変更前1793ms、変更後842〜926ms。状態取得の累積は約1280ms→390〜409ms、最大long taskは913ms→316〜317ms。端末や状態で変動し、通常描画全般の保証値ではない。残る約0.3秒の連続負荷は未解消。計測は `output/profile-unit-movement.mjs`、結果は `output/web-game/movement-performance/`。回帰確認は `scripts/check-v39-hidden-panel-movement.mjs`（非表示の詳細DOM保持・再表示時の最新情報・実移動/AP/行動記録）と既存移動/建築/運搬テスト。
+
+2026-10-26 UI132: 状態bridgeの `getV39GameState({includeWorlds:false})` は `explorationWorlds:undefined` を返し、書戻しではundefinedを無視する。未取得を空データ `{}` と混同しないための契約。完全な一覧の取得は引数省略、明示的な一覧置換は実オブジェクトを渡す。通常の選択/表示更新で保存済みマップを削除せず、明示的な新規開始/ロードでの状態置換は維持する。
+
+UI133: 欠損した洞窟だけは `core/v39-cave-world.js` の `recoverV39MissingCaves` が通常のcreateWorldへ渡して入口へ再配置する。ロードとユニット選択で共用し、正常な洞窟・表示中の実マップは再生成しない。復旧ログは `appendV39ActivityLog` を使用。毎回のユニット選択で地図をコピーせず、欠損があるときだけ復旧する。
+
 2026-10-26 UI129 霧画像の範囲: `v39-map-visibility.js` の同じ視界走査にapplyFog切替を追加し、索敵/探索には従来のペナルティ適用後、`v39-atmosphere-layer.js` の環境画像だけには適用前の範囲を渡す。画像だけのマスクはScene/操作勢力/ユニット/施設/地形更新でキャッシュし、環境画像の候補がある場合だけ計算する。未探索の暗幕より上・境界線より下のdepth14.2へ置くが、未発見の敵や地形を追加描画しない。画像独自の署名は視界レイヤー全体の早期return前に照合し、壁変更・画像解除・読み込み完了も反映する。確認は `check-v39-cave-atmosphere-vision.mjs`。
 
 2026-10-26 UI128 ワールド描画キャッシュ: `v39-field-runtime-final.js` が一つのPhaser.Game内でワールド別Sceneを管理する。洞窟切替はworldId/cameraを渡し、地形データ/表示設定の署名が同じなら焼込みを再利用する。非表示Sceneはsleep、操作勢力の生存ユニットがいない非表示Sceneはstop/remove。ゲームデータにSceneを保存しない。`v39-cave-world.js` は切替を描画バッチ化し、新規マップと旧ワールド状態の混在を避ける。地形/霧の専用CanvasTextureキーはScene別、原画像は `v39-shared-image-texture.js` でゲーム単位に一度だけ読み込む。入力Abortで目盛り/選択マスク/イベントも解放し、共通ズーム処理済みイベントをruntime側で再適用しない。視界の描画署名はSceneも照合する。確認は `check-v39-world-layer-cache.mjs` と既存洞窟ワールド/視界検査。

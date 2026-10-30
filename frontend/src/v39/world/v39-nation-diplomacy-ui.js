@@ -10,16 +10,45 @@ import {
   improveV39DiplomacyRelation,
   isV39DemonFactionPair,
   cancelV39Treaty,
-  signV39Treaty,
+  proposeV39Treaty,
+  respondV39Treaty,
+  getV39IncomingTreatyProposals,
   V39_TREATY_TYPES
 } from "../../lib/v39-diplomacy-rules.js";
 import { getGameDataRecordId } from "../../lib/game-data-registry.js";
+import { V39_DIPLOMACY_BALANCE } from "../../lib/v39-gameplay-balance.js";
 
 const escapeHtml = value => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 
 let activeSection = "policy";
+let contactTargetId='';
+const treatyDurations = new Map();
+const notifiedProposals=new Set();
+const pendingIdsByPlayer=new Map();
+
+function syncTreatyNotices(){
+  const state=window.getV39GameState?.({includeWorlds:false});
+  const pending=getV39IncomingTreatyProposals(state);
+  const ids=new Set(pending.map(proposal=>proposal.notificationId));
+  for(const id of pendingIdsByPlayer.get(state?.activePlayerId)||[])if(!ids.has(id))notifiedProposals.delete(id);
+  if(state?.activePlayerId)pendingIdsByPlayer.set(state.activePlayerId,ids);
+  for(const button of document.querySelectorAll('[data-foot="manage"],#v39-manage-nation,[data-v39-nation-tab="diplomacy"]')){
+    let badge=button.querySelector('[data-v39-diplomacy-alert]');
+    if(!pending.length){badge?.remove();delete button.dataset.v39DiplomacyPending;continue;}
+    button.dataset.v39DiplomacyPending=String(pending.length);
+    if(!badge){badge=document.createElement('span');badge.dataset.v39DiplomacyAlert='';badge.setAttribute('role','img');badge.textContent='!';button.appendChild(badge);}
+    badge.setAttribute('aria-label',`未回答の協定 ${pending.length}件`);badge.title=`未回答の協定 ${pending.length}件`;
+  }
+  for(const proposal of pending){
+    if(notifiedProposals.has(proposal.notificationId)||typeof window.pushV39SideRailMessage!=='function')continue;
+    const id=window.pushV39SideRailMessage({channel:'notification',title:'外交・協定の申込み',
+      message:`${proposal.senderLabel}から${proposal.treatyLabel}（${proposal.durationTurns}T）の申込み / 回答期限 T${proposal.expiresAtTurn}`,
+      audiencePlayerId:state.activePlayerId,action:{kind:'diplomacy',targetPlayerId:proposal.fromId},preview:true,tone:'warn'});
+    if(id)notifiedProposals.add(proposal.notificationId);
+  }
+}
 
 function ensurePanel() {
   const host = document.getElementById("footManage");
@@ -63,7 +92,7 @@ function renderPolicy(player) {
 }
 
 function renderDiplomacy(state, player) {
-  const others = state.players.filter(row => row.id !== player?.id);
+  const others = state.players.filter(row => row.id !== player?.id&&(!contactTargetId||row.id===contactTargetId));
   if (!others.length) return '<p class="v39-nation-empty">ほかの勢力はまだありません。</p>';
   return `<div class="v39-diplomacy-list">${others.map(target => {
     const relation = getV39DiplomacyRelation(state, player.id, target.id);
@@ -72,15 +101,20 @@ function renderDiplomacy(state, player) {
     const penalty = Number(relation.diplomacyPenalty) || 0;
     const relationValue = Number(relation.relationValue) || 0;
     const treaties = Object.values(relation.treaties || {}).filter(row => row?.active && Number(row.expiresAtTurn) > Number(state.timeline?.turnNumber));
+    const grace = Object.values(relation.treaties || {}).filter(row => !row?.active && Number(row.exitGraceUntilTurn) > Number(state.timeline?.turnNumber)).map(row => `${row.label}の退出猶予:T${row.exitGraceUntilTurn}まで`);
     const detail = exempt ? "魔族同士: 宣戦不要・評価低下なし" : penalty ? `宣戦ペナルティ ${penalty} / T${relation.penaltyUntilTurn}まで` : "宣戦ペナルティなし";
     const treatyButtons = Object.entries(V39_TREATY_TYPES).map(([type, definition]) => {
       const active = treaties.some(row => row.type === type);
-      return `<button type="button" data-v39-treaty-action="${active ? "cancel" : "sign"}" data-v39-treaty-type="${type}" data-v39-target-player="${escapeHtml(target.id)}">${active ? `${escapeHtml(definition.label)}解除` : escapeHtml(definition.label)}</button>`;
+      const attrs = `data-v39-treaty-type="${type}" data-v39-target-player="${escapeHtml(target.id)}"`;
+      return `<button type="button" data-v39-treaty-action="sign" ${attrs}>${escapeHtml(definition.label)}${active ? "更新" : "申込"}</button>${active ? `<button type="button" data-v39-treaty-action="cancel" ${attrs}>${escapeHtml(definition.label)}破棄</button>` : ""}`;
     }).join("");
+    const proposal = relation.proposal;
+    const pending = proposal && Number(proposal.expiresAtTurn) > Number(state.timeline?.turnNumber);
+    const proposalText = pending ? `<div class="v39-treaty-proposal">${escapeHtml(V39_TREATY_TYPES[proposal.type]?.label)} ${proposal.durationTurns}ターン ${proposal.toId === player.id ? `<button data-v39-treaty-action="accept" data-v39-target-player="${escapeHtml(target.id)}">承諾</button><button data-v39-treaty-action="reject" data-v39-target-player="${escapeHtml(target.id)}">拒否</button>` : "回答待ち"}</div>` : "";
     return `<article class="v39-diplomacy-row">
       <div><strong>${escapeHtml(target.label)}</strong><span>${escapeHtml(target.race || "種族未設定")}</span></div>
-      <div><b class="${atWar ? "war" : "peace"}">${atWar ? "戦争中" : `${getV39DiplomacyRelationLabel(relationValue)} ${relationValue}`}</b><small>${escapeHtml(detail)}</small><small>${escapeHtml(treaties.map(row => `${row.label}:T${row.expiresAtTurn}`).join(" / ") || "条約なし")}</small></div>
-      <div class="v39-diplomacy-actions"><button type="button" data-v39-diplomacy-action="friendly" data-v39-target-player="${escapeHtml(target.id)}">親善</button><button type="button" data-v39-diplomacy-action="${atWar ? "peace" : "war"}" data-v39-target-player="${escapeHtml(target.id)}">${atWar ? "停戦" : "宣戦"}</button>${treatyButtons}</div>
+      <div><b class="${atWar ? "war" : "peace"}">${atWar ? "戦争中" : `${getV39DiplomacyRelationLabel(relationValue)} ${relationValue}`}</b><small>${escapeHtml(detail)}</small><small>${escapeHtml([...treaties.map(row => `${row.label}:T${row.expiresAtTurn}`), ...grace].join(" / ") || "条約なし")}</small><small>自国の信用 ${Number(relation.trustByPlayer?.[player.id]) || 0} / 相手 ${Number(relation.trustByPlayer?.[target.id]) || 0}</small></div>
+      <div class="v39-diplomacy-actions"><label>期間 <input aria-label="協定期間" data-v39-treaty-duration="${escapeHtml(target.id)}" type="number" min="1" max="${V39_DIPLOMACY_BALANCE.treatyMaximumTurns}" value="${treatyDurations.get(target.id) || V39_DIPLOMACY_BALANCE.treatyDurationTurns}" style="width:64px">T</label><button type="button" data-v39-diplomacy-action="friendly" data-v39-target-player="${escapeHtml(target.id)}">親善</button><button type="button" data-v39-diplomacy-action="${atWar ? "peace" : "war"}" data-v39-target-player="${escapeHtml(target.id)}">${atWar ? "停戦" : "宣戦"}</button>${treatyButtons}${proposalText}<small>通行のみでは採取・建築不可。破棄: 友好度−${V39_DIPLOMACY_BALANCE.treatyCancellationLoss}・信用−${V39_DIPLOMACY_BALANCE.treatyCancellationTrustLoss}。退出猶予${V39_DIPLOMACY_BALANCE.treatyExitGraceTurns}T。</small></div>
     </article>`;
   }).join("")}</div>`;
 }
@@ -95,9 +129,12 @@ function render() {
     <header class="v39-nation-head"><button type="button" id="v39-nation-back">← 管理</button><strong>国家・外交</strong><span>${escapeHtml(player.label)}</span></header>
     <nav class="v39-nation-tabs"><button data-v39-nation-tab="policy" class="${activeSection === "policy" ? "active" : ""}">国家方針</button><button data-v39-nation-tab="diplomacy" class="${activeSection === "diplomacy" ? "active" : ""}">外交</button></nav>
     <div class="v39-nation-body">${activeSection === "policy" ? renderPolicy(player) : renderDiplomacy(state, player)}</div>`;
+  syncTreatyNotices();
 }
 
-function openPanel() {
+function openPanel(targetId='') {
+  contactTargetId=typeof targetId==='string'?targetId:'';
+  if(getV39IncomingTreatyProposals(window.getV39GameState?.({includeWorlds:false})).length)activeSection='diplomacy';
   const panel = ensurePanel();
   const menu = document.getElementById("v39-manage-menu");
   if (!panel || !menu) return;
@@ -157,11 +194,13 @@ function updateTreaty(action, type, targetId) {
   if (!state || !player || !targetId) return;
   const result = action === "cancel"
     ? cancelV39Treaty(state, player.id, targetId, type, state.timeline?.turnNumber)
-    : signV39Treaty(state, player.id, targetId, type, state.timeline?.turnNumber);
+    : ["accept", "reject"].includes(action)
+      ? respondV39Treaty(state, player.id, targetId, action === "accept", state.timeline?.turnNumber)
+      : proposeV39Treaty(state, player.id, targetId, type, state.timeline?.turnNumber, treatyDurations.get(targetId) ?? V39_DIPLOMACY_BALANCE.treatyDurationTurns);
   if (!result.ok) window.showV39TurnBanner?.(result.reason);
   else {
     window.setV39GameState?.({ diplomacyRelations:result.state.diplomacyRelations }, { reason:`diplomacy-treaty-${action}` });
-    window.showV39TurnBanner?.(action === "cancel" ? "条約を解除しました" : `${V39_TREATY_TYPES[type]?.label || "条約"}を締結しました`);
+    window.showV39TurnBanner?.(action === "cancel" ? "協定を破棄しました" : action === "sign" ? "協定を申し込みました。相手の承諾を待ちます" : action === "accept" ? "協定を締結しました" : "協定を断りました");
   }
   render();
 }
@@ -181,15 +220,22 @@ function installStyles() {
   style.id = "v39-nation-style";
   style.textContent = `
 .manage-menu-grid[hidden]{display:none!important}.v39-nation-panel{width:100%;height:100%;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:6px;overflow:hidden;color:#e8efec}.v39-nation-panel[hidden]{display:none!important}
+.v39-diplomacy-actions input{background:#0d181c;color:#e8efec;border:1px solid #435860;border-radius:5px;padding:2px 3px;font:inherit}.v39-treaty-proposal{width:100%;padding:2px 3px;color:#f2cf80}
 .v39-nation-head{display:flex;align-items:center;gap:8px}.v39-nation-head button,.v39-nation-tabs button,.v39-diplomacy-row button{min-height:34px;border:1px solid #46606a;border-radius:7px;background:#17252a;color:#e8efec;padding:5px 10px}.v39-nation-head strong{font-size:var(--font-body)}.v39-nation-head span{margin-left:auto;color:#a9bdc1;font-size:var(--font-secondary)}
 .v39-nation-tabs{display:flex;gap:5px}.v39-nation-tabs button.active{border-color:#6fd1e1;background:#18363c}.v39-nation-body{min-height:0;overflow:auto}.v39-nation-policy-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.v39-nation-card{min-width:0;border:1px solid #374b52;border-radius:8px;background:#121e23;padding:8px}.v39-nation-card h4{margin:0 0 7px;font-size:var(--font-body)}.v39-nation-field{display:grid;gap:4px;margin-bottom:7px}.v39-nation-field span,.v39-nation-check span{font-size:var(--font-secondary)}.v39-nation-field select{width:100%;min-height:32px;border:1px solid #435860;border-radius:6px;background:#0d181c;color:#e8efec;padding:4px 7px}.v39-nation-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.v39-nation-check{display:flex;align-items:center;gap:6px;min-height:32px}.v39-nation-check input{width:20px;height:20px}.v39-nation-modifiers,.v39-nation-muted,.v39-nation-empty{font-size:var(--font-secondary);color:#a7b8bb}
 .v39-diplomacy-list{display:grid;gap:6px}.v39-diplomacy-row{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1fr) minmax(220px,1.4fr);align-items:center;gap:8px;border:1px solid #374b52;border-radius:8px;background:#121e23;padding:7px}.v39-diplomacy-row>div{display:grid;gap:2px}.v39-diplomacy-row strong{font-size:var(--font-body)}.v39-diplomacy-row span,.v39-diplomacy-row small{font-size:var(--font-secondary);color:#9eb1b5}.v39-diplomacy-row b{font-size:var(--font-secondary)}.v39-diplomacy-row b.war{color:#ff927c}.v39-diplomacy-row b.peace{color:#7fd5a0}.v39-diplomacy-row button{border-color:#8a6842}.v39-diplomacy-actions{display:flex!important;flex-wrap:wrap;justify-content:flex-end;gap:4px}.v39-diplomacy-actions button{font-size:var(--font-secondary);padding:4px 7px}
+[data-v39-diplomacy-pending]{position:relative}[data-v39-diplomacy-alert]{position:absolute;top:1px;right:1px;display:grid;place-items:center;width:14px;height:14px;border-radius:50%;background:#ffd76c;color:#221a04;font-size:12px;font-weight:900;line-height:1;pointer-events:none}
 @media(max-width:700px){.v39-nation-policy-grid{grid-template-columns:1fr}.v39-diplomacy-row{grid-template-columns:minmax(80px,.7fr) minmax(130px,1.3fr)}.v39-diplomacy-actions{grid-column:1/-1;justify-content:flex-start}.v39-nation-checks{grid-template-columns:1fr}}
 `;
   document.head.appendChild(style);
 }
 
 function install() {
+  window.openV39FactionDiplomacy=targetId=>{
+    const state=window.getV39GameState?.();
+    if(targetId===state?.activePlayerId||!state?.players?.some(player=>player.id===targetId))return;
+    activeSection='diplomacy';window.activateV39FooterTab?.('manage');openPanel(targetId);
+  };
   ensurePanel();
   installStyles();
   document.getElementById("v39-manage-nation")?.addEventListener("click", openPanel);
@@ -203,19 +249,32 @@ function install() {
     const treaty = element?.closest("[data-v39-treaty-action]");
     if (treaty) updateTreaty(treaty.dataset.v39TreatyAction, treaty.dataset.v39TreatyType, treaty.dataset.v39TargetPlayer);
   });
-  document.getElementById("v39-nation-panel")?.addEventListener("change", savePolicyFromPanel);
-  window.addEventListener("v39:game-state-changed", render);
+  document.getElementById("v39-nation-panel")?.addEventListener("change", event => {
+    if (event.target?.matches("[data-v39-treaty-duration]")) {
+      treatyDurations.set(event.target.dataset.v39TreatyDuration, Number(event.target.value));
+      return;
+    }
+    savePolicyFromPanel();
+  });
+  window.addEventListener("v39:game-state-changed", ()=>{render();syncTreatyNotices();});
+  for(const event of ['v39:save-loaded','v39:operation-ui-ready','v39:footer-tab-changed'])window.addEventListener(event,syncTreatyNotices);
+  window.addEventListener('v39:initial-placement-complete',()=>{notifiedProposals.clear();pendingIdsByPlayer.clear();syncTreatyNotices();});
 window.addEventListener("v39:turn-stage-diplomacy", event => {
     const state = window.getV39GameState?.();
     if (!state) return;
     const next = advanceV39DiplomacyTurn(state, event.detail?.turnNumber);
     window.setV39GameState?.({ players:next.players, diplomacyRelations:next.diplomacyRelations }, { reason:"diplomacy-turn" });
-    for (const report of next.reports || []) window.appendV39ActivityLog?.(report.playerId || state.activePlayerId, "外交", report.type, report);
+    for (const report of next.reports || []) {
+      const participants = report.pairKey?.split("|") || [report.playerId || state.activePlayerId];
+      for (const id of participants) window.appendV39ActivityLog?.(id, "外交", report.message || report.type, report);
+      if (report.message && participants.includes(state.activePlayerId)) window.showV39TurnBanner?.(report.message);
+    }
   });
   window.canV39AttackFaction = (attackerId, targetId) => canV39FactionAttack(window.getV39GameState?.(), attackerId, targetId);
   window.declareV39War = (attackerId, targetId) => updateDiplomacyPair("war", attackerId, targetId);
   window.endV39War = (firstId, secondId) => updateDiplomacyPair("peace", firstId, secondId);
   window.getV39DiplomacyRelation = (firstId, secondId) => getV39DiplomacyRelation(window.getV39GameState?.(), firstId, secondId);
+  syncTreatyNotices();
 }
 
 install();

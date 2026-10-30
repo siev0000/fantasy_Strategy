@@ -7,6 +7,9 @@ import {
   normalizeGameStartSettings
 } from "../../lib/game-start-settings.js";
 import { V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import {V39_DETECTION_BONUS_MIN,V39_DETECTION_BONUS_MAX} from '../../lib/v39-detection-settings.js';
+import {V39_SOUL_APP_FIELDS} from '../../lib/v39-soul-app.js';
+import {V39_DAMAGE_MULTIPLIER_MIN,V39_DAMAGE_MULTIPLIER_MAX,V39_DAMAGE_MULTIPLIER_STEP} from '../../lib/v39-combat-settings.js';
 import {V39_MAP_SCOPES,V39_CLIMATE_ZONES,V39_SINGLE_ISLAND_PATTERNS,normalizeV39MapScope} from '../../lib/v39-map-scope.js';
 import {
   V39_LOCAL_SESSION_PLAYER_LIMIT,
@@ -159,9 +162,19 @@ function createModal() {
               <small id="v39-field-turn-mode-note"></small>
             </label>
             <label class="v39-setting-row" id="v39-field-max-combat-turns-row">
-              <span>最大戦闘ターン数</span>
+              <span>戦闘・探索ターン数</span>
               <input id="v39-field-max-combat-turns" type="number" step="1">
               <small id="v39-field-max-combat-turns-note"></small>
+            </label>
+            <label class="v39-setting-row">
+              <span>最終ダメージ倍率</span>
+              <input id="v39-field-damage-multiplier" type="number" min="${V39_DAMAGE_MULTIPLIER_MIN}" max="${V39_DAMAGE_MULTIPLIER_MAX}" step="${V39_DAMAGE_MULTIPLIER_STEP}">
+              <small>共通式の最終HPダメージに適用（属性威力の災害被害を含む）。初期1.5倍。全勢力共通、マルチはホスト設定です。</small>
+            </label>
+            <label class="v39-setting-row">
+              <span>索敵発見補正</span>
+              <input id="v39-field-detection-bonus" type="number" min="${V39_DETECTION_BONUS_MIN}" max="${V39_DETECTION_BONUS_MAX}" step="1">
+              <small>索敵＋補正−距離/霧の減衰が隠密以上なら発見。初期値50。マルチはホストの値を共有します。</small>
             </label>
             <label class="v39-setting-row">
               <span>操作勢力数</span>
@@ -173,6 +186,7 @@ function createModal() {
               <input id="v39-field-npc-count" type="number" min="0" max="8" step="1">
               <small>AIが操作し、探索・戦力整備・覇権地の確保を行う国の数です。一般村の数とは別です。</small>
             </label>
+            ${Object.entries(V39_SOUL_APP_FIELDS).map(([key,rule])=>`<label class="v39-setting-row"><span>${rule['表示名']}</span><input id="v39-field-${key}" type="number" min="${rule['最小']}" max="${rule['最大']}" step="1"></label>`).join('')}
           </div>
         </details>
 
@@ -420,6 +434,9 @@ function boot() {
     syncPlayerAssignments();
     const normalizedGameSettings = normalizeGameStartSettings(settings.gameSettings);
     get('v39-field-npc-count').value=normalizedGameSettings.npcFactionCount;
+    get('v39-field-detection-bonus').value=normalizedGameSettings.detectionScoutBonus;
+    for(const key of Object.keys(V39_SOUL_APP_FIELDS))get(`v39-field-${key}`).value=normalizedGameSettings[key];
+    get('v39-field-damage-multiplier').value=normalizedGameSettings.combatDamageMultiplier;
     settings.gameSettings = normalizedGameSettings;
     get("v39-field-turn-mode").value = normalizedGameSettings.turnProgressionMode;
     get("v39-field-max-combat-turns").value = normalizedGameSettings.maxCombatTurnsPerWorldTurn;
@@ -499,6 +516,10 @@ function boot() {
       localParticipantCount,
       playerParticipantAssignments,
       gameSettings: normalizeGameStartSettings({
+        ...settings.gameSettings,
+        ...Object.fromEntries(Object.keys(V39_SOUL_APP_FIELDS).map(key=>[key,get(`v39-field-${key}`).value])),
+        detectionScoutBonus:get('v39-field-detection-bonus').value,
+        combatDamageMultiplier:get('v39-field-damage-multiplier').value,
         npcFactionCount:get('v39-field-npc-count').value,
         turnProgressionMode: get("v39-field-turn-mode").value,
         maxCombatTurnsPerWorldTurn: get("v39-field-max-combat-turns").value
@@ -590,6 +611,18 @@ function boot() {
   get('v39-field-npc-count').addEventListener('change',()=>{
     settings.gameSettings=normalizeGameStartSettings({...settings.gameSettings,npcFactionCount:get('v39-field-npc-count').value});
     get('v39-field-npc-count').value=settings.gameSettings.npcFactionCount;
+  });
+  get('v39-field-detection-bonus').addEventListener('change',()=>{
+    settings.gameSettings=normalizeGameStartSettings({...settings.gameSettings,detectionScoutBonus:get('v39-field-detection-bonus').value});
+    sync();
+  });
+  for(const key of Object.keys(V39_SOUL_APP_FIELDS))get(`v39-field-${key}`).addEventListener('change',()=>{
+    settings.gameSettings=normalizeGameStartSettings({...settings.gameSettings,[key]:get(`v39-field-${key}`).value});
+    sync();
+  });
+  get('v39-field-damage-multiplier').addEventListener('change',()=>{
+    settings.gameSettings=normalizeGameStartSettings({...settings.gameSettings,combatDamageMultiplier:get('v39-field-damage-multiplier').value});
+    sync();
   });
   get("v39-field-local-participant-count").addEventListener("change", () => {
     settings.localParticipantCount = normalizeV39LocalParticipantCount(

@@ -7,7 +7,7 @@ import { isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
 import { isV39SurfaceCaveEntrance } from "./v39-cave-entrance-rules.js";
 import { createV39DiscoveryCheck } from "./v39-research-discovery.js";
 import { isV39ProximitySite, resolveV39SiteStealth } from "./v39-site-discovery.js";
-import { getSelectedSettlement, replaceFactionSettlement } from "./settlement-state.js";
+import { getSelectedSettlement, getFactionSettlements, replaceFactionSettlement } from "./settlement-state.js";
 import { getV39VictoryLandmarkDefinition, isV39VictoryLandmark } from "./v39-victory-landmarks.js";
 import { grantV39ActionExperience, resolveV39SurveyExpReward } from "./v39-unit-experience.js";
 import {canV39ClaimHegemony} from './v39-hegemony-land-rules.js';
@@ -276,6 +276,7 @@ export function advanceV39ExplorationTurn(state, turnNumber, mapData = null) {
         const foundText = [feature?.name, specialty?.name, caveEntranceDiscovered ? "洞窟入口" : "", groundLootDiscovered ? "残留品" : ""].filter(Boolean).join(" / ") || "異常なし";
         const report = { type:"survey-completed", playerId:player.id, unitId:unit.id, unitName:unit.name, key, claimedTileKeys, specialtyName:specialty?.name || "", featureId:feature?.id || "", featureName:feature?.name || "", caveEntranceDiscovered, groundLootDiscovered, dangerBefore:beforeDanger, dangerAfter:dangerPercentByTile[key], claimed, turn, message:`調査完了: ${text(unit.name) || "キャラクター"} (${key}) / ${foundText}${claimed ? " / 領地化" : ""}` };
         reports.push(report); history.push(report); activityLog = appendLog({ activityLog }, report);
+        if(!alreadySurveyed)unit=addV39UnitAchievements(unit,{surveys:1});
       }
       const { surveyTask, ...rest } = unit;
       return rest;
@@ -321,7 +322,7 @@ export function getV39DiscoveredFeature(faction, key) {
 }
 
 // 研究の完了時だけ、調査済みマスを再判定する。非表示の別ワールドにも同じ研究を反映する。
-export function revealV39SurveyedDiscoveries(state, mapData = null) {
+export function revealV39SurveyedDiscoveries(state, mapData = null,{playerId=null,initial=false}={}) {
   const reports = [];
   const turn = Math.max(1, number(state?.timeline?.turnNumber, 1));
   const activeWorldId = state?.activeWorldId || "surface";
@@ -335,7 +336,7 @@ export function revealV39SurveyedDiscoveries(state, mapData = null) {
     const ownReports = [];
     for (const key of exploration.surveyedTileKeys || []) {
       const names = [];
-      const record = { discoveredTurn:turn, discoveredByResearch:true };
+      const record = { discoveredTurn:turn,...(initial?{discoveredByInitialTerritory:true}:{discoveredByResearch:true}) };
       const site = spatial?.explorationSitesByTile?.[key];
       const definition = site && resolveExplorationSiteDefinition(site);
       if (site && definition && !features[key] && discovery.feature(definition)
@@ -348,8 +349,8 @@ export function revealV39SurveyedDiscoveries(state, mapData = null) {
         specialties[key] = { ...specialty, ...record }; names.push(specialty.name);
       }
       const [x,y] = key.split(",").map(Number);
-      if (names.length) ownReports.push({ type:"research-discovery", playerId:player.id, worldId, key, turn,
-        message:`研究により発見: (${key}) / ${names.join(" / ")}` });
+      if (names.length) ownReports.push({ type:initial?'initial-territory-discovery':"research-discovery", playerId:player.id, worldId, key, turn,
+        message:`${initial?'初期領土で発見':'研究により発見'}: (${key}) / ${names.join(" / ")}` });
     }
     const updated = ownReports.length > 0 || exploration.researchDiscoveryVersion !== 1;
     if (!updated) return exploration;
@@ -359,10 +360,12 @@ export function revealV39SurveyedDiscoveries(state, mapData = null) {
       history:[...(exploration.history || []), ...ownReports].slice(-200) };
   };
   const players = (state?.players || []).map(player => {
+    if(playerId&&player.id!==playerId)return player;
     const firstReport = reports.length;
     const original = player.factionState?.exploration || {};
     const exploration = reveal(player, original, state, mapData, activeWorldId);
     for (const [worldId, world] of Object.entries(worlds)) {
+      if(initial)continue;
       if (worldId === activeWorldId || !world?.map) continue;
       const old = world.exploration?.[player.id] || {};
       const next = reveal(player, old, world.spatial, world.map, worldId);
@@ -376,4 +379,31 @@ export function revealV39SurveyedDiscoveries(state, mapData = null) {
   return { changed, reports, state:changed ? { ...state, players, explorationWorlds:worlds } : state };
 }
 
+export function surveyV39InitialTerritory(state,playerId,tileKeys,mapData){
+  if((state.activeWorldId||'surface')!=='surface')return state;
+  const player=state.players?.find(row=>row.id===playerId);if(!player)return state;
+  const exploration=player.factionState.exploration||{};
+  const owned=(tileKeys||[]).filter(key=>state.territoryOwnerByTile?.[key]===playerId);
+  const surveyedTileKeys=[...new Set([...(exploration.surveyedTileKeys||[]),...owned])];
+  const next={...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:{...row.factionState,
+    exploration:{...exploration,researchDiscoveryVersion:1,surveyedTileKeys,
+      initialTerritoryTileKeys:[...new Set([...(exploration.initialTerritoryTileKeys||[]),...owned])]}}}:row)};
+  return revealV39SurveyedDiscoveries(next,mapData,{playerId,initial:true}).state;
+}
+
+export function restoreV39InitialTerritorySurveys(state,mapData){
+  if(!state||!mapData?.grid||(state.activeWorldId||'surface')!=='surface')return state;
+  for(const player of state.players||[]){
+    if(player.isPlayer===false)continue;
+    const faction=player.factionState||{},recorded=faction.exploration?.initialTerritoryTileKeys;
+    const count=Math.max(1,Math.floor(Number(faction.initialSettlementCount)||faction.initialSettlementPlans?.length||1));
+    const keys=recorded?.length?recorded:getFactionSettlements(faction).filter(base=>base.placed&&(base.worldId||'surface')==='surface').slice(0,count).flatMap(base=>[
+      `${base.x},${base.y}`,...getHexNeighborCoords(mapData.w,mapData.h,base.x,base.y,!!mapData.worldWrapEnabled).map(tile=>tile.key)
+    ]);
+    if(keys.length)state=surveyV39InitialTerritory(state,player.id,keys,mapData);
+  }
+  return state;
+}
+
 export const V39_EXPLORATION_RULES = Object.freeze({ siteRate:SITE_RATE, requiredTurns:1, requiredAp:V39_SURVEY_BALANCE.requiredAp, dangerReductionBase:DANGER_REDUCTION_BASE });
+import {addV39UnitAchievements} from './v39-unit-achievements.js';

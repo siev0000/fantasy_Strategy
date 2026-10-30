@@ -93,7 +93,7 @@ export const GAME_DATA_TABLE_METADATA = Object.freeze({
   外交姿勢:{ purpose:"国家の外交姿勢選択と補正", status:"connected" },
   研究:{ purpose:"研究ツリー、条件、進行", status:"connected" },
   効果:{ purpose:"スキル追加効果名の説明辞書", status:"definition-only" },
-  災害:{ purpose:"災害ID、種類、効果説明と将来の発生条件。未追加の数値列は共通暫定設定を使用", status:"connected" },
+  災害:{ purpose:"自然災害・常設危険地帯・攻撃による地形崩壊/落石/瓦礫。発生条件と威力・耐久・撤去APを参照", status:"connected" },
   施設:{ purpose:"建設条件、費用、時間、範囲、都市・土地効果", status:"connected" },
   種族:{ purpose:"種族統合表の表示・能力参照・初期設定・使用可否・旧名称。未完成は新規選択しない", status:"connected" },
   種族分類:{ purpose:"開始種族UIの人族・亜人・魔族分類説明", status:"connected" },

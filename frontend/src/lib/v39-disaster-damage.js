@@ -6,7 +6,10 @@ export function resolveV39DisasterDamage(event,mode='stationary') {
   const rule=resolveV39DisasterRule(event.disasterId);
   const power=Math.max(0,Number(mode==='movement'?(event.movementDamagePower??rule?.movementDamagePower):(event.damagePower??rule?.damagePower))||0);
   const multiplier=mode==='movement'?1:Math.max(0,Number(event.stationaryDamageMultiplier??rule?.stationaryDamageMultiplier??1));
-  return {power:power*multiplier,element:event.damageElement??rule?.damageElement,rate:power>0?0:resolveV39DisasterDamageRate(event,mode)};
+  return {power:power*multiplier,element:event.damageElement??rule?.damageElement,
+    sourceName:(mode==='movement'?`${event.name||rule?.name||'災害'}（通過）`:event.name||rule?.name),disasterId:event.disasterId,
+    components:event.details?.damageComponents??rule?.details?.damageComponents,
+    rate:power>0?0:resolveV39DisasterDamageRate(event,mode)};
 }
 
 export function resolveV39DisasterDamageRate(event,mode='stationary') {
@@ -15,7 +18,7 @@ export function resolveV39DisasterDamageRate(event,mode='stationary') {
     :Math.max(0,Number(event.unitDamageRate)||0)*Math.max(0,Number(event.stationaryDamageMultiplier??rule?.stationaryDamageMultiplier??1));
 }
 
-export function applyV39DisasterDamage(unit,spec,turn,source='災害',random=Math.random) {
+function applySingleDisasterDamage(unit,spec,turn,source='災害',random=Math.random) {
   const hp=Math.max(0,Number(unit.hp??unit.currentHp)||0);
   if(unit.state==='死亡'||hp<=0)return {unit,entry:null};
   const maxHp=Math.max(1,Number(unit.maxHp??unit.status?.HP)||hp);
@@ -28,10 +31,10 @@ export function applyV39DisasterDamage(unit,spec,turn,source='災害',random=Mat
       const skillRow={名前:source,装備攻撃:true,効果:'必中',全威力:value.power,
         判定:value.element==='精神'?'魔力':'',[value.element||'物理']:value.power};
       const result=computeAttackDamage({attacker:{status:{},techniques:[]},target:unit,skillRow,damageType:value.element,random:()=>roll});
-      return applyV39GuardToDamage(unit,result);
+      return {...applyV39GuardToDamage(unit,result),sourceName:value.sourceName,disasterId:value.disasterId};
     }
     const rate=Number(typeof value==='number'?value:value?.rate)||0;
-    return {total:rate>0?Math.max(1,Math.ceil(maxHp*rate-1e-9)):0};
+    return {total:rate>0?Math.max(1,Math.ceil(maxHp*rate-1e-9)):0,sourceName:value?.sourceName,disasterId:value?.disasterId};
   });
   const result=results.reduce((best,value)=>value.total>best.total?value:best,{total:0});
   const damage=Math.min(hp,result.total),nextHp=hp-damage;
@@ -42,8 +45,34 @@ export function applyV39DisasterDamage(unit,spec,turn,source='災害',random=Mat
     ...(unit.shield?{shield:{...unit.shield,remaining:defense.shieldRemaining}}:{}),
     ...(unit.barrier?{barrier:{...unit.barrier,remaining:defense.barrierRemaining}}:{})}:{};
   if(damage<=0&&!defense)return {unit,entry:null};
-  return {unit:{...unit,...protection,hp:nextHp,currentHp:nextHp,...(nextHp<=0?{state:'死亡',deathCause:source,deathTurn:turn}:{})},
-    entry:damage>0?{unitId:unit.id,targetId:unit.id,name:unit.name,damage,total:damage,maxHp,beforeHp:hp,afterHp:nextHp,source,x:unit.x,y:unit.y,hits:[damage],detail:result.detail}:null};
+  const cause=result.sourceName||source;
+  return {unit:{...unit,...protection,hp:nextHp,currentHp:nextHp,...(nextHp<=0?{state:'死亡',deathCause:cause,deathTurn:turn}:{})},
+    entry:damage>0?{unitId:unit.id,targetId:unit.id,name:unit.name,damage,total:damage,maxHp,beforeHp:hp,afterHp:nextHp,source:cause,disasterId:result.disasterId,x:unit.x,y:unit.y,hits:[damage],detail:result.detail}:null};
+}
+
+export function applyV39DisasterDamage(unit,spec,turn,source='災害',random=Math.random){
+  const specs=Array.isArray(spec)?spec:[spec];
+  if(!specs.some(value=>value?.components?.length))return applySingleDisasterDamage(unit,spec,turn,source,random);
+  const roll=random(),beforeHp=Number(unit.hp??unit.currentHp)||0;
+  const results=specs.map(value=>{
+    if(!value?.components?.length)return applySingleDisasterDamage(unit,value,turn,source,()=>roll);
+    const weight=value.components.reduce((sum,c)=>sum+Math.max(0,Number(c.weight)||0),0);
+    if(!weight)return {unit,entry:null};
+    let current=unit;const components=[];
+    for(const component of value.components){
+      const result=applySingleDisasterDamage(current,{power:value.power*Math.max(0,Number(component.weight)||0)/weight,element:component.element,sourceName:value.sourceName,disasterId:value.disasterId},turn,source,()=>roll);
+      current=result.unit;if(result.entry)components.push(result.entry);
+    }
+    const damage=beforeHp-(Number(current.hp??current.currentHp)||0);
+    return {unit:current,entry:damage>0?{...components[0],damage,total:damage,beforeHp,afterHp:current.hp,hits:[damage],
+      detail:{...components[0]?.detail,resistanceKey:value.components.map(c=>c.element).join('/')+'耐性',components:components.map(entry=>({damage:entry.damage,...entry.detail}))}}:null};
+  });
+  const protectionCost=result=>['guard','shield','barrier'].reduce((sum,key)=>sum+Math.max(0,
+    Number(key==='guard'?unit[key]:unit[key]?.remaining)||0)-(Number(key==='guard'?result.unit[key]:result.unit[key]?.remaining)||0),0);
+  return results.reduce((best,result)=>{
+    const damage=Number(result.entry?.damage)||0,bestDamage=Number(best.entry?.damage)||0;
+    return damage>bestDamage||damage===bestDamage&&protectionCost(result)>protectionCost(best)?result:best;
+  },{unit,entry:null});
 }
 
 export function applyV39DisasterMovementDamage(unit,path,state,turn=state?.timeline?.turnNumber||1) {
@@ -55,7 +84,7 @@ export function applyV39DisasterMovementDamage(unit,path,state,turn=state?.timel
   for(const point of path||[]){
     if(current.state==='死亡'||Number(current.hp??current.currentHp)<=0)break;
     if(point.x===current.x&&point.y===current.y)continue;
-    current={...current,x:point.x,y:point.y,position:[point.x,point.y]};visited.push(point);
+    current={...recordV39Walk(current,point),x:point.x,y:point.y,position:[point.x,point.y]};visited.push(point);
     const key=`${point.x},${point.y}`;
     const specs=events.filter(event=>event.tileKeys?.includes(key)&&!isV39HazardFlightAvoided(current,getV39HazardRule(event.disasterId))).map(event=>resolveV39DisasterDamage(event,'movement'));
     const result=applyV39DisasterDamage(current,specs,turn,'災害通過');current=result.unit;
@@ -63,3 +92,4 @@ export function applyV39DisasterMovementDamage(unit,path,state,turn=state?.timel
   }
   return {unit:current,entries,path:visited};
 }
+import {recordV39Walk} from './v39-unit-achievements.js';

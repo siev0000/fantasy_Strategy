@@ -7,6 +7,7 @@ const clamp = (value, limit) => Math.max(-limit, Math.min(limit, finite(value)))
 
 export function normalizeV39EffectTransform(setting = {}) {
   return {
+    powerScaleAxis:['x','y'].includes(setting.powerScaleAxis) ? setting.powerScaleAxis : 'both',
     rotationDeg:clamp(setting.rotationDeg, V39_EFFECT_ROTATION_LIMIT),
     offsetX:clamp(setting.offsetX, V39_EFFECT_OFFSET_LIMIT),
     offsetY:clamp(setting.offsetY, V39_EFFECT_OFFSET_LIMIT),

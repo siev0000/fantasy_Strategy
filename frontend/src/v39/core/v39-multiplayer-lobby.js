@@ -1,4 +1,7 @@
 import { io } from "socket.io-client";
+import {normalizeV39SoulAppSettings} from '../../lib/v39-soul-app.js';
+import {normalizeV39DetectionScoutBonus} from '../../lib/v39-detection-settings.js';
+import {normalizeV39DamageMultiplier} from '../../lib/v39-combat-settings.js';
 import { raceData } from "../../lib/game-data-registry.js";
 import {isV39RacePlayable} from '../../lib/v39-race-definitions.js';
 import {
@@ -258,6 +261,18 @@ function isConnectedToRoom() {
   return !!roomSnapshot && !!getParticipantById(getMyParticipantId());
 }
 
+function syncSharedDetectionSetting(){
+  const setup=roomSnapshot?.settings?.gameSetup;
+  if(isConnectedToRoom()&&setup){
+    const value=normalizeV39DetectionScoutBonus(setup.gameSettings?.detectionScoutBonus);
+    const current=window.getV39GameSettings?.();
+    const damage=normalizeV39DamageMultiplier(setup.gameSettings?.combatDamageMultiplier);
+    const souls=normalizeV39SoulAppSettings(setup.gameSettings);
+    if(current&&(current.detectionScoutBonus!==value||current.combatDamageMultiplier!==damage||Object.keys(souls).some(key=>current[key]!==souls[key])))window.setV39GameState({gameSettings:{...current,...souls,detectionScoutBonus:value,combatDamageMultiplier:damage}},{reason:'multiplayer-rule-settings',returnState:false});
+  }
+  window.dispatchEvent(new Event('v39:shared-rule-settings-changed'));
+}
+
 function formatGameSetupSummary(gameSetup) {
   if (!gameSetup || typeof gameSetup !== "object") return "未設定";
   const mapSize = text(gameSetup.mapSize) || "マップ未設定";
@@ -340,6 +355,7 @@ function submitMultiplayerSovereignProfile(detail = {}) {
     roomId:roomSnapshot.roomId,
     playerId,
     className:text(detail.className),
+    armyClassName:text(detail.armyClassName),
     characterName:text(detail.characterName),
     villageName:text(detail.villageName)
   });
@@ -404,6 +420,7 @@ function importRoomGameSnapshot(payload, options = {}) {
   try {
     if (typeof window.importV39SaveJson !== "function") throw new Error("ゲーム状態の読込機能が準備できていません。");
     window.importV39SaveJson(payload.snapshotJson);
+    syncSharedDetectionSetting();
     const ownPlayerId = localAssignedPlayerIds()[0] || "";
     if (ownPlayerId) window.setV39ActivePlayer?.(ownPlayerId);
     syncMultiplayerIdentityChip();
@@ -601,6 +618,7 @@ function ensureSocket() {
   socket.on("room:snapshot", snapshot => {
     if (!snapshot || snapshot.protocolVersion !== PROTOCOL_VERSION) return;
     roomSnapshot = snapshot;
+    syncSharedDetectionSetting();
     if (pendingGameSetupSave) {
       pendingGameSetupSave = false;
       setStatus("ゲーム開始設定を共有しました。", "ok");
@@ -698,6 +716,7 @@ function ensureSocket() {
       && !!credentials?.participantId
       && credentials?.roomId === text(payload?.roomId);
     roomSnapshot = null;
+    syncSharedDetectionSetting();
     if (!reconnectable) saveCredentials(null);
     autoJoinAttempted = false;
     pendingGameStart = false;
@@ -922,6 +941,31 @@ function boot() {
   window.closeV39MultiplayerLobby = closeLobby;
   window.isV39MultiplayerSetup = () => roomSnapshot?.phase === "setup" && isConnectedToRoom();
   window.getV39MultiplayerParticipantId = () => getMyParticipantId();
+  window.getV39DetectionSettingsAccess=()=>({multiplayer:isConnectedToRoom(),canEdit:!isConnectedToRoom()||(isHost()&&!!roomSnapshot.settings?.gameSetup)});
+  window.getV39CombatSettingsAccess=window.getV39DetectionSettingsAccess;
+  window.setV39SoulAppSettings=value=>{
+    const patch=normalizeV39SoulAppSettings(value);
+    if(isConnectedToRoom()){
+      if(!isHost()||!roomSnapshot.settings?.gameSetup)return false;
+      socket?.emit('game:rule-settings',{roomId:roomSnapshot.roomId,...patch});
+    }else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),...patch}},{reason:'soul-app-setting',returnState:false});
+    return true;
+  };
+  window.setV39CombatDamageMultiplier=value=>{
+    if(isConnectedToRoom()){
+      if(!isHost()||!roomSnapshot.settings?.gameSetup)return false;
+      socket?.emit('game:rule-settings',{roomId:roomSnapshot.roomId,combatDamageMultiplier:normalizeV39DamageMultiplier(value)});
+    }else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),combatDamageMultiplier:normalizeV39DamageMultiplier(value)}},{reason:'combat-setting',returnState:false});
+    return true;
+  };
+  window.setV39DetectionScoutBonus=value=>{
+    if(isConnectedToRoom()){
+      if(!isHost()||!roomSnapshot.settings?.gameSetup)return false;
+      socket?.emit('game:rule-settings',{roomId:roomSnapshot.roomId,detectionScoutBonus:normalizeV39DetectionScoutBonus(value)});
+    }else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),detectionScoutBonus:normalizeV39DetectionScoutBonus(value)}},{reason:'detection-setting',returnState:false});
+    return true;
+  };
+  window.addEventListener('v39:save-loaded',syncSharedDetectionSetting);
 }
 
 boot();

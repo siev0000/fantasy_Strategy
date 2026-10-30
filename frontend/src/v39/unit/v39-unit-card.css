@@ -233,6 +233,11 @@
         height:26px!important;
       }
     }
+.squad-main{position:relative}
+.v39-cast-card-mark{position:absolute;left:0;top:0;color:#78dce8;background:transparent;border:0;font-size:12px;line-height:1;padding:1px;pointer-events:none}
+.v39-cast-card-mark svg{display:block;width:14px;height:14px}
+.v39-cast-card-mark.is-ready{color:#ffdb73;border-color:#ffdb73}
+.v39-cast-state{color:#a6f3ff;font-weight:bold}
 .squad-card.v39-unit-waited .v39-card-portrait-image,
 .squad-card.v39-unit-waited .squad-icon{
   filter:brightness(var(--v39-waited-brightness));

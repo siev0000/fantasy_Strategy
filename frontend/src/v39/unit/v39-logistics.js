@@ -1,4 +1,7 @@
+import {autoResupplyV39CarriedFood} from '../../lib/v39-carried-food.js';
+import {isV39PreservedFoodUnlocked} from '../../lib/v39-preserved-food-rules.js';
 import {depositV39FactionCargo} from '../../lib/v39-cargo-deposit.js';
+import {v39CargoResourceDisplayAmount} from '../../lib/v39-soul-resource-value.js';
 import { FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import { normalizeV39EquipmentInventory } from "../../lib/v39-equipment-rules.js";
 import {
@@ -46,7 +49,7 @@ function depositIntoNest(rawNest, rawCargo) {
 
 function cargoSummary(cargo) {
   const normalized = normalizeV39Cargo(cargo);
-  const resources = Object.entries(normalized.resourcesByType).map(([name, amount]) => `${name}${amount}`);
+  const resources = Object.entries(normalized.resourcesByType).map(([name, amount]) => `${name}${v39CargoResourceDisplayAmount(name,amount)}`);
   if (normalized.equipmentInventory.length) resources.push(`装備${normalized.equipmentInventory.length}`);
   return resources.join(" / ");
 }
@@ -91,7 +94,7 @@ export function addV39CargoToEnemy(enemyId, cargoToAdd) {
 }
 
 export function depositV39PlayerCargo(playerId,movedUnitId="") {
-  const source=window.getV39GameState?.(),result=depositV39FactionCargo(source,playerId,movedUnitId);
+  const source=window.getV39GameState?.({includeWorlds:false}),result=depositV39FactionCargo(source,playerId,movedUnitId);
   if(result.state!==source)window.setV39GameState?.({players:result.state.players},{reason:'player-cargo-deposited'});
   for(const report of result.reports)window.appendV39ActivityLog?.(playerId,'物資',`拠点へ搬入: ${cargoSummary(report.deposited)}`,report);
   if(result.reports.length)window.dispatchEvent(new CustomEvent('v39:cargo-deposited',{detail:{side:'player',reports:result.reports}}));
@@ -170,7 +173,32 @@ window.depositV39PlayerCargo = depositV39PlayerCargo;
 window.depositV39EnemyCargo = depositV39EnemyCargo;
 window.recoverV39GroundLoot = recoverV39GroundLoot;
 window.recoverV39GroundLootForEnemy = recoverV39GroundLootForEnemy;
-window.addEventListener("v39:unit-moved", event => depositV39PlayerCargo(window.getV39GameState?.()?.activePlayerId, event?.detail?.unitId));
+let autoFoodBusy=false,autoFoodStamp='';
+function autoFood(unitId=''){
+  if(autoFoodBusy)return;
+  const state=window.getV39GameState?.({includeWorlds:false});
+  if(!state)return;
+  autoFoodBusy=true;
+  try{
+    const result=autoResupplyV39CarriedFood(state,state.activePlayerId,unitId);
+    if(result.state!==state){
+      window.setV39GameState?.({players:result.state.players},{reason:'food-auto-resupplied'});
+      for(const report of result.reports)window.appendV39ActivityLog?.(state.activePlayerId,'物資',`自動補給: ${cargoSummary({resourcesByType:report.resources})}${report.convertedFood?` / 手持ちを保存食${report.convertedFood}へ加工`:''}`,report);
+    }
+  }finally{autoFoodBusy=false;}
+}
+window.addEventListener('v39:game-state-changed',event=>{
+  if(event.detail?.reason==='food-auto-resupply-setting')autoFoodStamp='';
+  const state=window.getV39GameState?.({includeWorlds:false});
+  if(!state||state.timeline?.phase!=='player')return;
+  const stamp=`${state.activePlayerId}:${state.timeline.turnNumber}:${isV39PreservedFoodUnlocked(state.players.find(player=>player.id===state.activePlayerId)?.factionState)}`;
+  if(stamp===autoFoodStamp)return;
+  autoFoodStamp=stamp;queueMicrotask(()=>autoFood());
+});
+window.addEventListener('v39:unit-moved',event=>{
+  depositV39PlayerCargo(window.getV39ActivePlayerId?.(),event?.detail?.unitId);
+  autoFood(event?.detail?.unitId);
+});
 window.addEventListener("v39:enemy-moved", event => {
   recoverV39GroundLootForEnemy(event?.detail?.enemyId);
   depositV39EnemyCargo(event?.detail?.enemyId);

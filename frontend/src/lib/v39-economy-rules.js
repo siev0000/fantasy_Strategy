@@ -1,11 +1,17 @@
+import {roundV39FoodStock} from './v39-preserved-food-rules.js';
+import {advanceV39OperationPlans} from './v39-operation-plans.js';
 import { getGameDataRows } from "./game-data-registry.js";
+import {feedV39CarriedFood,hasV39CarriedFood} from './v39-carried-food.js';
+import {buildV39ResourceFlowRecord} from './v39-resource-delta-view.js';
 import {seedV39InitialSubjects,normalizeV39SubjectPopulation} from './v39-initial-subjects.js';
 import {divertV39TradeIncome} from './v39-trade-state.js';
 import { resolveV39ConstructionMaterials } from "./v39-construction-materials.js";
 import { resolveV39ResearchEffects } from "./v39-research-effects.js";
 import { createV39DefenseStructure } from "./v39-defense-rules.js";
+import {resolveV39InternalWallHappiness} from './v39-wall-effects.js';
+import {isV39WallEdge,v39WallEdgeKey,collectV39JoinedWallPairs,orderV39WallConstructionEdges} from './v39-wall-edges.js';
 import { V39_DEFENSE_BALANCE, V39_INITIAL_STOCK_BALANCE } from "./v39-gameplay-balance.js";
-import { reservedV39LandExpansionWorkers, advanceV39LandExpansionProjects } from "./v39-land-expansion-rules.js";
+import { reservedV39LandExpansionWorkers, advanceV39LandExpansionProjects,startV39LandExpansion } from "./v39-land-expansion-rules.js";
 import { resolveV39ResourceIcon } from "./resource-icon-glyphs.js";
 import { V39_CIVIC_BALANCE, V39_SETTLEMENT_DEVELOPMENT_BALANCE, V39_SETTLEMENT_PRODUCTION_BALANCE, V39_VOLCANO_DAMAGE_BALANCE } from "./v39-gameplay-balance.js";
 import { resolveCurrentResearchLevel } from "./research-progress.js";
@@ -35,7 +41,7 @@ import {
   normalizeV39PopulationGrowthState
 } from "./v39-population-economy.js";
 import { normalizeV39CivicState, resolveV39CivicProductionMultiplier, resolveV39CivicTurn } from "./v39-civic-rules.js";
-import { advanceV39SpecialResourceHarvest, getV39SpecialtyAccess, getV39SpecialtyEntries, resolveV39SpecialtyHappiness } from "./v39-specialty-rules.js";
+import { advanceV39SpecialResourceHarvest, getV39SpecialtyAccess, getV39SpecialtyEntries, resolveV39SpecialtyHappiness,resolveV39SpecialtyFoodBonuses } from "./v39-specialty-rules.js";
 import { advanceV39Rebellions } from "./v39-rebellion-rules.js";
 import { resolveV39CitySpecializationModifiers, resolveV39CityTraits } from "./v39-city-specialization-rules.js";
 import { resolveTerritoryGuardAtTile } from "../composables/militaryUnitUtils.js";
@@ -92,7 +98,7 @@ const RESEARCH_FIELDS = RESEARCH_CATEGORY_ORDER;
 const FACILITY_NON_EFFECT_FIELDS = new Set([
   "施設名", "分類", "識別キー", "規模Lv", "規模下限人口", "ネームド上限", "表示画像", "表示サイズ", "1マス収容人数", "占有マス数",
   "条件地形", "詳細", "建築時間", "建築数", "影響範囲", "土地用途", "前提施設", "建設目的", "自動建設優先度",
-  "必要拠点段階", "採取資源", "採取範囲", "改築元", "改築短縮ターン",
+  "必要拠点段階", "採取資源", "採取範囲", "固定産出資源", "改築元", "改築短縮ターン",
   "召喚系統", "召喚上限Lv", "召喚生成Lv補正", "召喚補正前提施設", "魂変換対象", "魂変換倍率", "転生最低Lv",
   "施設召喚枠ID", "施設召喚再使用T", "召喚完成Lv補正", "召喚完成対象上限Lv",
   ...RESEARCH_FIELDS, ...MATERIAL_RESOURCE_KEYS, "死体", "魂"
@@ -180,7 +186,7 @@ function normalizeStorageStockByTile(raw) {
     .filter(([key, value]) => key.includes(",") && value && typeof value === "object")
     .map(([key, value]) => [key, {
       ...value,
-      foodStockByType:normalizeResourceBag(value.foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+      foodStockByType:normalizeResourceBag(value.foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock }),
       materialStockByType:normalizeResourceBag(value.materialStockByType, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
       equipmentInventory:Array.isArray(value.equipmentInventory)
         ? value.equipmentInventory.map(row => ({ ...row, item:row?.item && typeof row.item === "object" ? { ...row.item } : row?.item }))
@@ -194,7 +200,7 @@ export function normalizeV39Village(village, race = "只人") {
   const populationByRace = normalizePopulationByRace(village.populationByRace, race, number(village.population, fallbackPopulation));
   const population = Object.values(populationByRace).reduce((sum, value) => sum + number(value), 0);
   const scaleDefinition = resolveVillageScaleDefinition({ ...village, population });
-  const foodStockByType = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
+  const foodStockByType = normalizeResourceBag(village.foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock });
   const materialStockByType = normalizeResourceBag(village.materialStockByType, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 });
   const constructionQueue = Array.isArray(village.constructionQueue)
     ? village.constructionQueue.filter(Boolean).map(row => ({
@@ -218,7 +224,7 @@ export function normalizeV39Village(village, race = "只人") {
     scaleLevel:Math.max(1, Math.floor(number(scaleDefinition?.level, village.scaleLevel || 1))),
     foodStockByType,
     materialStockByType,
-    foodStock:sumResourceBag(foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+    foodStock:sumResourceBag(foodStockByType, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock }),
     materialStock:sumResourceBag(materialStockByType, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
     cityLevels:{ 鍛冶Lv:0, 魔法Lv:0, 信仰Lv:0, 軍事Lv:0, 経済Lv:0, ...(village.cityLevels || {}) },
     buildings:[...new Set((Array.isArray(village.buildings) ? village.buildings : []).map(text).filter(Boolean))],
@@ -325,7 +331,7 @@ export function advanceV39SettlementDevelopment(village) {
   };
 }
 
-function currentDevelopmentOccupiedTiles(village) {
+export function currentDevelopmentOccupiedTiles(village) {
   if (!village?.placed) return [];
   const homeKey = coordKey(village.x, village.y);
   const current = resolveVillageScaleDefinition(village);
@@ -455,7 +461,7 @@ export function startV39SettlementDevelopment(state, playerId, settlementId = ""
   const foodStockByType = { ...village.foodStockByType };
   const materialStockByType = { ...village.materialStockByType };
   for (const resourceKey of FOOD_RESOURCE_KEYS) {
-    foodStockByType[resourceKey] = round1(Math.max(0, number(foodStockByType[resourceKey]) - Math.max(0, number(next?.row?.[resourceKey]))));
+    foodStockByType[resourceKey] = roundV39FoodStock(Math.max(0, number(foodStockByType[resourceKey]) - Math.max(0, number(next?.row?.[resourceKey]))),resourceKey);
   }
   for (const resourceKey of MATERIAL_RESOURCE_KEYS) {
     materialStockByType[resourceKey] = round1(Math.max(0, number(materialStockByType[resourceKey]) - inspection.materialPayment.cost[resourceKey]));
@@ -804,7 +810,7 @@ function collectV39NestTerritoryIncome(nest, mapData) {
     terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
   });
   return {
-    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
     territoryTiles:ownedSet.size,
     employmentSlots,
@@ -881,17 +887,19 @@ export function collectV39TerritoryIncome(state, player, mapData = window.__v39F
   const village = normalizeV39Village(getSelectedSettlement(player?.factionState), player?.race);
   const labor = resolveV39SettlementLabor(state, player, village, mapData);
   const productionMetrics = resolveV39SettlementProductionMetrics(state, player, village);
+  const specialtyFood=resolveV39SpecialtyFoodBonuses(state,player.id,village.settlementId||village.id);
   const ownedSet = new Set(labor.ownedKeys.filter(key => {
     const territory = state?.territoryStateByTile?.[key];
-    return territory?.raided !== true && number(territory?.hp, territory?.maxHp || 100) > 0;
+    return territory?.raided !== true && territory?.status !== '襲撃中' && number(territory?.hp, territory?.maxHp || 100) > 0;
   }));
   const terrainYieldMap = new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]));
   const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
+    resolveTileResourceBonus:({key,resourceKey})=>specialtyFood.byTile[key]?.[resourceKey],
     roundTo1:round1,
     parseCoordKey:key => { const [x, y] = text(key).split(",").map(Number); return { x, y }; },
     resolveTileTerrainForYield:resolveTileTerrain,
     resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(village, key) * labor.employmentRate * resolveV39HazardYieldMultiplier(state, key),
-    resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0
+    resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0 || number(specialtyFood.byTile[key]?.[resourceKey])>0
       ? resolveV39FacilityYieldMultiplier(village, key, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
       : 1,
     terrainYieldMap
@@ -899,9 +907,11 @@ export function collectV39TerritoryIncome(state, player, mapData = window.__v39F
   collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate, productionMetrics);
   collectFacilityWaterIncome(raw, state, player, village, mapData, labor, productionMetrics, "", options.gatheredWater);
   return {
-    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
     tiles:raw.tiles,
+    specialtyFood,
+    facilityFixedIncome:resolveV39FacilityFixedIncome(village,ownedSet),
     ...labor,
     productionMetrics
   };
@@ -920,12 +930,14 @@ export function collectV39TerritoryTileIncome(state, ownerPlayerId, key, mapData
   const labor = resolveV39SettlementLabor(state, player, village, mapData);
   const productionMetrics = resolveV39SettlementProductionMetrics(state, player, village);
   const ownedSet = new Set([text(key)]);
+  const specialtyFood=resolveV39SpecialtyFoodBonuses(state,player.id,village.settlementId||village.id);
   const raw = collectTerritoryIncome(mapData, ownedSet, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
+    resolveTileResourceBonus:({key,resourceKey})=>specialtyFood.byTile[key]?.[resourceKey],
     roundTo1:round1,
     parseCoordKey:tileKey => { const [x, y] = text(tileKey).split(",").map(Number); return { x, y }; },
     resolveTileTerrainForYield:resolveTileTerrain,
     resolveTileYieldMultiplier:({ key:tileKey }) => tileModeMultiplier(village, tileKey) * labor.employmentRate * resolveV39HazardYieldMultiplier(state, tileKey),
-    resolveResourceYieldMultiplier:({ key:tileKey, resourceKey, row }) => number(row?.[resourceKey]) > 0
+    resolveResourceYieldMultiplier:({ key:tileKey, resourceKey, row }) => number(row?.[resourceKey]) > 0 || number(specialtyFood.byTile[tileKey]?.[resourceKey])>0
       ? resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
       : 1,
     terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
@@ -933,8 +945,10 @@ export function collectV39TerritoryTileIncome(state, ownerPlayerId, key, mapData
   collectDiscoveredFeatureIncome(raw, state, player, ownedSet, village, labor.employmentRate, productionMetrics);
   collectFacilityWaterIncome(raw, state, player, village, mapData, labor, productionMetrics, text(key));
   return {
-    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
-    material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 })
+    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock }),
+    material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 }),
+    facilityFixedIncome:state.territoryStateByTile?.[key]?.raided || state.territoryStateByTile?.[key]?.status==='襲撃中' || number(state.territoryStateByTile?.[key]?.hp,100)<=0
+      ?{}:resolveV39FacilityFixedIncome(village,[key])
   };
 }
 
@@ -962,19 +976,21 @@ export function inspectV39NeutralVillageEconomy(village, mapData, state = {}) {
     employmentSlots,
     employmentRate
   });
+  const specialtyFood=resolveV39SpecialtyFoodBonuses(expansionState,ownerId,normalized.settlementId||ownerId);
   const raw = collectTerritoryIncome(mapData, territoryKeys, FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, {
+    resolveTileResourceBonus:({key,resourceKey})=>specialtyFood.byTile[key]?.[resourceKey],
     roundTo1:round1,
     parseCoordKey:key => { const [x, y] = text(key).split(",").map(Number); return { x, y }; },
     resolveTileTerrainForYield:resolveTileTerrain,
     resolveTileYieldMultiplier:({ key }) => tileModeMultiplier(normalized, key) * employmentRate * resolveV39HazardYieldMultiplier(state, key),
-    resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0
+    resolveResourceYieldMultiplier:({ key, resourceKey, row }) => number(row?.[resourceKey]) > 0 || number(specialtyFood.byTile[key]?.[resourceKey])>0
       ? resolveV39FacilityYieldMultiplier(normalized, key, resourceKey) * resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey)
       : 1,
     terrainYieldMap:new Map(getGameDataRows("地形").map(row => [text(row?.地形), row]))
   });
   collectFacilityWaterIncome(raw,{...state,territoryOwnerByTile:owners},projected,projected.factionState.settlements[0],mapData,{employmentRate},productionMetrics);
   const income = {
-    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:round1 }),
+    food:multiplyResourceBag(raw.food, ECONOMY_GAIN_SCALE, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock }),
     material:multiplyResourceBag(raw.material, ECONOMY_GAIN_SCALE, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 })
   };
   const maintenance = buildV39PopulationMaintenanceStock(
@@ -983,6 +999,13 @@ export function inspectV39NeutralVillageEconomy(village, mapData, state = {}) {
     FOOD_RESOURCE_KEYS,
     1
   );
+  for(const [key,value] of Object.entries(specialtyFood.fixedIncome))income.food[key]=round1(number(income.food[key])+value);
+  const facilityFixedIncome=resolveV39FacilityFixedIncome(normalized,[...territoryKeys].filter(key=>owners[key]===ownerId
+    && !state.territoryStateByTile?.[key]?.raided && state.territoryStateByTile?.[key]?.status!=='襲撃中' && number(state.territoryStateByTile?.[key]?.hp,100)>0));
+  for(const [key,value] of Object.entries(facilityFixedIncome)){
+    const bag=FOOD_RESOURCE_KEYS.includes(key)?income.food:income.material;
+    bag[key]=round1(number(bag[key])+value);
+  }
   const shortageByType = Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key,
     round1(Math.max(0, number(maintenance[key]) - number(income.food[key])))
   ]));
@@ -999,6 +1022,7 @@ export function inspectV39NeutralVillageEconomy(village, mapData, state = {}) {
     employmentRate,
     productionMetrics,
     income,
+    facilityFixedIncome,
     maintenance,
     shortageByType,
     shortageTotal:round1(Object.values(shortageByType).reduce((sum, value) => sum + number(value), 0)),
@@ -1022,12 +1046,13 @@ export function createInitialV39Village({ x, y, name = "拠点", race = "只人"
     factionState:replaceFactionSettlement(player?.factionState || {}, base, { ownerPlayerId:player?.id })
   };
   const income = collectV39TerritoryIncome(state, sourcePlayer, mapData);
-  base.foodStockByType = multiplyResourceBag(income.food, V39_INITIAL_STOCK_BALANCE.territoryIncomeTurns, FOOD_RESOURCE_KEYS, { roundTo1:round1 });
+  base.foodStockByType = multiplyResourceBag(income.food, V39_INITIAL_STOCK_BALANCE.territoryIncomeTurns, FOOD_RESOURCE_KEYS, { roundTo1:roundV39FoodStock });
   const units=(initialUnits||(player?.factionState?.units||[]).filter(unit=>!unit.settlementId||unit.settlementId===base.id))
     .filter(unit=>unit.state!=='死亡'&&number(unit.hp??unit.currentHp,1)>0);
-  const maintenance=buildV39PopulationMaintenanceStock(base.populationByRace,units,NORMAL_FOOD_RESOURCE_KEYS,
-    V39_INITIAL_STOCK_BALANCE.normalFoodMaintenanceTurns);
-  for(const key of NORMAL_FOOD_RESOURCE_KEYS)base.foodStockByType[key]=Math.max(number(base.foodStockByType[key]),number(maintenance[key]));
+  const maintenance=buildV39PopulationMaintenanceStock(base.populationByRace,units,FOOD_RESOURCE_KEYS,
+    V39_INITIAL_STOCK_BALANCE.normalFoodMaintenanceTurns,{roundUp:true});
+  for(const key of FOOD_RESOURCE_KEYS)base.foodStockByType[key]=Math.max(number(base.foodStockByType[key]),number(maintenance[key]));
+  base.initialFoodReserveTurnsRemaining=V39_INITIAL_STOCK_BALANCE.normalFoodMaintenanceTurns;
   base.materialStockByType = multiplyResourceBag(income.material, V39_INITIAL_STOCK_BALANCE.territoryIncomeTurns, MATERIAL_RESOURCE_KEYS, { roundTo1:round1 });
   base.populationCapacity = income.populationCapacity;
   base.employmentSlots = income.employmentSlots;
@@ -1043,7 +1068,7 @@ export function facilityDefinitions({includeSettlementScales=false}={}) {
     scope:text(row.影響範囲) || "単体マス",
     terrainCondition:text(row.条件地形) || "なし",
     buildTurns:Math.max(1, Math.floor(number(row.建築時間, 1))),
-    buildLimit:Math.max(0, Math.floor(number(row.建築数, 1))),
+    buildLimit:Math.max(0, Math.floor(number(row.建築数))),
     gatheringResource:text(row.採取資源),
     gatheringRadius:Math.max(0, Math.floor(number(row.採取範囲))),
     cost:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, Math.max(0, number(row?.[key]))])),
@@ -1160,6 +1185,33 @@ export function resolveV39FacilityYieldMultiplier(village, tileKey, resourceKey)
   return Math.max(0, 1 + (number(effects.生産力) + number(category ? effects[category] : 0)) / 100);
 }
 
+export function resolveV39FacilityFixedIncome(village,tileKeys,{divisor=V39_SETTLEMENT_PRODUCTION_BALANCE.facilityProductionFixedDivisor}={}) {
+  if(!(Number(divisor)>0))return {};
+  const definitions=new Map(facilityDefinitions().map(row=>[row.name,row]));
+  const income={};
+  // 施設の設置マスごとに1回。全体効果を土地の数だけ重複加算しない。
+  for(const key of new Set(tileKeys||[]))for(const name of new Set(village?.tileFacilityMap?.[key]||[])){
+    const definition=definitions.get(text(name)),groups=new Map();
+    const resources=[...new Set(text(definition?.row?.固定産出資源).split(/[\/、,]/).map(text).filter(Boolean))];
+    for(const resource of resources){
+      const skill=RESOURCE_FACILITY_EFFECT[resource];
+      if(!['農業','林業','漁業','工業'].includes(skill)||!(number(definition?.effects?.[skill])>0))continue;
+      if(!groups.has(skill))groups.set(skill,[]);
+      groups.get(skill).push(resource);
+    }
+    const condition=village?.facilityStateByTile?.[key]?.[name];
+    const maxHp=Math.max(1,number(condition?.maxHp,V39_VOLCANO_DAMAGE_BALANCE.facilityMaxHp));
+    const hpRate=condition?Math.max(0,Math.min(1,number(condition.hp,maxHp)/maxHp)):1;
+    const effectRate=V39_VOLCANO_DAMAGE_BALANCE.facilityEffectUsesHpRate?hpRate:(hpRate>0?1:0);
+    for(const [skill,targets] of groups){
+      const tenths=Math.round(number(definition.effects[skill])*effectRate/Number(divisor)*10);
+      const share=Math.floor(tenths/targets.length),remainder=tenths%targets.length;
+      targets.forEach((resource,index)=>{income[resource]=round1(number(income[resource])+(share+(index<remainder?1:0))/10);});
+    }
+  }
+  return Object.fromEntries(Object.entries(income).filter(([,value])=>value>0));
+}
+
 // 資源の対応技能（都市基本データ.json）を人口構成から求めた倍率へ変換する。
 // 対応技能が未設定の資源は生産項目の影響を受けない。
 export function resolveV39ResourceProductionMultiplier(productionMetrics, resourceKey) {
@@ -1193,10 +1245,6 @@ function currentResearchLevels(research, cityLevels = {}) {
   }));
 }
 
-function settlementCapacity(village) {
-  return Math.max(1, resolveVillageScaleDefinition(village)?.buildingCapacity || 1);
-}
-
 export function countV39FacilityInstances(village, name = "") {
   const names=Object.values(village?.tileFacilityMap || {}).flat().map(text);
   const legacy=(village?.buildings || []).filter(value=>!names.includes(text(value))).map(text);
@@ -1204,19 +1252,20 @@ export function countV39FacilityInstances(village, name = "") {
     .filter(value=>value && (!name || value===name)).length;
 }
 
-export function inspectV39Construction(state, player, definition, tile, mapData = window.__v39FieldRuntime?.mapData) {
+export function inspectV39Construction(state, player, definition, tile, mapData = window.__v39FieldRuntime?.mapData, {wallEdge=false} = {}) {
   const key = coordKey(tile?.x, tile?.y);
   const assignedId=territorySettlementId(state?.territoryStateByTile?.[key]);
   const village = normalizeV39Village(getFactionSettlementById(player?.factionState,assignedId)
     ||getSelectedSettlement(player?.factionState), player?.race);
   const reasons = [];
   if (!village?.placed) reasons.push("拠点未配置");
-  if (definition?.row?.召喚系統 && !hasV39FacilityPrerequisites(village,definition.row)) reasons.push(`前提施設が未完成: ${definition.row.前提施設}`);
+  const wallFacilities=(mapData?.defenseStructures||[]).filter(w=>w.hp>0&&w.ownerId===player?.id&&w.settlementId===village?.settlementId).map(w=>w.wallFacilityName||w.facilityName);
+  if ((wallEdge || definition?.row?.召喚系統 || definition?.row?.改築元) && !hasV39FacilityPrerequisites(village,definition.row,wallFacilities)) reasons.push(`前提施設が未完成: ${definition.row.前提施設}`);
   if (text(state?.territoryOwnerByTile?.[key]) !== text(player?.id)) reasons.push("自領ではない");
   const homeKey = village?.placed ? coordKey(village.x, village.y) : "";
   const mode = text(village?.territoryTileModeMap?.[key]) || (key === homeKey ? TERRITORY_TILE_MODE_SETTLEMENT : TERRITORY_TILE_MODE_RESOURCE);
   const replacesResidential = mode === TERRITORY_TILE_MODE_SETTLEMENT;
-  if (replacesResidential && (currentDevelopmentOccupiedTiles(village).includes(key) || village?.developmentProject?.residentialTileKeys?.includes(key))) reasons.push("拠点占有・発展工事中のマスには施設を建設できません");
+  if (!wallEdge && replacesResidential && (currentDevelopmentOccupiedTiles(village).includes(key) || village?.developmentProject?.residentialTileKeys?.includes(key))) reasons.push("拠点占有・発展工事中のマスには施設を建設できません");
   if (village?.territoryTileConversionMap?.[key]) reasons.push("土地用途を変更中です");
   if (!terrainConditionMet(definition?.terrainCondition, tile, mapData)) reasons.push(`地形条件: ${definition?.terrainCondition}`);
   const levels = currentResearchLevels(player?.factionState?.research, village?.cityLevels);
@@ -1226,8 +1275,8 @@ export function inspectV39Construction(state, player, definition, tile, mapData 
   const researchCheck = inspectFacilityResearch(player?.factionState?.research, definition);
   reasons.push(...researchCheck.reasons);
   const sameCount=countV39FacilityInstances(village,definition?.name);
-  const limit=definition?.buildLimit ?? Math.max(0,number(definition?.row?.建築数,1));
-  if(limit>0 && sameCount>=limit)reasons.push(`同施設の建設上限 ${sameCount}/${limit}（建設中を含む）`);
+  const limit=definition?.buildLimit ?? Math.max(0,number(definition?.row?.建築数));
+  if(!wallEdge && limit>0 && sameCount>=limit)reasons.push(`同施設の建設上限 ${sameCount}/${limit}（建設中を含む）`);
   const completedAtTile = Array.isArray(village?.tileFacilityMap?.[key])
     ? village.tileFacilityMap[key].map(text).filter(Boolean)
     : [];
@@ -1235,20 +1284,24 @@ export function inspectV39Construction(state, player, definition, tile, mapData 
     .filter(item => text(item?.tileKey) === key);
   const ritualChain=definition?.row?.施設召喚枠ID;
   const chainNames=ritualChain?getGameDataRows('施設').filter(row=>row.施設召喚枠ID===ritualChain).map(row=>row.施設名):[];
-  const replacesFacilityName=ritualChain&&completedAtTile.includes(definition.row.改築元)&&completedAtTile.every(name=>chainNames.includes(name))?definition.row.改築元:'';
+  const upgradeFrom=text(definition?.row?.改築元);
+  const replacesFacilityName=upgradeFrom&&completedAtTile.includes(upgradeFrom)
+    &&completedAtTile.every(name=>ritualChain?chainNames.includes(name):name===upgradeFrom)?upgradeFrom:'';
+  if(!wallEdge && upgradeFrom&&!replacesFacilityName)reasons.push(`改築元の${upgradeFrom}があるマスで改築してください`);
   if(ritualChain&&(village.buildings||[]).some(name=>chainNames.includes(name))&&!replacesFacilityName)reasons.push('同じ系統の施設は1つです。下位施設のあるマスで改築してください');
   if(ritualChain&&(village.constructionQueue||[]).some(item=>chainNames.includes(item.facilityName)))reasons.push('この系統の施設は建設・改築中です');
-  if ((completedAtTile.length&&!replacesFacilityName) || queuedAtTile.length) reasons.push("このマスには既に施設があります");
+  if (!wallEdge && ((completedAtTile.length&&!replacesFacilityName) || queuedAtTile.length)) reasons.push("このマスには既に施設があります");
   const used = countV39FacilityInstances(village);
-  const capacity = settlementCapacity(village);
-  if (used >= capacity&&!replacesFacilityName) reasons.push(`施設枠不足 ${used}/${capacity}`);
+  const capacity = null; // 拠点全体の施設枠は設けず、各マスと施設ごとの制限だけを使用する。
   const materialPayment = resolveV39ConstructionMaterials(definition?.cost, village?.materialStockByType);
   const shortage = Object.entries(materialPayment.cost).filter(([keyName, cost]) => number(cost) > number(village?.materialStockByType?.[keyName]));
   if (shortage.length) reasons.push(`資材不足: ${shortage.map(([name]) => name).join("・")}`);
-  return { available:reasons.length === 0, reasons, key, used, capacity, sameCount, limit, levels, village, replacesResidential, researchCheck, materialPayment,replacesFacilityName };
+  const buildTurns=Math.max(1,number(definition?.buildTurns,1)-(replacesFacilityName?Math.max(0,number(definition.row?.改築短縮ターン)):0));
+  return { available:reasons.length === 0, reasons, key, used, capacity, sameCount, limit, levels, village, replacesResidential, researchCheck, materialPayment,replacesFacilityName,buildTurns };
 }
 
 export function startV39Construction(state, playerId, facilityName, tile, mapData = window.__v39FieldRuntime?.mapData, options = {}) {
+  if (V39_DEFENSE_BALANCE.facilityWalls[facilityName]) return startV39WallConstruction(state,playerId,facilityName,options.edges || [],mapData);
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const definition = facilityDefinitions().find(row => row.name === text(facilityName));
   if (!player || !definition) return { ok:false, reason:"施設データが見つかりません", state };
@@ -1259,14 +1312,74 @@ export function startV39Construction(state, playerId, facilityName, tile, mapDat
   const materialStockByType = { ...village.materialStockByType };
   for (const key of MATERIAL_RESOURCE_KEYS) materialStockByType[key] = round1(Math.max(0, number(materialStockByType[key]) - number(check.materialPayment.cost[key])));
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
+  const buildTurns=check.buildTurns;
   const queueItem = { id:`construction-${player.id}-${definition.name}-${turn}-${check.key}`, facilityName:definition.name, tileKey:check.key,
-    ...(check.replacesFacilityName?{replacesFacilityName:check.replacesFacilityName}:{}),remainingTurns:definition.buildTurns, totalTurns:definition.buildTurns, startedTurn:turn };
+    ...(check.replacesFacilityName?{replacesFacilityName:check.replacesFacilityName}:{}),remainingTurns:buildTurns, totalTurns:buildTurns, startedTurn:turn };
   const nextVillage = normalizeV39Village({ ...village, materialStockByType, territoryTileModeMap:{ ...village.territoryTileModeMap, [check.key]:TERRITORY_TILE_MODE_RESOURCE }, constructionQueue:[...village.constructionQueue, queueItem] }, player.race);
   const players = state.players.map(row => row.id === player.id ? {
     ...row,
     factionState:replaceFactionSettlement(row.factionState, nextVillage, { ownerPlayerId:row.id,select:false })
   } : row);
   return { ok:true, state:{ ...state, players }, queueItem, definition };
+}
+
+export function inspectV39WallConstruction(state,player,definition,edges,mapData) {
+  const input=Array.isArray(edges)?edges:[];
+  const malformed=input.some(edge=>!isV39WallEdge(edge,mapData));
+  const unique=[...new Map(input.filter(edge=>isV39WallEdge(edge,mapData)).map(edge=>[v39WallEdgeKey(edge),edge])).values()];
+  const first=unique[0]?.from;
+  const check=inspectV39Construction(state,player,definition,first,mapData,{wallEdge:true});
+  const reasons=[...check.reasons.filter(reason=>!reason.startsWith('資材不足:'))];
+  if(malformed)reasons.push('マップ内の隣接する辺を選択してください');
+  if(!V39_DEFENSE_BALANCE.facilityWalls[definition?.name])reasons.push('辺に設置できる壁ではありません');
+  if(!unique.length)reasons.push('建築する辺を選択してください');
+  const existing=new Set((mapData?.defenseStructures||[]).filter(w=>w.kind==='壁'&&w.hp>0&&w.edge).map(w=>v39WallEdgeKey(w.edge)));
+  for(const pair of collectV39JoinedWallPairs(mapData?.defenseStructures||[]))if(pair.some(w=>w.hp>0))pair.forEach(w=>existing.add(v39WallEdgeKey(w.edge)));
+  const queued=new Set((state?.players||[]).flatMap(p=>getFactionSettlements(p.factionState).flatMap(v=>v.wallConstructionQueue||[])).map(item=>v39WallEdgeKey(item.edge)));
+  for(const edge of unique){
+    if(!isV39WallEdge(edge,mapData)){reasons.push('マップ内の隣接する辺を選択してください');continue;}
+    const item=inspectV39Construction(state,player,{...definition,cost:{}},edge.from,mapData,{wallEdge:true});
+    reasons.push(...item.reasons);
+    if(item.village?.settlementId!==check.village?.settlementId)reasons.push('同じ拠点の辺を選択してください');
+    if(existing.has(v39WallEdgeKey(edge))||queued.has(v39WallEdgeKey(edge)))reasons.push('壁がある、または建築中の辺です');
+  }
+  const cost=Object.fromEntries(Object.entries(definition?.cost||{}).map(([name,amount])=>[name,amount*unique.length]));
+  const materialPayment=resolveV39ConstructionMaterials(cost,check.village?.materialStockByType);
+  if(Object.entries(materialPayment.cost).some(([name,amount])=>amount>number(check.village?.materialStockByType?.[name])))reasons.push('資材不足');
+  return {...check,edges:unique,materialPayment,reasons:[...new Set(reasons)],available:reasons.length===0};
+}
+
+export function startV39WallConstruction(state,playerId,facilityName,edges,mapData){
+  const player=state?.players?.find(p=>p.id===playerId),definition=facilityDefinitions().find(d=>d.name===facilityName);
+  if(!player||!definition)return {ok:false,reason:'施設データが見つかりません',state};
+  const check=inspectV39WallConstruction(state,player,definition,edges,mapData);
+  if(!check.available)return {ok:false,reason:check.reasons.join(' / '),state};
+  const turn=number(state.timeline?.turnNumber,1),stock={...check.village.materialStockByType};
+  for(const [name,amount] of Object.entries(check.materialPayment.cost))stock[name]=round1(number(stock[name])-amount);
+  const queueItems=orderV39WallConstructionEdges(check.edges).map(edge=>({id:`wall-${playerId}-${turn}-${v39WallEdgeKey(edge)}`,edge,
+    facilityName,remainingTurns:check.buildTurns,totalTurns:check.buildTurns,startedTurn:turn,tileKey:coordKey(edge.from.x,edge.from.y)}));
+  const village={...check.village,materialStockByType:stock,wallConstructionQueue:[...(check.village.wallConstructionQueue||[]),...queueItems]};
+  return {ok:true,queueItems,state:{...state,players:state.players.map(p=>p.id===playerId?{...p,
+    factionState:replaceFactionSettlement(p.factionState,village,{ownerPlayerId:playerId,select:false})}:p)}};
+}
+
+export function advanceV39WallConstruction(village,mapData,ownerId,turn){
+  const queue=[],completed=[];
+  let worked=false;
+  for(const item of village.wallConstructionQueue||[]){
+    if(worked){queue.push(item);continue;}
+    worked=true;
+    if(item.remainingTurns>1){queue.push({...item,remainingTurns:item.remainingTurns-1});continue;}
+    const rule=V39_DEFENSE_BALANCE.facilityWalls[item.facilityName];
+    if(!rule||!isV39WallEdge(item.edge,mapData))continue;
+    const from=item.edge.from;
+    const wall=createV39DefenseStructure(mapData,from,{名前:item.facilityName,効果:'壁',ガード:rule.hp},
+      {id:item.id,ownerPlayerId:ownerId},turn);
+    Object.assign(wall,{id:item.id,edge:item.edge,height:rule.height,wallFacilityName:item.facilityName,settlementId:village.settlementId});
+    mapData.defenseStructures=[...(mapData.defenseStructures||[]),wall];
+    completed.push({...item,playerId:ownerId,settlementId:village.settlementId});
+  }
+  return {village:{...village,wallConstructionQueue:queue},completed};
 }
 
 const CIVIC_FACILITY_EFFECT_KEYS = new Set(["幸福度", "治安", "不満度低下"]);
@@ -1293,7 +1406,8 @@ export function advanceConstruction(village) {
   const tileFacilityMap = { ...village.tileFacilityMap };
   let buildings = [...village.buildings];
   const facilityStateByTile={...village.facilityStateByTile};
-  for (const item of village.constructionQueue) {
+  for (const [index,item] of village.constructionQueue.entries()) {
+    if(index>0){queue.push(item);continue;}
     const remainingTurns = item.remainingTurns - 1;
     if (remainingTurns > 0) { queue.push({ ...item, remainingTurns }); continue; }
     completed.push(item);
@@ -1312,6 +1426,15 @@ export function advanceConstruction(village) {
   return { village:{ ...village, constructionQueue:queue, buildings, tileFacilityMap,facilityStateByTile,cityModifiers:facilityCityModifiers(buildings) }, completed };
 }
 
+// All construction lanes share one work slot per settlement and economy turn.
+export function resolveV39ConstructionWorkKind(village){
+  return [
+    ['development',village.developmentProject],
+    ['construction',village.constructionQueue?.[0]],
+    ['wall',village.wallConstructionQueue?.[0]]
+  ].filter(([,item])=>item).sort((a,b)=>number(a[1].startedTurn,1)-number(b[1].startedTurn,1))[0]?.[0]||null;
+}
+
 export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?.mapData) {
   if (!state || !mapData?.grid) return { state, reports:[], completed:[] };
   state = { ...state, territoryOwnerByTile:{ ...(state.territoryOwnerByTile || {}) }, territoryStateByTile:{ ...(state.territoryStateByTile || {}) } };
@@ -1326,6 +1449,8 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
   const players = state.players.map(player => {
     const currentTurn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
     const processedSettlementIds = new Set();
+    const unitFoodShortfalls=new Map();
+    const checkCarriedFood=(player.factionState.units||[]).some(u=>u.carryFood)||(player.factionState.squads||[]).some(s=>hasV39CarriedFood(s.cargo)||Object.values(s.cargoByUnitId||{}).some(hasV39CarriedFood));
     const originalSettlements = getFactionSettlements(player?.factionState);
     // 同じターンに複数拠点の施設が完成しても、水域の取得は一度だけ。
     const gatheredWater = new Set();
@@ -1341,7 +1466,8 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         if (item.targetMode === TERRITORY_TILE_MODE_SETTLEMENT) delete facilitiesByTile[item.tileKey];
         territoryConversionCompleted.push({ ...item, playerId:player.id, settlementId });
       }
-      const development = advanceV39SettlementDevelopment(village);
+      const constructionWorkKind=resolveV39ConstructionWorkKind(village);
+      const development = constructionWorkKind==='development' ? advanceV39SettlementDevelopment(village) : {village,completed:false};
       village = normalizeV39Village(development.village, player.race);
       if (development.completed) {
         developmentCompleted.push({
@@ -1353,8 +1479,11 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
           scaleName:development.target.name
         });
       }
-      const construction = advanceConstruction(village);
+      const construction = constructionWorkKind==='construction' ? advanceConstruction(village) : {village,completed:[]};
       village = normalizeV39Village(construction.village, player.race);
+      const walls=constructionWorkKind==='wall' ? advanceV39WallConstruction(village,mapData,player.id,currentTurn) : {village,completed:[]};
+      village=normalizeV39Village(walls.village,player.race);
+      completed.push(...walls.completed);
       for (const item of construction.completed) {
         facilitiesByTile[item.tileKey] = [...(village.tileFacilityMap[item.tileKey]||[])];
         const wallRule = V39_DEFENSE_BALANCE.facilityWalls[item.facilityName];
@@ -1384,9 +1513,16 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         food:Object.fromEntries(Object.entries(rawTerritoryIncome.food || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier * specialization.foodMultiplier)])),
         material:Object.fromEntries(Object.entries(rawTerritoryIncome.material || {}).map(([key, value]) => [key, round1(number(value) * civicProductionMultiplier * specialization.materialMultiplier)]))
       };
+      for(const [key,value] of Object.entries(rawTerritoryIncome.specialtyFood?.fixedIncome||{}))
+        territoryIncome.food[key]=round1(number(territoryIncome.food[key])+value);
+      for(const [key,value] of Object.entries(rawTerritoryIncome.facilityFixedIncome||{})){
+        const bag=FOOD_RESOURCE_KEYS.includes(key)?territoryIncome.food:territoryIncome.material;
+        bag[key]=round1(number(bag[key])+value);
+      }
       const harvest = advanceV39SpecialResourceHarvest(state, player, village, currentTurn, mapData);
       const actualMaterial={...territoryIncome.material};
       for(const [key,amount] of Object.entries(harvest.income))actualMaterial[key]=number(actualMaterial[key])+amount;
+      const grossProduction={...territoryIncome.food,...actualMaterial};
       const tradeIncome=divertV39TradeIncome(tradeState,'player',player.id,settlementId,{...territoryIncome.food,...actualMaterial},currentTurn);
       tradeState=tradeIncome.state;
       territoryIncome={...territoryIncome,food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key=>[key,number(tradeIncome.income[key])])),material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key=>[key,number(tradeIncome.income[key])]))};
@@ -1399,11 +1535,13 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
       const populationResult = advanceV39PopulationEconomy({
         village,
         units:assignedUnits,
+        includeUnitFoodShortfalls:checkCarriedFood,
         income:territoryIncome.food,
         resourceKeys:FOOD_RESOURCE_KEYS,
         normalFoodKeys:NORMAL_FOOD_RESOURCE_KEYS,
         populationCapacity:territoryIncome.populationCapacity
       });
+      for(const [id,demand] of Object.entries(populationResult.unitMaintenanceShortfallById||{}))unitFoodShortfalls.set(id,demand);
       const materialStockByType = { ...village.materialStockByType };
       for (const key of MATERIAL_RESOURCE_KEYS) materialStockByType[key] = round1(number(materialStockByType[key]) + number(territoryIncome.material[key]));
       village = normalizeV39Village({
@@ -1427,8 +1565,11 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         return resolveTileTerrain(mapData, x, y);
       });
       const specialties = resolveV39SpecialtyHappiness(getV39SpecialtyAccess(state, player.id, { settlementId }));
-      village.civicState = resolveV39CivicTurn(village, currentTurn, residentialTerrains, specialties, resolveV39ResearchEffects(player.factionState.research),getV39CountryBonuses(player),specialization);
+      const innerWalls=resolveV39InternalWallHappiness(mapData,settlementId,player.id,residentialKeys);
+      village.civicState = resolveV39CivicTurn(village, currentTurn, residentialTerrains, specialties, resolveV39ResearchEffects(player.factionState.research),getV39CountryBonuses(player),specialization,innerWalls);
       village.lastEconomyDelta = {
+        ...buildV39ResourceFlowRecord({production:grossProduction,before:{...beforeFood,...beforeMaterial},
+          after:{...village.foodStockByType,...village.materialStockByType},maintenance:populationResult.consumedByType,reserved:tradeIncome.reserved}),
         food:Object.fromEntries(FOOD_RESOURCE_KEYS.map(key => [key, round1(number(village.foodStockByType[key]) - number(beforeFood[key]))])),
         material:Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key => [key, round1(number(village.materialStockByType[key]) - number(beforeMaterial[key]))])),
         population:populationResult.populationDelta,
@@ -1440,6 +1581,8 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         citySpecializationId:village.citySpecializationId,
         citySpecializationModifiers:specialization,
         specialResourceHarvest:harvest.income,
+        facilityFixedIncome:rawTerritoryIncome.facilityFixedIncome||{},
+        specialtyFoodFixedIncome:rawTerritoryIncome.specialtyFood?.fixedIncome||{},
         tradeReservedByType:tradeIncome.reserved,
         turn:state.timeline?.turnNumber
       };
@@ -1460,8 +1603,16 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
     }).filter(Boolean);
     const selectedSettlement = nextSettlements.find(row => text(row.settlementId || row.id) === selectedId) || nextSettlements[0] || null;
     const settlementById = new Map(nextSettlements.map(row => [text(row.settlementId || row.id), row]));
+    let foodFaction=player.factionState;
     const units = (player?.factionState?.units || []).map(unit => {
+      if(unit.lastCarriedFoodTurn===currentTurn)return unit;
       const settlementId = text(unit?.settlementId || selectedId);
+      if(processedSettlementIds.has(settlementId)&&number(unit.hp??unit.currentHp)>0){
+        const feeding=feedV39CarriedFood(foodFaction,unit,unitFoodShortfalls.get(unit.id),state,currentTurn);
+        foodFaction=feeding.faction;
+        unit=foodFaction.units.find(row=>row.id===unit.id)||unit;
+        if(feeding.protected)return unit;
+      }
       const growth = settlementById.get(settlementId)?.populationGrowthByRace?.[text(unit?.race)] || {};
       const starvationStage = Math.max(0, Math.min(4, Math.floor(number(growth?.starvationStage))));
       const resourceExhausted = growth?.remainingTurns === 0;
@@ -1483,7 +1634,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
     });
     return {
       ...player,
-      factionState:{ ...player.factionState, units, settlements:nextSettlements, selectedSettlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id) }
+      factionState:{ ...foodFaction, units, settlements:nextSettlements, selectedSettlementId:text(selectedSettlement?.settlementId || selectedSettlement?.id) }
     };
   });
   for(const player of players) {
@@ -1494,7 +1645,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
   const enemyEconomy = advanceEnemyNestEconomy({ ...state, players }, mapData, currentTurn);
   const rebellion = advanceV39Rebellions({ ...state, players, facilitiesByTile, settlements, ...enemyEconomy }, currentTurn);
   return {
-    state:rebellion.state,
+    state:advanceV39OperationPlans(rebellion.state,mapData,{construction:startV39Construction,expansion:startV39LandExpansion,wall:startV39WallConstruction,development:startV39SettlementDevelopment}),
     reports,
     completed,
     developmentCompleted,
@@ -1505,7 +1656,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
   };
 }
 
-export function buildV39ResourceSnapshot(village) {
+export function buildV39ResourceSnapshot(village,flow=null) {
   const normalized = normalizeV39Village(village);
   if (!normalized) return null;
   const delta = normalized.lastEconomyDelta || { food:{}, material:{} };
@@ -1516,7 +1667,7 @@ export function buildV39ResourceSnapshot(village) {
     iconColor:group.iconColor,
     items:group.keys.map(name => {
       const icon = resolveV39ResourceIcon(name);
-      return { name, icon:icon.glyph, iconColor:icon.color, value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) };
+      return { name, icon:icon.glyph, iconColor:icon.color, value:number(normalized.foodStockByType[name] ?? normalized.materialStockByType[name]), delta:number(flow?.deltaByType?.[name] ?? delta.food?.[name] ?? delta.material?.[name]), rare:!["食料", "木材", "石材", "金属"].includes(String(RESOURCE_DEFINITION_ROWS.find(row => String(row?.データ分類 || "").trim() === name)?.分類 || "")) };
     })
   }]));
 }

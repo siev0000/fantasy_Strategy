@@ -8,7 +8,12 @@ import { getV39EffectCategories } from "../../lib/v39-effect-category-settings.j
 import { getV39EffectAttributes } from "../../lib/v39-effect-attribute-settings.js";
 import { resolveV39CombatEffect } from "../../lib/v39-combat-effect-rules.js";
 import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
+import {resolveAttackPower,isV39SupportSkill} from '../../lib/v39-combat-engine.js';
+import {applyV39TerrainModifiers} from '../../lib/v39-terrain-modifiers.js';
+import {resolveV39PowerEffectScale,isV39PowerEffectSkillEnabled} from '../../lib/v39-effect-power-scale.js';
+import {resolveV39PowerAreaScale} from '../../lib/v39-effect-power-scale.js';
 import { MAP_ENTITY_SIZE_RULES } from "../../lib/map-entity-size-rules.js";
+import atmosphereConfig from '../../../../config/v39-atmosphere-display.json';
 
 const sources = new Map();
 const EFFECT_TOTAL_DURATION_MS = 1500;
@@ -29,6 +34,8 @@ function registerSources(folder, names, sourceScaleMultiplier) {
 
 registerSources("320×240", effectList320, 1);
 registerSources("アニメーション1", effectListAnimation1, 2);
+const tornado=atmosphereConfig.tornado;
+sources.set(tornado.effectName,{...sources.get(tornado.sourceEffect),frameStart:tornado.firstFrame-1,frameEnd:tornado.lastFrame-1});
 const extraImages = import.meta.glob("../../../../assets/effect/アニメーション追記/*.webp", { eager:true, query:"?url", import:"default" });
 for (const [path, src] of Object.entries(extraImages)) {
   const name = path.split("/").at(-1).replace(/\.webp$/i, "");
@@ -149,8 +156,16 @@ export async function playV39MapEffect(request = {}) {
   if (!sequence.length) return false;
   const splash = Math.max(0, number(request.splash, 0));
   const requestedScalePercent = Math.max(10, number(request.scalePercent, V39_EFFECT_BASE_SCALE_PERCENT * (1 + splash)));
-  const scaleMultiplier = Math.max(0.1, number(playbackSettings.scaleMultiplierPercent, 100) / 100);
-  const scalePercent = Math.max(10, requestedScalePercent * scaleMultiplier);
+  let power=number(request.power,0);
+  if(request.power==null&&request.skillRow){
+    const actor=applyV39TerrainModifiers(request.attacker||{},window.__v39FieldRuntime?.mapData);
+    if(!isV39SupportSkill(request.skillRow,actor))power=resolveAttackPower(request.skillRow,actor);
+  }
+  const powerScale=resolveV39PowerEffectScale(power,request.powerScaleEnabled!==false&&isV39PowerEffectSkillEnabled(request.skillRow?.名前));
+  const categoryScale=Math.max(0.1, number(playbackSettings.scaleMultiplierPercent, 100) / 100);
+  const scaleMultiplier = categoryScale;
+  const scalePercent = Math.max(1, requestedScalePercent * scaleMultiplier);
+  const areaScale=resolveV39PowerAreaScale(categoryScale,1);
   const tint = requestValue(request, "tint", playbackSettings.tint || null);
   const gradientEnabled = requestValue(request, "gradientEnabled", playbackSettings.gradientEnabled === true) === true;
   const gradientColorA = requestValue(request, "gradientColorA", playbackSettings.gradientColorA);
@@ -172,10 +187,11 @@ export async function playV39MapEffect(request = {}) {
     アニメーション:sequence.map((entry) => entry.name),
     対象座標:{ x, y },
     大きさ:`${scalePercent}%`,
+    威力倍率:powerScale,
     角度:angleDeg,
     表示位置:{ x:transform.x, y:transform.y },
     範囲マス数:areaTiles.length,
-    範囲表示直径:area ? area.diameter * Math.max(1,scaleMultiplier) : null,
+    範囲表示直径:area ? area.diameter * areaScale : null,
     tint,
     gradient:gradientEnabled ? {
       colorA:gradientColorA,
@@ -192,7 +208,9 @@ export async function playV39MapEffect(request = {}) {
       y:transform.y,
       sequenceSources:sequence.map((entry) => entry.source),
       scalePercent,
-      fitDiameterPx:!beam && area ? area.diameter * Math.max(1,scaleMultiplier) : undefined,
+      powerScale,
+      powerScaleAxis:requestValue(request, 'powerScaleAxis', playbackSettings.powerScaleAxis),
+      fitDiameterPx:!beam && area ? area.diameter * areaScale : undefined,
       stretchLengthPx:beam?.stretchLengthPx,
       stretchAxis:beam?.stretchAxis,
       angleDeg,

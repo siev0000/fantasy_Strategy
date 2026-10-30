@@ -149,7 +149,7 @@ export function normalizeV39CivicState(village = {}) {
   };
 }
 
-export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTerrains = [], specialties = { names:[], bonus:0 }, researchModifiers = {}, countryBonuses = {}, cityModifiers = {}) {
+export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTerrains = [], specialties = { names:[], bonus:0 }, researchModifiers = {}, countryBonuses = {}, cityModifiers = {},innerWalls = {}) {
   const current = normalizeV39CivicState(village);
   if (current.lastProcessedTurn >= turnNumber) return current;
 
@@ -171,6 +171,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
   const facilityDissatisfaction = facilityValue(village, "不満度低下") * V39_CIVIC_BALANCE.facilityDissatisfactionScale;
   const facilitySecurity = facilityValue(village, "治安") * V39_CIVIC_BALANCE.facilitySecurityScale;
   const eventHappiness = civicEventValue(village, "幸福度") * V39_CIVIC_BALANCE.eventHappinessScale;
+  const innerWallPenalty=Math.max(0,number(innerWalls.penalty));
   const eventDissatisfaction = civicEventValue(village, "不満度") * V39_CIVIC_BALANCE.eventDissatisfactionScale;
   const eventSecurity = civicEventValue(village, "治安") * V39_CIVIC_BALANCE.eventSecurityScale;
 
@@ -203,6 +204,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
       + number(countryBonuses.happiness)
       + number(cityModifiers.happinessBonus)
       + number(specialties.bonus)
+      - innerWallPenalty
       - raceStarvation
       - raceOvercrowding
       - raceDisaster
@@ -231,6 +233,7 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
       country:number(countryBonuses.happiness),
       specialization:number(cityModifiers.happinessBonus),
       specialties:number(specialties.bonus),
+      innerWalls:-innerWallPenalty,
       unfavorableTerrainRate,
       unfavorableTerrain:-raceTerrainPenalty,
       target
@@ -293,6 +296,8 @@ export function resolveV39CivicTurn(village = {}, turnNumber = 1, residentialTer
       foodReserveTurns:foodTurns,
       foodComfort,
       housingComfort,
+      innerWalls:-innerWallPenalty,
+      innerWallEdges:Math.max(0,number(innerWalls.edgeCount)),
       facilityHappiness,
       facilityDissatisfaction:-facilityDissatisfaction,
       facilitySecurity,

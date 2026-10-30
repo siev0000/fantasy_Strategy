@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-ui208.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": true,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "特産品"
+  ],
+  "source_sheets": {
+    "特産品": "特産品"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 20,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "特産品",
+      "output": "特産品.json",
+      "input_rows": 99,
+      "records": 20,
+      "skipped_blank_rows": 79,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

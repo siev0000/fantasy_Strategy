@@ -1,4 +1,5 @@
 import { getFactionSettlementById, getFactionSettlements, replaceFactionSettlement } from "./settlement-state.js";
+import {isV39UnitInsideSettlement} from './v39-settlement-location.js';
 import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./v39-economy-rules.js";
 import { getV39SquadUnitIds, normalizeV39Cargo, isV39CargoEmpty, resolveV39CargoLoad, resolveV39UnitCargoCapacity } from "./v39-logistics-state.js";
 import { getHexNeighborCoords } from "./hex-grid.js";
@@ -32,12 +33,7 @@ export function isV39ArmyTransportUnit(unit) {
   return text(unit?.unitType).includes("軍隊") && unit?.isNamed !== true;
 }
 
-export function isV39UnitInsideSettlement(unit, settlement) {
-  if (!settlement?.placed || !Number.isInteger(unit?.x) || !Number.isInteger(unit?.y)) return false;
-  const key = `${unit.x},${unit.y}`;
-  const center = `${settlement.x},${settlement.y}`;
-  return key === center || text(settlement.territoryResidentialCenterMap?.[key]) === center;
-}
+export {isV39UnitInsideSettlement} from './v39-settlement-location.js';
 
 export function setV39UnitTransportAssignment(state, playerId, settlementId, unitId, enabled) {
   const player = state?.players?.find(row => text(row.id) === text(playerId));
@@ -152,7 +148,7 @@ export function resolveV39AutomaticRoute(state, mapData, playerId, unit, destina
       }
       for (const next of getHexNeighborCoords(mapData.w, mapData.h, current.x, current.y, worldWrapEnabled)) {
         if ((allowFriendly ? hardOccupied : occupied).has(next.key)) continue;
-        const stepCost = resolveV39UnitMovementStepCost(mapData, current.x, current.y, next.x, next.y, unit);
+        const stepCost = resolveV39UnitMovementStepCost(mapData, current.x, current.y, next.x, next.y, unit, state);
         if (!Number.isFinite(stepCost) || stepCost > maxAp) continue;
         const cost = current.cost + stepCost + (allowFriendly && friendlyByTile.has(next.key) ? friendlyPenalty : 0);
         if (cost >= (costs.get(next.key) ?? Infinity)) continue;

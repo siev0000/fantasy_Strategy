@@ -1,4 +1,9 @@
+import {getV39ConstructionPlanPreviews} from '../../lib/v39-construction-plan-preview.js';
 import {isV39VillageHostileToPlayer} from '../../lib/v39-village-hostility.js';
+import {resolveV39WallEdgeSegment,collectV39JoinedWallPairs,resolveV39JoinedWallSegment,resolveV39SmoothedFootprintOutline} from '../../lib/v39-wall-edges.js';
+import {resolveV39SettlementImageScale,resolveV39UnitImageScale} from '../../lib/map-entity-size-rules.js';
+import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
+import {addV39FieldSymbol} from './v39-field-symbols.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
 import { getFactionSettlements, getSelectedSettlement } from "../../lib/settlement-state.js";
@@ -15,11 +20,14 @@ import {
 } from "../../lib/map-entity-artwork.js";
 import { resolveFacilityIconArtwork } from "../../lib/facility-icon-artwork.js";
 import {getV39StorageFacilities,getV39FacilityStoredEntries} from '../../lib/v39-facility-storage.js';
-import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
+import { resolveV39ResourceIconGlyph,resolveV39ResourceIconColor } from "../../lib/resource-icon-glyphs.js";
 import { V39_SPECIALTY_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import defenseFieldImage from "../../../../assets/effect/320×240/シールド.webp";
 import {resolveV39PlayerColor} from '../../lib/v39-player-colors.js';
 import {getV39UnitWaitTint} from '../../lib/v39-unit-action-rules.js';
+import {v39FieldUnitAngle,v39FieldUnitDepth,v39FieldUnitGroupKey} from '../../lib/v39-unit-field-presentation.js';
+import {getV39TeleportGates} from '../../lib/v39-teleport-rules.js';
+import teleportBalance from '../../../../config/v39-teleport.json';
 
 const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;
@@ -126,7 +134,7 @@ function visualUnitSignature(unit) {
     unit.x, unit.y, unit.name, unit.race, unit.raceName, unit.className, unit.class,
     unit.imageName, unit.image, unit.illustrationName, unit.画像,
     unit.icon, unit.iconName, unit.subIconName,
-    unit.currentHp, unit.hp, unit.maxHp, unit.state, unit.condition, unit.waitTurnNumber, unit.recoveryWaitTargetPercent,
+    unit.currentHp, unit.hp, unit.maxHp, unit.state, unit.condition, unit.waitTurnNumber, unit.recoveryWaitTargetPercent,resolveV39UnitImageScale(unit),
     unit.unitType, profile.mode, profile.unitTypeLabel, profile.memberCount, profile.populationCost,
     unit.lastStealthBreakTurn, unit.lastStealthBreakReason, unit.lastStealthAttackTurn,
     JSON.stringify(unit.shield), JSON.stringify(unit.barrier)
@@ -144,7 +152,8 @@ function visualSettlementSignature(settlement) {
     ...Object.entries(settlement.territoryTileModeMap || {}).sort().flat(),
     ...Object.entries(settlement.territoryTileConversionMap || {}).sort().flatMap(([key, value]) => [key, value?.targetMode, value?.remainingTurns]),
     ...Object.entries(settlement.tileFacilityMap || {}).sort().flatMap(([key, names]) => [key, ...(Array.isArray(names) ? names : [])]),
-    ...(Array.isArray(settlement.constructionQueue) ? settlement.constructionQueue : []).flatMap(item => [item?.tileKey, item?.facilityName, item?.remainingTurns])
+    ...(Array.isArray(settlement.constructionQueue) ? settlement.constructionQueue : []).flatMap(item => [item?.tileKey, item?.facilityName, item?.remainingTurns]),
+    JSON.stringify(settlement.wallConstructionQueue||[])
   ].map(value => String(value ?? "")).join("~");
 }
 
@@ -169,8 +178,12 @@ function markerRenderSignature(faction, state) {
     .sort();
   return [
     String(state?.activePlayerId || ""),
+    JSON.stringify(getV39TeleportGates(state)),
+    JSON.stringify(players.map(p=>p.factionState?.combatRuntime?.pendingActionsByUnitId)),
+    JSON.stringify(state.enemyCombatRuntime?.pendingActionsByEnemyId),
     String(state?.timeline?.turnNumber || ""),
     String(state?.activeWorldId || "surface"),
+    JSON.stringify(window.__v39FieldRuntime?.mapData?.terrainDamage||{}),
     players.map(player=>`${player.id}:${resolveV39PlayerColor(state,player.id)}`).join('|'),
     String(faction?.selectedUnitId || ""),
     JSON.stringify((faction.facilityStorage||[]).map(e=>[e.unit?.id,e.tileKey,e.facilityName,e.worldId])),
@@ -180,6 +193,7 @@ function markerRenderSignature(faction, state) {
     String(window.__v39VisibilityRenderVersion || 0),
     String(markerArtworkVersion),
     JSON.stringify(window.__v39FieldRuntime?.mapData?.defenseStructures || []),
+    JSON.stringify(getFactionSettlements(faction).map(base=>base.wallConstructionQueue||[])),
     JSON.stringify((faction.units || []).map(unit => [unit.id, unit.shield, unit.barrier])),
     Object.entries(state?.specialtiesByTile || {}).map(([key, value]) => `${key}:${value.name}`).join("|"),
     Object.keys(faction?.exploration?.discoveredSpecialtiesByTile || {}).sort().join("|"),
@@ -227,6 +241,7 @@ function drawBase(scene, container, village) {
   const artwork = resolveSettlementArtwork(village);
   const oldSpecSize = Number(artwork?.sizePx) || tileRelativePx(MAP_ENTITY_SIZE_RULES.base.diameterTiles);
   const bounds = settlementVisualBounds(village, oldSpecSize);
+  const imageScale=resolveV39SettlementImageScale(resolveVillageScaleDefinition(village));
   const marker = scene.add.container(bounds.x, bounds.y).setName(
     village?.neutral === true ? "v39-neutral-village-marker" : "v39-settlement-marker"
   );
@@ -236,7 +251,7 @@ function drawBase(scene, container, village) {
   marker.setData("displayWidth", bounds.width);
   marker.setData("displayHeight", bounds.height);
   if (artwork && ensureArtworkTexture(scene, artwork)) {
-    marker.add(scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5).setDisplaySize(bounds.width, bounds.height));
+    marker.add(scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5).setDisplaySize(bounds.width*imageScale, bounds.height*imageScale));
   } else {
     marker.add(scene.add.text(0, 0, "⌂", {
       fontSize: `${tileRelativePx(0.3)}px`,
@@ -292,10 +307,7 @@ function drawEnemyNests(scene, container, nests) {
       marker.add(image);
     } else {
       marker.add(scene.add.circle(0, 0, iconSize / 2, 0x54252a, 0.88));
-      marker.add(scene.add.text(0, 0, "巣", {
-        fontSize:`${glyphFontSize}px`, fontStyle:"bold", color:"#ffe8cf",
-        stroke:"#351014", strokeThickness:3
-      }).setOrigin(0.5));
+      addV39FieldSymbol(scene,marker,'nest',0,0,iconSize*.8,{label:'巣'});
     }
     marker.add(scene.add.circle(0, 0, diameter / 2, 0x000000, 0)
       .setStrokeStyle(Math.max(2, tileRelativePx(0.05)), 0xf0a06f, 0.95));
@@ -306,6 +318,17 @@ function drawEnemyNests(scene, container, nests) {
 
 function firstCharacter(value, fallback = "施") {
   return Array.from(String(value || "").trim())[0] || fallback;
+}
+
+function addConstructionProgress(scene,marker,value){
+  const size=tileRelativePx(MAP_ENTITY_SIZE_RULES.construction.turnFontTiles);
+  const badge=scene.add.container(marker.x-tileRelativePx(MAP_ENTITY_SIZE_RULES.construction.turnOffsetLeftTiles),marker.y-tileRelativePx(MAP_ENTITY_SIZE_RULES.construction.turnOffsetUpTiles)).setName('v39-construction-progress');
+  const remaining=String(value).match(/\d+/)?.[0],paused=/停止/.test(String(value));
+  badge.setData('remainingTurns',remaining==null?null:Number(remaining)).setData('paused',paused);
+  badge.add(scene.add.rectangle(0,0,size*(remaining?2.4:1.4),size*1.5,0x10242b,.95));
+  addV39FieldSymbol(scene,badge,paused?'pause':'construction',remaining?-size*.55:0,0,size,{label:paused?'停止':'建設中'});
+  if(remaining)badge.add(scene.add.text(size*.55,0,remaining,{fontSize:`${size}px`,fontStyle:'bold',color:'#fff2cb'}).setOrigin(.5));
+  constructionLabelContainer.add(badge);marker.setData('turnLabel',badge);
 }
 
 function addTileTextMarker(scene, container, tileKey, label, options = {}) {
@@ -322,7 +345,8 @@ function addTileTextMarker(scene, container, tileKey, label, options = {}) {
   if (options.showBase !== false) {
   marker.add(scene.add.circle(0, 0, radius, options.fillColor || 0x28373b, options.fillAlpha ?? 0.96)
     .setStrokeStyle(Math.max(1.5, tileRelativePx(0.025)), options.strokeColor || 0xf0d28a, 1));
-  marker.add(scene.add.text(0, options.subLabel ? -2 : 0, label, {
+  if(options.symbol||/\p{L}/u.test(String(label)))addV39FieldSymbol(scene,marker,options.symbol||'facility',0,0,radius*1.7,{label:String(label)});
+  else marker.add(scene.add.text(0, options.subLabel ? -2 : 0, label, {
     fontSize:`${tileRelativePx(options.fontTiles || 0.2)}px`,
     fontStyle:"bold",
     color:options.textColor || "#fff5d8",
@@ -330,20 +354,7 @@ function addTileTextMarker(scene, container, tileKey, label, options = {}) {
     strokeThickness:2
   }).setOrigin(0.5));
   }
-  if (options.subLabel) {
-    const turnLabel = scene.add.text(marker.x, marker.y - tileRelativePx(MAP_ENTITY_SIZE_RULES.construction.turnOffsetUpTiles), `🔨${options.subLabel}`, {
-      fontFamily:'"Segoe UI Emoji", "Noto Color Emoji", sans-serif',
-      fontSize:`${tileRelativePx(MAP_ENTITY_SIZE_RULES.construction.turnFontTiles)}px`,
-      fontStyle:"bold",
-      color:"#fff2cb",
-      stroke:"#071014",
-      strokeThickness:MAP_ENTITY_SIZE_RULES.construction.turnStrokePx,
-      backgroundColor:MAP_ENTITY_SIZE_RULES.construction.turnBackground,
-      padding:{ x:MAP_ENTITY_SIZE_RULES.construction.turnPaddingPx, y:MAP_ENTITY_SIZE_RULES.construction.turnPaddingPx }
-    }).setOrigin(0.5).setResolution(MAP_ENTITY_SIZE_RULES.construction.textResolution);
-    constructionLabelContainer.add(turnLabel);
-    marker.setData("turnLabel", turnLabel);
-  }
+  if (options.subLabel) addConstructionProgress(scene,marker,options.subLabel);
   container.add(marker);
   return marker;
 }
@@ -379,20 +390,7 @@ function addTileFacilityMarker(scene, container, tileKey, facilityName, options 
   image.setScale(scale);
   marker.add(image);
 
-  if (options.subLabel) {
-    const turnLabel = scene.add.text(marker.x, marker.y - tileRelativePx(MAP_ENTITY_SIZE_RULES.construction.turnOffsetUpTiles), `🔨${options.subLabel}`, {
-      fontFamily:'"Segoe UI Emoji", "Noto Color Emoji", sans-serif',
-      fontSize:`${tileRelativePx(MAP_ENTITY_SIZE_RULES.construction.turnFontTiles)}px`,
-      fontStyle:"bold",
-      color:"#fff2cb",
-      stroke:"#071014",
-      strokeThickness:MAP_ENTITY_SIZE_RULES.construction.turnStrokePx,
-      backgroundColor:MAP_ENTITY_SIZE_RULES.construction.turnBackground,
-      padding:{ x:MAP_ENTITY_SIZE_RULES.construction.turnPaddingPx, y:MAP_ENTITY_SIZE_RULES.construction.turnPaddingPx }
-    }).setOrigin(0.5).setResolution(MAP_ENTITY_SIZE_RULES.construction.textResolution);
-    constructionLabelContainer.add(turnLabel);
-    marker.setData("turnLabel", turnLabel);
-  }
+  if (options.subLabel) addConstructionProgress(scene,marker,options.subLabel);
   container.add(marker);
   return marker;
 }
@@ -406,7 +404,8 @@ function addResidentialVillageMarker(scene, container, tileKey, options = {}) {
   const marker = scene.add.container(center.x, center.y).setName(options.name || "v39-residential-village-marker");
   marker.setData("tileKey", tileKey);
   marker.setData("textureKey", artwork.textureKey);
-  const iconSize = Math.max(1, Number(artwork.sizePx) || 60);
+  const iconSize = Math.max(1, Number(artwork.sizePx) || 60)
+    *resolveV39SettlementImageScale(resolveVillageScaleDefinition(options.settlementType?{type:options.settlementType}:{scaleLevel:1}));
   const image = scene.add.image(0, 0, artwork.textureKey)
     .setOrigin(0.5)
     .setName("v39-residential-village-image").setAlpha(options.alpha ?? 1);
@@ -434,6 +433,7 @@ function drawSettlementTileMarkers(scene, container, faction, {settlements=getFa
     for (const project of settlement.landExpansionProjects || []) {
       if(!visible(project.tileKey))continue;
       addTileTextMarker(scene, container, project.tileKey, "開", {
+        symbol:'expansion',
         name:"v39-land-expansion-marker", subLabel:project.paused ? "停止" : `${project.remainingTurns}T`,
         radiusTiles:0.17, fontTiles:0.2, fillColor:0x33585f, strokeColor:0xe8cf58
       });
@@ -446,6 +446,7 @@ function drawSettlementTileMarkers(scene, container, faction, {settlements=getFa
       if(!visible(tileKey))continue;
       const targetMode = String(conversion?.targetMode || "");
       addTileTextMarker(scene, container, tileKey, targetMode === "settlement" ? "居" : "資", {
+        symbol:targetMode==='settlement'?'housing':'resource',
         name:"v39-tile-conversion-marker",
         showBase:targetMode !== "settlement",
         subLabel:`${Math.max(0, Math.floor(Number(conversion?.remainingTurns) || 0))}T`,
@@ -524,7 +525,7 @@ function unitGroupsByTile(units, worldId) {
     const x = finiteCoord(unit?.x);
     const y = finiteCoord(unit?.y);
     if (x === null || y === null) continue;
-    const key = `${x},${y}`;
+    const key = v39FieldUnitGroupKey(unit);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(unit);
   }
@@ -577,11 +578,11 @@ function ensureArtworkTexture(scene, artwork) {
   return false;
 }
 
-function addSelectionRing(scene, marker, radius, selected) {
-  if (!selected) return;
-  const ring = scene.add.circle(0, 0, radius, 0x000000, 0)
-    .setStrokeStyle(Math.max(3, tileRelativePx(0.055)), 0xffdd72, 1);
-  marker.add(ring);
+function addUnitOwnerBorder(scene,marker,color){
+  const {width,height,rowStep}=tileMetrics(),x=width/2-2,y=height/2-2,shoulder=rowStep-height/2;
+  const border=scene.add.graphics().setName('v39-unit-owner-border').setData('ownerColor',color);
+  border.lineStyle(2,color,1).strokePoints([{x:0,y:-y},{x,y:-shoulder},{x,y:shoulder},{x:0,y},{x:-x,y:shoulder},{x:-x,y:-shoulder}],true);
+  marker.addAt(border,0);
 }
 
 function addUnitArtwork(scene, marker, unit, diameter) {
@@ -594,9 +595,10 @@ function addUnitArtwork(scene, marker, unit, diameter) {
     : scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
   const sourceWidth = Math.max(1, Number(image.width) || 1);
   const sourceHeight = Math.max(1, Number(image.height) || 1);
-  const target = diameter * MAP_ENTITY_SIZE_RULES.unit.imageFill;
+  const target = diameter * MAP_ENTITY_SIZE_RULES.unit.imageFill * resolveV39UnitImageScale(unit);
   const scale = Math.min(target / sourceWidth, target / sourceHeight);
   image.setScale(scale);
+  image.setAngle(v39FieldUnitAngle(unit));
   if (unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0) image.setTint(0x777f82).setAlpha(0.72);
   else image.setTint(getV39UnitWaitTint(unit, window.getV39TimelineState?.()?.turnNumber));
   marker.add(image);
@@ -604,8 +606,10 @@ function addUnitArtwork(scene, marker, unit, diameter) {
 }
 
 function addDeadMark(scene, marker, unit, radius) {
+  marker.setDepth(v39FieldUnitDepth(unit));
   const hp = Number(unit?.hp ?? unit?.currentHp);
   if (unit?.state !== "死亡" && (!Number.isFinite(hp) || hp > 0)) return;
+  for(const child of marker.list)if(['Image','Text'].includes(child.type))child.setAngle(v39FieldUnitAngle(unit));
   marker.add(scene.add.text(radius * 0.48, -radius * 0.48, "×", {
     fontSize:`${Math.max(14, radius * 0.72)}px`, fontStyle:"bold", color:"#fff4f1",
     stroke:"#681e1e", strokeThickness:Math.max(2, radius * 0.1)
@@ -676,28 +680,38 @@ function addEnemyArtwork(scene, marker, enemy, diameter) {
     : scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
   const sourceWidth = Math.max(1, Number(image.width) || 1);
   const sourceHeight = Math.max(1, Number(image.height) || 1);
-  const target = diameter * ENEMY_IMAGE_FILL;
+  const target = diameter * ENEMY_IMAGE_FILL * resolveV39UnitImageScale(enemy);
   image.setScale(Math.min(target / sourceWidth, target / sourceHeight));
+  image.setAngle(v39FieldUnitAngle(enemy));
   if (enemy?.state === "死亡" || Number(enemy?.hp ?? enemy?.currentHp) <= 0) image.setTint(0x777f82).setAlpha(0.72);
   marker.add(image);
   return true;
 }
 
 function addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, selected) {
+  const sizScale=resolveV39UnitImageScale(unit);radius*=sizScale;glyphFontSize*=sizScale;
   const dead = unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0;
-  const bg = scene.add.circle(0, 0, radius, dead ? 0x555b5d : selected ? 0x174653 : 0x152b34, dead ? 0.72 : 0.98)
-    .setStrokeStyle(
-      Math.max(selected ? 3 : 2, tileRelativePx(selected ? 0.055 : 0.04)),
-      selected ? 0xffdd72 : 0x8bd5e4,
-      1
-    );
-  const glyph = scene.add.text(0, -0.5, String(unit.icon || "◆").slice(0, 2), {
+  const bg = scene.add.circle(0, 0, radius*.75, dead ? 0x555b5d : 0x152b34, dead ? 0.72 : 0.98);
+  const glyph = scene.add.text(0, -0.5, (/\p{L}/u.test(String(unit.icon)) ? "◆" : String(unit.icon || "◆")).slice(0, 2), {
     fontSize: `${glyphFontSize}px`,
     fontStyle: "bold",
     color: "#e8f7fb"
   }).setOrigin(0.5);
+  glyph.setAngle(v39FieldUnitAngle(unit));
   if (!dead) glyph.setTint(getV39UnitWaitTint(unit, window.getV39TimelineState?.()?.turnNumber));
   marker.add([bg, glyph]);
+}
+
+function addCastVisual(scene,marker,unit,radius){
+  const cast=describeV39Cast(getV39UnitCast(null,unit.id),window.getV39TimelineState?.()?.turnNumber);
+  if(!cast)return;
+  const color=cast.ready?0xffdb73:0x78dce8;
+  if(cast.ready){
+    const circle=addV39FieldSymbol(scene,marker,'ready',0,0,radius*2,{color,name:'v39-cast-icon',label:cast.label});
+    circle.setAlpha(.8);marker.sendToBack(circle);
+  }else{
+    addV39FieldSymbol(scene,marker,'cast',radius*.72,-radius*.78,radius*.85,{color,name:'v39-cast-icon',label:cast.label});
+  }
 }
 
 function drawUnitGroup(scene, container, group, selectedUnitId, ownerColor) {
@@ -724,10 +738,10 @@ function drawUnitGroup(scene, container, group, selectedUnitId, ownerColor) {
     if (id) markerByEntityId.set(id, marker);
   }
   const artworkAdded = addUnitArtwork(scene, marker, unit, diameter);
+  addCastVisual(scene,marker,unit,radius);
 
   if (!artworkAdded) addFallbackUnitGlyph(scene, marker, unit, radius, glyphFontSize, selected);
-  marker.add(scene.add.circle(0,0,radius*.9,0,0).setStrokeStyle(Math.max(2,tileRelativePx(.04)),ownerColor,1).setName('v39-unit-owner-ring'));
-  if (artworkAdded) addSelectionRing(scene, marker, radius, selected);
+  addUnitOwnerBorder(scene,marker,ownerColor);
   addDeadMark(scene, marker, unit, radius);
   addMilitaryMemberCount(scene, marker, unit, radius);
 
@@ -735,6 +749,12 @@ function drawUnitGroup(scene, container, group, selectedUnitId, ownerColor) {
   marker.setInteractive({ useHandCursor: true });
   marker.on("pointerdown", (_pointer, _lx, _ly, event) => {
     event?.stopPropagation?.();
+    if(window.isV39SoulRecoverySelecting?.())return;
+    if(window.handleV39WallConstructionTap?.({x,y},scene.cameras.main.getWorldPoint(_pointer.x,_pointer.y)))return;
+    if(window.isV39LandConstructionOpen?.()){
+      scene.v39Input?.selectTile?.({x,y},false,{notify:false});
+      window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x,y}}));return;
+    }
     selectUnit(unit);
   });
   container.add(marker);
@@ -765,22 +785,22 @@ function drawForeignUnits(scene, container, players, activePlayerId, worldId) {
       const center = tileCenter(x, y);
       const marker = scene.add.container(center.x, center.y).setName("v39-foreign-unit-marker");
       marker.setData('ownerColor',ownerColor);
+      addCastVisual(scene,marker,unit,radius);
       if (isTestMode() && !normallyVisible) marker.setAlpha(TEST_UNDISCOVERED_ENEMY_ALPHA);
       for (const member of group) {
         const id = String(member?.id || "").trim();
         if (id) markerByEntityId.set(id, marker);
       }
       if (!addUnitArtwork(scene, marker, unit, diameter)) {
+        const sizScale=resolveV39UnitImageScale(unit);
         const dead = unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0;
-        const bg = scene.add.circle(0, 0, radius, dead ? 0x555b5d : 0x35252c, 0.96)
-          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), ownerColor, 1);
-        const glyph = scene.add.text(0, -0.5, String(unit?.icon || "◆").slice(0, 2), {
-          fontSize:`${glyphFontSize}px`, fontStyle:"bold", color:"#fff0f5"
+        const bg = scene.add.circle(0, 0, radius*.75*sizScale, dead ? 0x555b5d : 0x35252c, 0.96);
+        const glyph = scene.add.text(0, -0.5, (/\p{L}/u.test(String(unit?.icon)) ? "◆" : String(unit?.icon || "◆")).slice(0, 2), {
+          fontSize:`${glyphFontSize*sizScale}px`, fontStyle:"bold", color:"#fff0f5"
         }).setOrigin(0.5);
         marker.add([bg, glyph]);
-      } else {
-        marker.add(scene.add.circle(0, 0, radius, 0x000000, 0).setStrokeStyle(Math.max(2, tileRelativePx(0.04)), ownerColor, 1));
       }
+      addUnitOwnerBorder(scene,marker,ownerColor);
       addDeadMark(scene, marker, unit, radius);
       addMilitaryMemberCount(scene, marker, unit, radius);
       container.add(marker);
@@ -814,19 +834,13 @@ function drawNeutralVillageUnits(scene, container, villages, worldId) {
     }
 
     if (!addUnitArtwork(scene, marker, unit, diameter)) {
+      const sizScale=resolveV39UnitImageScale(unit);
       marker.add([
-        scene.add.circle(0, 0, radius, 0x4a4021, 0.97)
-          .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), (unit.villageHostile?0xef6959:0xe0c46c), 1),
-        scene.add.text(0, -0.5, "兵", {
-          fontSize:`${glyphFontSize}px`,
-          fontStyle:"bold",
-          color:"#fff1b6"
-        }).setOrigin(0.5)
+        scene.add.circle(0, 0, radius*.75*sizScale, 0x4a4021, 0.97),
+        addV39FieldSymbol(scene,null,'guard',0,0,diameter*.65*sizScale,{label:'警備兵'})
       ]);
-    } else {
-      marker.add(scene.add.circle(0, 0, radius, 0x000000, 0)
-        .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), (unit.villageHostile?0xef6959:0xe0c46c), 0.95));
     }
+    addUnitOwnerBorder(scene,marker,unit.villageHostile?0xef6959:0xe0c46c);
     addDeadMark(scene, marker, unit, radius);
     addMilitaryMemberCount(scene, marker, unit, radius);
     container.add(marker);
@@ -851,16 +865,18 @@ function drawEnemies(scene, container, enemies, worldId) {
     if (!revealAllEnemies && !visibleByNormalRules) continue;
     const center = tileCenter(x, y);
     const marker = scene.add.container(center.x, center.y).setName("v39-enemy-marker");
+    addCastVisual(scene,marker,enemy,radius);
     if (revealAllEnemies && !visibleByNormalRules) marker.setAlpha(TEST_UNDISCOVERED_ENEMY_ALPHA);
     for (const member of group) {
       const id = String(member?.id || "").trim();
       if (id) markerByEntityId.set(id, marker);
     }
     if (!addEnemyArtwork(scene, marker, enemy, diameter)) {
-      const bg = scene.add.circle(0, 0, radius, 0x3a1717, 0.98)
+      const sizScale=resolveV39UnitImageScale(enemy);
+      const bg = scene.add.circle(0, 0, radius*sizScale, 0x3a1717, 0.98)
         .setStrokeStyle(Math.max(2, tileRelativePx(0.04)), 0xe89090, 1);
       const glyph = scene.add.text(0, -0.5, "◆", {
-        fontSize: `${glyphFontSize}px`,
+        fontSize: `${glyphFontSize*sizScale}px`,
         fontStyle: "bold",
         color: "#fff0e8"
       }).setOrigin(0.5);
@@ -882,7 +898,7 @@ function drawWanderers(scene, container, groups, activePlayerId) {
     const marker = scene.add.container(center.x, center.y).setName("v39-wanderer-marker");
     marker.add([
       scene.add.circle(0, 0, diameter / 2, 0x66552d, 0.96).setStrokeStyle(2, 0xf0d58a, 1),
-      scene.add.text(0, 0, "旅", { fontSize:`${tileRelativePx(0.27)}px`, fontStyle:"bold", color:"#fff0bd" }).setOrigin(0.5)
+      addV39FieldSymbol(scene,null,'wanderer',0,0,diameter*.7,{label:'旅人'})
     ]);
     markerByEntityId.set(String(group.id || "").trim(), marker);
     container.add(marker);
@@ -891,6 +907,9 @@ function drawWanderers(scene, container, groups, activePlayerId) {
 
 function drawDefenseStructures(scene, container, imageContainer) {
   const { width, height, rowStep } = tileMetrics();
+  const wallVisual=MAP_ENTITY_SIZE_RULES.wall,pillars=new Map();
+  const structures=window.__v39FieldRuntime?.mapData?.defenseStructures||[];
+  const pairById=new Map(collectV39JoinedWallPairs(structures).flatMap(pair=>pair.map(w=>[w.id,pair]))),drawnPairs=new Set();
   const pointsAt = tile => {
     const center = tileCenter(tile.x, tile.y), left = center.x - width / 2, top = center.y - height / 2;
     return [{x:center.x,y:top},{x:left+width,y:top+height-rowStep},
@@ -898,9 +917,13 @@ function drawDefenseStructures(scene, container, imageContainer) {
       {x:left,y:top+rowStep},{x:left,y:top+height-rowStep}];
   };
   const segmentKey = (a,b) => [a,b].map(p=>`${p.x.toFixed(3)},${p.y.toFixed(3)}`).sort().join("/");
-  for (const defense of window.__v39FieldRuntime?.mapData?.defenseStructures || []) {
+  for (const defense of structures) {
     if (defense.hp <= 0) continue;
-    if (!isTestMode() && !defense.tiles.some(tile => window.isV39TileInCurrentVision?.(tile.x,tile.y))) continue;
+    const pair=pairById.get(defense.id),pairKey=pair?.map(w=>w.id).sort().join('|');
+    if(pairKey&&drawnPairs.has(pairKey))continue;
+    const visibleTiles=pair?pair.flatMap(w=>[w.edge.from,w.edge.to]):defense.edge?[defense.edge.from,defense.edge.to]:defense.tiles;
+    if (!isTestMode() && !visibleTiles.some(tile => window.isV39TileInCurrentVision?.(tile.x,tile.y))) continue;
+    if(pairKey)drawnPairs.add(pairKey);
     if (defense.kind === "結界") {
       const rule = MAP_ENTITY_SIZE_RULES.defenseField;
       const artwork = {src:defenseFieldImage,textureKey:"v39-defense-field-still",
@@ -918,45 +941,97 @@ function drawDefenseStructures(scene, container, imageContainer) {
     const segments = new Map();
     for (const tile of defense.tiles) {
       const points = pointsAt(tile);
-      if (defense.kind === "壁" && !defense.edge) graphics.fillStyle(0x94a7ab,0.5).fillPoints(points,true);
       for (let index = 0; index < 6; index++) {
         const a = points[index], b = points[(index+1)%6], key = segmentKey(a,b);
         if (segments.has(key)) segments.delete(key); else segments.set(key,[a,b]);
       }
     }
     let edges = [...segments.values()];
+    if(defense.kind==='結界')edges=resolveV39SmoothedFootprintOutline(defense.tiles,tileCenter,tileMetrics());
     if (defense.edge) {
-      const a = tileCenter(defense.edge.from.x,defense.edge.from.y);
-      const b = tileCenter(defense.edge.to.x,defense.edge.to.y);
-      const mid = { x:(a.x+b.x)/2,y:(a.y+b.y)/2 };
-      edges.sort((aa,bb)=>Math.hypot((aa[0].x+aa[1].x)/2-mid.x,(aa[0].y+aa[1].y)/2-mid.y)
-        - Math.hypot((bb[0].x+bb[1].x)/2-mid.x,(bb[0].y+bb[1].y)/2-mid.y));
-      edges = edges.slice(0,1);
+      edges=[pair?resolveV39JoinedWallSegment(pair,tileCenter,tileMetrics()):resolveV39WallEdgeSegment(defense.edge,tileCenter,tileMetrics())];
     }
-    graphics.lineStyle(defense.kind === "壁" ? 5 : 3,defense.kind === "壁" ? 0xd8d5ba : 0x73e0ff,0.95);
-    for (const [a,b] of edges) graphics.lineBetween(a.x,a.y,b.x,b.y);
+    graphics.lineStyle(defense.kind === "壁" ? wallVisual.lineWidthPx : 3,defense.kind === "壁" ? wallVisual.color : 0x73e0ff,0.95);
+    for (const [a,b] of edges) {
+      graphics.lineBetween(a.x,a.y,b.x,b.y);
+      if(defense.kind==='壁')for(const point of [a,b])pillars.set(`${point.x.toFixed(3)},${point.y.toFixed(3)}`,point);
+      else if(defense.kind==='結界')graphics.fillStyle(0x73e0ff,.95).fillCircle(a.x,a.y,1.5).fillCircle(b.x,b.y,1.5);
+      if(pair?.some(w=>w.hp<=0)){
+        const middle={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+        graphics.lineStyle(2,wallVisual.pillarOutlineColor,1).lineBetween(middle.x-3,middle.y-4,middle.x+3,middle.y+4);
+      }
+    }
     container.add(graphics);
+  }
+  if(pillars.size){
+    const graphic=scene.add.graphics().setName('v39-wall-pillars');
+    graphic.fillStyle(wallVisual.color,1).lineStyle(wallVisual.pillarOutlinePx,wallVisual.pillarOutlineColor,1);
+    for(const point of pillars.values())graphic.fillCircle(point.x,point.y,wallVisual.pillarRadiusPx)
+      .strokeCircle(point.x,point.y,wallVisual.pillarRadiusPx);
+    container.add(graphic);
+  }
+  const state=gameState(),owner=state?.players?.find(p=>p.id===state.activePlayerId);
+  for(const base of getFactionSettlements(owner?.factionState))for(const [index,item] of (base.wallConstructionQueue||[]).entries()){
+    const [a,b]=resolveV39WallEdgeSegment(item.edge,tileCenter,tileMetrics());
+    const graphic=scene.add.graphics().setName('v39-wall-construction');
+    graphic.lineStyle(3,index===0?0xe3b95f:0x9faeae,.5);
+    const length=Math.hypot(b.x-a.x,b.y-a.y);
+    for(let offset=0;offset<length;offset+=10){
+      const end=Math.min(length,offset+6);
+      graphic.lineBetween(a.x+(b.x-a.x)*offset/length,a.y+(b.y-a.y)*offset/length,a.x+(b.x-a.x)*end/length,a.y+(b.y-a.y)*end/length);
+    }
+    graphic.setData('remainingTurns',item.remainingTurns).setData('waiting',index>0);
+    container.add(graphic);
   }
 }
 
 function renderConstructionPreview(){
-  const scene=activeScene(),preview=window.getV39LandConstructionPreview?.();
-  const signature=JSON.stringify([preview,markerArtworkVersion]);
-  if(!scene||!preview){
-    constructionPreviewContainer?.destroy();constructionPreviewContainer=null;constructionPreviewSignature='';return;
-  }
+  const scene=activeScene(),state=gameState(),current=window.getV39LandConstructionPreview?.();
+  const planned=getV39ConstructionPlanPreviews(state);
+  const previews=[...planned,...(current&&!planned.some(plan=>plan.tileKey===current.tileKey&&plan.facilityName===current.facilityName)?[current]:[])];
+  const signature=JSON.stringify([previews,markerArtworkVersion,state?.activeWorldId]);
+  if(!scene||!previews.length){constructionPreviewContainer?.destroy();constructionPreviewContainer=null;constructionPreviewSignature='';return;}
   if(constructionPreviewContainer?.scene===scene&&signature===constructionPreviewSignature)return;
   constructionPreviewContainer?.destroy();
   constructionPreviewContainer=scene.add.container(0,0).setDepth(STRUCTURE_LAYER_DEPTH+1).setName('v39-construction-preview-layer');
   constructionPreviewSignature=signature;
+  for(const preview of previews){
+    const container=scene.add.container(0,0).setName(preview.planned?'v39-planned-construction':'v39-selected-construction').setAlpha(preview.planned ? 0.4 : preview.edges ? 1 : 0.45);
+    constructionPreviewContainer.add(container);drawConstructionGhost(scene,container,preview);
+  }
+}
+function drawConstructionGhost(scene,container,preview){
+  if(preview.edges){
+    const graphics=scene.add.graphics().setName('v39-wall-construction-preview');
+    const {width,height,rowStep}=tileMetrics();
+    graphics.fillStyle(0xffdd72,.12);
+    for(const tile of preview.wallTiles||[]){
+      const c=tileCenter(tile.x,tile.y);
+      graphics.fillPoints([{x:c.x,y:c.y-height/2},{x:c.x+width/2,y:c.y+height/2-rowStep},
+        {x:c.x+width/2,y:c.y-height/2+rowStep},{x:c.x,y:c.y+height/2},
+        {x:c.x-width/2,y:c.y-height/2+rowStep},{x:c.x-width/2,y:c.y+height/2-rowStep}],true);
+    }
+    const wallVisual=MAP_ENTITY_SIZE_RULES.wall;
+    graphics.lineStyle(wallVisual.lineWidthPx,0xffdd72,.7).fillStyle(0xffdd72,.7);
+    const planned=preview.edges.map((edge,id)=>({id,kind:'壁',edge,wallFacilityName:preview.facilityName,ownerId:'preview',settlementId:'preview'}));
+    const pairs=new Map(collectV39JoinedWallPairs(planned).flatMap(pair=>pair.map(w=>[w.id,pair]))),seen=new Set();
+    for(const wall of planned){
+      if(seen.has(wall.id))continue;
+      const pair=pairs.get(wall.id);(pair||[wall]).forEach(w=>seen.add(w.id));
+      const [a,b]=pair?resolveV39JoinedWallSegment(pair,tileCenter,tileMetrics()):resolveV39WallEdgeSegment(wall.edge,tileCenter,tileMetrics());
+      graphics.lineBetween(a.x,a.y,b.x,b.y).fillCircle(a.x,a.y,wallVisual.pillarRadiusPx).fillCircle(b.x,b.y,wallVisual.pillarRadiusPx);
+      if(wall.id===0)graphics.fillStyle(0x70eaff,1).fillCircle((a.x+b.x)/2,(a.y+b.y)/2,6).fillStyle(0xffdd72,.7);
+    }
+    container.add(graphics);return;
+  }
   if(preview.settlementType){
-    addResidentialVillageMarker(scene,constructionPreviewContainer,preview.tileKey,{name:'v39-construction-preview',settlementType:preview.settlementType})?.setAlpha(.45);
+    addResidentialVillageMarker(scene,container,preview.tileKey,{name:'v39-construction-preview',settlementType:preview.settlementType});
     return;
   }
-  addTileFacilityMarker(scene,constructionPreviewContainer,preview.tileKey,preview.facilityName,{
+  addTileFacilityMarker(scene,container,preview.tileKey,preview.facilityName,{
     name:'v39-construction-preview',iconPx:60,radiusTiles:.3,fontTiles:.25,
     fillColor:0x244d50,strokeColor:0x91dce5
-  })?.setAlpha(.45);
+  });
 }
 
 function renderMarkers() {
@@ -986,11 +1061,28 @@ function renderMarkers() {
     drawSettlementTileMarkers(scene, structureContainer, {}, {settlements:(state.neutralVillages||[]).filter(v=>!v.abandoned),visibleOnly:true});
   }
   drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
+  const ground=window.__v39FieldRuntime?.mapData?.terrainDamage||{};
+  for(const k of new Set([...Object.keys(ground.cells||{}),...Object.keys(ground.pendingByTile||{}),...Object.keys(ground.rubbleByTile||{})])){
+    const [x,y]=k.split(',').map(Number);if(!isTestMode()&&!window.isV39TileInCurrentVision?.(x,y))continue;
+    const center=tileCenter(x,y),kind=ground.rubbleByTile?.[k]?'rubble':ground.pendingByTile?.[k]?'warning':'canyon';
+    addV39FieldSymbol(scene,structureContainer,kind,center.x,center.y,tileMetrics().width*.65,{color:kind==='warning'?0xffb34d:0xc5aa83,name:`v39-ground-${kind}`}).setData('tileKey',k);
+  }
+  const gateArtwork={src:teleportBalance.gateImage,textureKey:'v39-teleport-gate'};
+  for(const gate of getV39TeleportGates(state))for(const [side,tile] of [['a',gate.a],['b',gate.b]]){
+    if(!isTestMode()&&!window.isV39TileInCurrentVision?.(tile.x,tile.y))continue;
+    const center=tileCenter(tile.x,tile.y);
+    if(!ensureArtworkTexture(scene,gateArtwork))continue;
+    const marker=scene.add.image(center.x,center.y,gateArtwork.textureKey)
+      .setDisplaySize(tileMetrics().width*teleportBalance.gateWidthTiles,tileMetrics().height*teleportBalance.gateHeightTiles)
+      .setName(`teleport-gate:${gate.id}:${side}`);
+    structureContainer.add(marker);markerByEntityId.set(marker.name,marker);
+  }
   drawUnits(scene, unitContainer, faction.units, faction.selectedUnitId,worldId,resolveV39PlayerColor(state,state.activePlayerId));
   drawForeignUnits(scene, unitContainer, state?.players, state?.activePlayerId,worldId);
   drawNeutralVillageUnits(scene, unitContainer, state?.neutralVillages,worldId);
   drawEnemies(scene, unitContainer, state?.enemies,worldId);
   drawWanderers(scene, unitContainer, state?.wandererGroups, state?.activePlayerId);
+  unitContainer.sort('depth');
   // 見えていない敵による位置変更で、その存在を漏らさない。
   const occupiedCenters = new Set(unitContainer.list.map(marker => `${marker.x},${marker.y}`));
   const retainedSpecialties = new Set();
@@ -1000,8 +1092,10 @@ function renderMarkers() {
     const [x, y] = key.split(",").map(Number);
     const center = tileCenter(x, y);
     const occupied = occupiedCenters.has(`${center.x},${center.y}`);
-    const glyph = resolveV39ResourceIconGlyph(specialty.name);
-    const signature = JSON.stringify([glyph,occupied,discovered]);
+    const resourceName=String(specialty?.name??specialty?.名前??(typeof specialty==='string'?specialty:'')).trim();
+    const glyph = resourceName?resolveV39ResourceIconGlyph(resourceName):'?';
+    const textColor=resolveV39ResourceIconColor(resourceName)||'#fff5d8';
+    const signature = JSON.stringify([resourceName,glyph,textColor,occupied,discovered]);
     const cached = specialtyMarkers.get(key);
     if (cached?.marker.scene === scene && cached.signature === signature) {
       unitContainer.add(cached.marker);
@@ -1014,11 +1108,12 @@ function renderMarkers() {
       fontTiles:occupied ? V39_SPECIALTY_BALANCE.occupiedMarkerSizeTiles : V39_SPECIALTY_BALANCE.markerSizeTiles,
       offsetX:occupied ? tileRelativePx(V39_SPECIALTY_BALANCE.occupiedOffsetRightTiles) : 0,
       offsetY:occupied ? -tileRelativePx(V39_SPECIALTY_BALANCE.occupiedOffsetUpTiles) : 0,
-      fillColor:0x16322c, strokeColor:0x91c4a0
+      fillColor:0x16322c, strokeColor:0x91c4a0,textColor
     });
     marker?.setAlpha(discovered ? 1 : V39_SPECIALTY_BALANCE.testUndiscoveredAlpha);
     marker?.setData("discovered", discovered);
     marker?.setData("occupied", occupied);
+    marker?.setData('resourceName',resourceName);
     if (marker) {
       specialtyMarkers.set(key,{marker,signature});
       retainedSpecialties.add(key);

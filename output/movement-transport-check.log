@@ -1,0 +1,129 @@
+{
+  "first": {
+    "turn": 2,
+    "x": 5,
+    "y": 5,
+    "assignment": {
+      "originSettlementId": "出発拠点",
+      "status": "delivering",
+      "assignedTurn": 1,
+      "enabled": true,
+      "destinationSettlementId": "搬入拠点",
+      "resource": "木材",
+      "leg": "outbound",
+      "reason": "",
+      "lastProcessedTurn": 1
+    },
+    "wood": [
+      150,
+      0
+    ],
+    "cargo": {
+      "resourcesByType": {
+        "木材": 100
+      },
+      "equipmentInventory": []
+    },
+    "shared": {
+      "resourcesByType": {
+        "石材": 35
+      },
+      "equipmentInventory": []
+    },
+    "selected": "出発拠点"
+  },
+  "delivered": {
+    "turn": 5,
+    "x": 11,
+    "y": 5,
+    "assignment": {
+      "originSettlementId": "出発拠点",
+      "status": "returning",
+      "assignedTurn": 1,
+      "enabled": true,
+      "destinationSettlementId": "搬入拠点",
+      "resource": "木材",
+      "leg": "return",
+      "reason": "",
+      "lastProcessedTurn": 4
+    },
+    "wood": [
+      150,
+      100
+    ],
+    "shared": {
+      "resourcesByType": {
+        "石材": 35
+      },
+      "equipmentInventory": []
+    },
+    "selected": "出発拠点"
+  },
+  "complete": {
+    "turn": 27,
+    "x": 3,
+    "y": 5,
+    "assignment": {
+      "originSettlementId": "出発拠点",
+      "status": "waiting-stock",
+      "assignedTurn": 1,
+      "enabled": true,
+      "destinationSettlementId": "搬入拠点",
+      "resource": "木材",
+      "leg": "return",
+      "reason": "",
+      "lastProcessedTurn": 26
+    },
+    "wood": [
+      0,
+      250
+    ],
+    "shared": {
+      "resourcesByType": {
+        "石材": 35
+      },
+      "equipmentInventory": []
+    },
+    "selected": "出発拠点"
+  },
+  "blocked": {
+    "turn": 28,
+    "x": 3,
+    "y": 5,
+    "assignment": {
+      "originSettlementId": "出発拠点",
+      "status": "blocked",
+      "assignedTurn": 1,
+      "enabled": true,
+      "destinationSettlementId": "搬入拠点",
+      "resource": "木材",
+      "leg": "outbound",
+      "reason": "通行可能な経路がありません",
+      "lastProcessedTurn": 27
+    },
+    "wood": [
+      0,
+      250
+    ],
+    "cargo": {
+      "resourcesByType": {
+        "木材": 100
+      },
+      "equipmentInventory": []
+    },
+    "shared": {
+      "resourcesByType": {
+        "石材": 35
+      },
+      "equipmentInventory": []
+    },
+    "selected": "出発拠点"
+  },
+  "corpse": {
+    "resourcesByType": {
+      "木材": 100
+    },
+    "equipmentInventory": []
+  },
+  "errors": []
+}

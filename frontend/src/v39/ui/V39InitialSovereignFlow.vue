@@ -8,6 +8,7 @@ import {isV39RacePlayable,normalizeV39RaceName} from '../../lib/v39-race-definit
 
 const selectedRace = ref("");
 const selectedClass = ref("");
+const selectedArmyClass = ref("");
 const selectedCharacterName = ref("主人公");
 const selectedVillageName = ref("はじまりの村");
 const visibleStep = ref("");
@@ -29,6 +30,7 @@ function openSetup(detail = {}) {
     return false;
   }
   selectedClass.value = "";
+  selectedArmyClass.value = "";
   selectedCharacterName.value = "主人公";
   selectedVillageName.value = "はじまりの村";
   visibleStep.value = detail?.skipRace === true ? "class" : "race";
@@ -51,6 +53,7 @@ function closeRace() {
 }
 
 function backToRace() {
+  if(visibleStep.value==='army'){visibleStep.value='name';return;}
   if (setupTarget.value?.multiplayerProfile) return;
   visibleStep.value = "race";
 }
@@ -74,6 +77,11 @@ function confirmRace(race) {
 }
 
 function confirmClass(payload) {
+  if(visibleStep.value==='army'){
+    selectedArmyClass.value=String(payload?.className||'').trim();
+    if(selectedArmyClass.value)finishProfile();
+    return;
+  }
   selectedClass.value = String(payload?.className || "").trim();
   if (!selectedClass.value) return;
   visibleStep.value = "name";
@@ -101,15 +109,23 @@ function applyProfileToCurrentState(profile) {
 }
 
 function confirmName(payload) {
+  selectedCharacterName.value=String(payload?.characterName||'').trim().slice(0,20);
+  selectedVillageName.value=String(payload?.villageName||'').trim().slice(0,20);
+  if(!selectedCharacterName.value||!selectedVillageName.value)return;
+  visibleStep.value='army';
+}
+
+function finishProfile() {
   const target = setupTarget.value;
-  const characterName = String(payload?.characterName || "").trim().slice(0, 20);
-  const villageName = String(payload?.villageName || "").trim().slice(0, 20);
+  const characterName = selectedCharacterName.value;
+  const villageName = selectedVillageName.value;
   if (!target || !isV39RacePlayable(selectedRace.value) || !selectedClass.value || !characterName || !villageName) return;
 
   const profile = {
     playerId:target.playerId,
     race:selectedRace.value,
     className:selectedClass.value,
+    armyClassName:selectedArmyClass.value,
     characterName,
     villageName
   };
@@ -171,10 +187,11 @@ window.addEventListener("v39:multiplayer-sovereign-required", event => {
     @confirm="confirmRace"
   />
   <class-select-modal
-    :show="visibleStep === 'class'"
+    :show="visibleStep === 'class' || visibleStep === 'army'"
     :selected-race="selectedRace"
-    :selected-class="selectedClass"
-    :setup-progress-text="setupTarget?.beforeMap ? 'ゲーム開始前: クラスを選択' : '統治者作成: クラスを選択'"
+    :selected-class="visibleStep === 'army' ? selectedArmyClass : selectedClass"
+    :base-classes-only="visibleStep === 'army'"
+    :setup-progress-text="visibleStep === 'army' ? '2/2 初期軍隊のクラスを選択（1駒）' : '1/2 ヒーローのクラスを選択'"
     @close="backToRace"
     @back="backToRace"
     @confirm="confirmClass"

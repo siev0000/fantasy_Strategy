@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-ui248.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": true,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "研究"
+  ],
+  "source_sheets": {
+    "研究": "研究"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 76,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "研究",
+      "output": "研究.json",
+      "input_rows": 999,
+      "records": 76,
+      "skipped_blank_rows": 880,
+      "skipped_repeated_header_rows": 2,
+      "skipped_missing_key_rows": 41,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

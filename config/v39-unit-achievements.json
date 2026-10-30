@@ -1,0 +1,16 @@
+{
+  "fields": [
+    {"key":"attacks","label":"攻撃回数","unit":"回","targets":[30,100],"connected":true},
+    {"key":"kills","label":"撃破数","unit":"体","targets":[10,30],"connected":true},
+    {"key":"assassinations","label":"暗殺使用","unit":"回","targets":[3,10],"connected":true},
+    {"key":"criticals","label":"クリティカル","unit":"回","targets":[5,20],"connected":true},
+    {"key":"protections","label":"仲間を守る","unit":"回","targets":[5,20],"connected":true},
+    {"key":"heals","label":"治療","unit":"回","targets":[10,30],"connected":true},
+    {"key":"statusInflictions","label":"状態異常付与","unit":"回","targets":[5,20],"connected":false},
+    {"key":"strongKills","label":"強敵撃破","unit":"体","targets":[1,5],"connected":true},
+    {"key":"surveys","label":"調査完了","unit":"マス","targets":[5,20],"connected":true},
+    {"key":"distance","label":"移動距離","unit":"マス","targets":[50,200],"connected":true},
+    {"key":"destructions","label":"破壊回数","unit":"回","targets":[3,10],"connected":true}
+  ],
+  "destructionKinds": ["terrain", "walls", "facilities"]
+}

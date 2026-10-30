@@ -1,0 +1,19 @@
+{
+  "resistanceKey":"怯み耐性",
+  "powerPerTile":50,
+  "maximumDistance":3,
+  "direction":"away",
+  "effects":{
+    "吹き飛ばし":"away",
+    "吹飛ばし":"away",
+    "押し出し":"away",
+    "ノックバック":"away",
+    "引き寄せ":"toward",
+    "吸引":"toward",
+    "引力":"toward",
+    "ランダム吹き飛ばし":"random",
+    "吹き飛ばし_外向き":"away",
+    "吹き飛ばし_内向き":"toward",
+    "吹き飛ばし_ランダム":"random"
+  }
+}

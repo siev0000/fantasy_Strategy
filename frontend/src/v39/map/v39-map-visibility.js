@@ -192,7 +192,7 @@ function neighborEdges(data, x, y) {
   });
 }
 
-function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile = null, scoutValue = 0, applyFog = true) {
+function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile = null, scoutValue = 0, applyFog = true, gameSettings = null) {
   if (sourceX === null || sourceX === undefined || sourceX === ""
     || sourceY === null || sourceY === undefined || sourceY === "") return;
   const sx = Math.floor(Number(sourceX));
@@ -208,7 +208,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
     const previousScout = Number(detectionByTile.get(startKey));
     detectionByTile.set(startKey, Math.max(
       Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
-      resolveEffectiveScoutAtDistance(scoutValue, 0, data,{x:sx,y:sy},{x:sx,y:sy})
+      resolveEffectiveScoutAtDistance(scoutValue, 0, data,{x:sx,y:sy},{x:sx,y:sy},gameSettings)
     ));
   }
   while (queueIndex < queue.length) {
@@ -228,7 +228,7 @@ function addVisionRange(data, sourceX, sourceY, range, output, detectionByTile =
         const previousScout = Number(detectionByTile.get(key));
         detectionByTile.set(key, Math.max(
           Number.isFinite(previousScout) ? previousScout : Number.NEGATIVE_INFINITY,
-          resolveEffectiveScoutAtDistance(scoutValue, distance, data,{x:sx,y:sy},neighbor)
+          resolveEffectiveScoutAtDistance(scoutValue, distance, data,{x:sx,y:sy},neighbor,gameSettings)
         ));
       }
       if (!data.isUnderground || data.grid[neighbor.y][neighbor.x] === "洞窟") queue.push({ x:neighbor.x, y:neighbor.y, distance });
@@ -288,14 +288,14 @@ function buildCurrentVision(data, faction, state, playerId, applyFog = true) {
     if (!settlement?.placed) continue;
     const detectionRange = BASE_VILLAGE_SCOUT_RANGE;
     addFieldVisionRange(data, settlement.x, settlement.y, detectionRange + fieldBonus, visible, applyFog);
-    if (detectionByTile) addVisionRange(data, settlement.x, settlement.y, detectionRange, new Set(), detectionByTile, 0, applyFog);
+    if (detectionByTile) addVisionRange(data, settlement.x, settlement.y, detectionRange, new Set(), detectionByTile, 0, applyFog,state.gameSettings);
   }
   for (const units of unitsByTile((faction?.units||[]).filter(unit=>isV39UnitInWorld(unit,state.activeWorldId)), { livingOnly:true }).values()) {
     const sense = applyFog ? resolveDetectionGroupSense(units) : {scout:0};
     const lead = units[0];
     const detectionRange = units.reduce((max, unit) => Math.max(max, unitVisionRange(unit)), V39_UNIT_VISION_BASE_RANGE);
     addFieldVisionRange(data, lead.x, lead.y, detectionRange + fieldBonus, visible, applyFog);
-    if (detectionByTile) addVisionRange(data, lead.x, lead.y, detectionRange, new Set(), detectionByTile, sense.scout, applyFog);
+    if (detectionByTile) addVisionRange(data, lead.x, lead.y, detectionRange, new Set(), detectionByTile, sense.scout, applyFog,state.gameSettings);
   }
   const definitions = new Map(facilityDefinitions().map(definition => [definition.name, definition]));
   for (const settlement of settlements) {
@@ -306,7 +306,7 @@ function buildCurrentVision(data, faction, state, playerId, applyFog = true) {
       const [x, y] = key.split(",").map(Number);
       const detectionRange = V39_UNIT_VISION_BASE_RANGE + Math.floor(scout / V39_UNIT_VISION_SCOUT_STEP);
       addFieldVisionRange(data, x, y, detectionRange + fieldBonus, visible, applyFog);
-      if (detectionByTile) addVisionRange(data, x, y, detectionRange, new Set(), detectionByTile, scout, applyFog);
+      if (detectionByTile) addVisionRange(data, x, y, detectionRange, new Set(), detectionByTile, scout, applyFog,state.gameSettings);
     }
   }
   return { visible, detectionByTile };
@@ -677,12 +677,14 @@ function renderVisibilityLayers() {
   const showOwnership=window.getV39DisplaySettings?.().showTerritoryOwnership!==false;
   const ownership=showOwnership?buildV39TerritoryOverlayGroups(state,data,{testMode,explored,activePlayerId:player.id}):[];
   const fogSignature = [
+    window.getV39DisplaySettings?.().mapQuality,
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
     initialPlacement ? 1 : 0,
     sortedSetSignature(explored)
   ].join(";");
   const renderSignature = [
+    window.getV39DisplaySettings?.().mapQuality,
     showOwnership,JSON.stringify(ownership),
     JSON.stringify(window.getV39DisplaySettings?.().atmosphereOpacityByKind||{}),
     state.activeWorldId||'surface',data.isUnderground===true?1:0,

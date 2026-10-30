@@ -1,9 +1,42 @@
 import {describeV39VillagePlan} from '../../lib/v39-village-plans.js';
 import {describeV39NpcObjective} from '../../lib/v39-npc-objective-label.js';
 import {getV39RecordedResourceDelta} from '../../lib/v39-resource-delta-view.js';
+import {V39_VOLCANO_DAMAGE_BALANCE} from '../../lib/v39-gameplay-balance.js';
 
 const n=value=>Number(value)||0;
 const alive=unit=>n(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
+function environmentSnapshot(actor,state){
+  const turn=state.timeline?.turnNumber||1,activeWorld=state.activeWorldId||'surface',keysByWorld=new Map();
+  const add=(world,key)=>{if(!keysByWorld.has(world))keysByWorld.set(world,new Set());keysByWorld.get(world).add(key);};
+  const facilities=[];
+  for(const base of actor.bases.filter(base=>base.placed!==false)){
+    const world=base.worldId||'surface';
+    if(Number.isFinite(base.x)&&Number.isFinite(base.y))add(world,`${base.x},${base.y}`);
+    for(const key of base.territoryTileKeys||[])add(world,key);
+    for(const [key,names] of Object.entries(base.tileFacilityMap||{})){
+      add(world,key);
+      for(const name of new Set(Array.isArray(names)?names:[])){
+        const health=base.facilityStateByTile?.[key]?.[name]||{},maxHp=Number(health.maxHp??V39_VOLCANO_DAMAGE_BALANCE.facilityMaxHp);
+        facilities.push({id:`${world}:${base.settlementId||base.id}:${key}:${name}`,name,key,worldId:world,
+          hp:Number(health.hp??maxHp),maxHp,cause:health.lastDamageCause||'',damageTurn:n(health.lastDamageTurn)});
+      }
+    }
+  }
+  for(const unit of actor.units.filter(alive))add(unit.worldId||'surface',`${unit.x},${unit.y}`);
+  if(actor.kind==='勢力')for(const [key,owner] of Object.entries(state.territoryOwnerByTile||{}))if(owner===actor.id)add(activeWorld,key);
+  const disasters=[];
+  for(const [world,keys] of keysByWorld){
+    const spatial=world===activeWorld?state:state.explorationWorlds?.[world]?.spatial;
+    for(const event of spatial?.worldEnvironment?.activeDisasters||[]){
+      if((event.startsAtTurn??event.turn??0)>turn||event.expiresAtTurn<turn)continue;
+      const affectedTiles=(event.tileKeys||[]).filter(key=>keys.has(key)).length;
+      if(affectedTiles)disasters.push({id:event.id,name:event.name||event.disasterId,worldId:world,affectedTiles,power:n(event.damagePower),expiresAtTurn:event.expiresAtTurn});
+    }
+  }
+  const transports=actor.units.filter(alive).filter(unit=>unit.transportAssignment).map(unit=>({id:unit.id,name:unit.name||unit.id,
+    status:unit.transportAssignment.status||'',reason:unit.transportAssignment.reason||'',routeId:unit.transportAssignment.logisticsRouteId||''}));
+  return {facilities,disasters,transports};
+}
 export function simulationActors(state,map){
   const players=(state.players||[]).filter(player=>player.isPlayer===false).map(player=>({
     id:player.id,name:player.label||player.id,kind:'勢力',race:player.race,
@@ -36,6 +69,7 @@ export function simulationActors(state,map){
       needs:(plan?.resourceGoals||[]).map(row=>({name:row.name,stock:row.stock,required:row.required,missing:row.missing,purpose:row.purpose})),
       nextConstruction:plan?.construction?.name||plan?.construction?.facilityName||'',
       research:structuredClone(actor.research||null),growth:structuredClone(actor.ai.growthPlan||null),
+      environment:environmentSnapshot(actor,state),
       trades:actor.trades?.map(row=>({id:row.id,status:row.status,completedCycles:row.completedCycles,reason:row.reason,sides:row.sides.map(side=>({partyId:side.partyId,stage:side.stage,goods:side.goods}))}))||[],
       task:structuredClone(actor.ai.objective||actor.ai.lastObjective||null)};
   });
@@ -60,11 +94,33 @@ export function compareSimulationActors(before,after,history=[]){
     const remaining=[...previous.buildings];
     for(const name of actor.buildings){const index=remaining.indexOf(name);if(index<0)add('建設',`${name} 完成`);else remaining.splice(index,1);}
     if(previous.population!==actor.population)add('変化',`人口 ${previous.population} → ${actor.population}`);
+    for(const facility of actor.environment?.facilities||[]){
+      const old=previous.environment?.facilities?.find(row=>row.id===facility.id);
+      if(old&&old.hp!==facility.hp){
+        const cause=facility.damageTurn>old.damageTurn?facility.cause:'';
+        add('施設',`${facility.name} (${facility.key}) HP ${old.hp} → ${facility.hp}${cause?` / ${cause}`:''}${facility.hp===0?' / 損壊':old.hp===0?' / 復旧':''}`);
+      }
+      if(!Number.isFinite(facility.hp)||!Number.isFinite(facility.maxHp)||facility.hp<0||facility.maxHp<=0||facility.hp>facility.maxHp)
+        issues.push({actorId:actor.id,severity:'異常',message:`${facility.name} (${facility.key}) の施設HPが不正: ${facility.hp}/${facility.maxHp}`});
+    }
+    for(const event of actor.environment?.disasters||[])if(!previous.environment?.disasters?.some(row=>row.id===event.id&&row.worldId===event.worldId))
+      add('災害',`${event.name}の影響範囲内 / ${event.worldId} / 領土・施設・ユニット位置 ${event.affectedTiles}マス`);
+    for(const transport of actor.environment?.transports||[]){
+      const old=previous.environment?.transports?.find(row=>row.id===transport.id);
+      if(old&&(old.status!==transport.status||old.reason!==transport.reason))add('調達',`${transport.name}: 輸送 ${transport.status}${transport.reason?` / ${transport.reason}`:''}`);
+    }
     if(!changes.some(row=>row.actorId===actor.id))add('判断',actor.reasons.join(' / ')||actor.goal||'記録できる行動なし');
     for(const [name,value] of Object.entries(actor.stocks))if(!Number.isFinite(value)||value<0)issues.push({actorId:actor.id,severity:Number.isFinite(value)?'要確認':'異常',message:`${name} の在庫が ${value}`});
     if(new Set(actor.units.map(unit=>unit.id)).size!==actor.units.length)issues.push({actorId:actor.id,severity:'異常',message:'生存ユニットIDが重複'});
     const recent=history.slice(-4).map(frame=>frame.actors.find(row=>row.id===actor.id)).filter(Boolean);
-    const activity=row=>JSON.stringify([row.units.map(unit=>[unit.id,unit.x,unit.y,unit.worldId,unit.hp]),row.pending,row.training,row.buildings,row.goal]);
+    if(recent.length===4){
+      for(const facility of (actor.environment?.facilities||[]).filter(row=>row.hp===0))if(recent.every(row=>row.environment?.facilities?.some(old=>old.id===facility.id&&old.hp===0)))
+        issues.push({actorId:actor.id,severity:'要確認',message:`${facility.name} (${facility.key}) が5ターン連続で損壊（修理計画を確認）`});
+      for(const transport of (actor.environment?.transports||[]).filter(row=>row.status==='blocked'))if(recent.every(row=>row.environment?.transports?.some(old=>old.id===transport.id&&old.status==='blocked')))
+        issues.push({actorId:actor.id,severity:'要確認',message:`${transport.name} の輸送が5ターン連続で停止${transport.reason?` / ${transport.reason}`:''}`});
+    }
+    const activity=row=>JSON.stringify([row.units.map(unit=>[unit.id,unit.x,unit.y,unit.worldId,unit.hp]),row.pending,row.training,row.buildings,row.goal,
+      row.environment?.facilities?.map(facility=>[facility.id,facility.hp]),row.environment?.transports?.map(transport=>[transport.id,transport.status,transport.reason])]);
     if(recent.length===4&&recent.every(row=>activity(row)===activity(actor))&&actor.units.some(unit=>unit.ap>0))
       issues.push({actorId:actor.id,severity:'要確認',message:'5ターン連続で位置・戦力・工事進捗・目標に変化なし（待機理由を確認）'});
     if(recent.length===4){

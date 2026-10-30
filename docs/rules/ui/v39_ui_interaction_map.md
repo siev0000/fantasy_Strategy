@@ -118,7 +118,7 @@ activePlayerId
 | 都市・建設 | モーダルを維持 | 全施設候補と条件・費用の確認に使う |
 | ゲーム設定・保存 | モーダルを維持 | 表示以外の設定とセーブ入出力に使う |
 | 活動ログ | モーダルを維持 | 最大300件をスクロール表示する |
-| ユニット作成 | 下部の管理UIへ統合 | 現在のプレイヤー・配置状態を見ながら操作する |
+| ユニット作成 | ユニット一覧モーダルの「作成・訓練」へ統合（UI139） | 同じ作成フォームで拠点選択・条件・教官・訓練中を扱う。部隊の＋は廃止 |
 | 地図表示設定 | 下部の管理UIへ統合 | 変更結果をフィールドで即時確認する |
 | 旧SVGマップ・固定ユニット | 廃止 | Phaserと共通ゲーム状態へ統一済み |
 | 旧固定資源値 | 廃止 | 初回描画からプレイヤー状態を参照する |
@@ -512,7 +512,7 @@ const value = await openTextInputModal({
 | 自キャラ / 部隊 | `window.openV39CharacterModal()` | `#characterModal` |
 | 都市・建設 | `openBuildModal()` | `#buildModal` |
 | 装備 | `openEquipmentModal()` | `#equipmentModal` |
-| ユニット作成 | `openUnitCreateModal()` | `#unitCreateModal` |
+| ユニット作成 | `window.openV39UnitCreate()` / `window.openV39CharacterModal({tab:'create'})` | `#characterModal #v39-unit-create-panel` |
 | 統治者ログ | `openRulerLogModal()` | `#rulerLogModal` |
 | 研究 | `openResearchModal(researchType)` | `#researchModal` |
 | フィールド設定 | `openFieldSettingsModal()` | `#v39-field-settings-placeholder`（現状） |

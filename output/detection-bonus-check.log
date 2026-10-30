@@ -1,0 +1,47 @@
+after settings {
+  settings: {
+    recoveryWaitHpPercent: 100,
+    detectionScoutBonus: 50,
+    npcFactionCount: 0,
+    fieldVisionBonusTiles: 2,
+    turnProgressionMode: 'standard',
+    maxCombatTurnsPerWorldTurn: 6
+  },
+  equal: {
+    enemyId: 'equal',
+    x: 5,
+    y: 4,
+    inCurrentVision: true,
+    detected: false,
+    observerScout: 50,
+    targetStealth: 95,
+    groupSize: 1,
+    stealthExposed: false,
+    stealthExposureReason: '',
+    reason: '未発見（有効索敵50 < 隠密95）'
+  },
+  higher: {
+    enemyId: 'higher',
+    x: 4,
+    y: 5,
+    inCurrentVision: true,
+    detected: false,
+    observerScout: 50,
+    targetStealth: 96,
+    groupSize: 1,
+    stealthExposed: false,
+    stealthExposureReason: '',
+    reason: '未発見（有効索敵50 < 隠密96）'
+  }
+}
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+page.waitForFunction: Timeout 30000ms exceeded.
+    at C:\Users\skkt3\ドキュメント\Github\fantasy_Strategy\scripts\check-v39-detection-bonus.mjs:48:13 {
+  log: [],
+  name: 'TimeoutError'
+}
+
+Node.js v22.20.0

@@ -1,7 +1,9 @@
 .v39-squad-coordination{min-width:0;width:100%;font-size:var(--font-body);border-bottom:1px solid #40575e;padding:3px 0;color:#dce9e8}
-.v39-squad-coordination summary{cursor:pointer;overflow-wrap:anywhere;padding:4px 0}
-.v39-squad-coordination summary span{color:#a6bec2;font-size:var(--font-secondary)}
-.v39-squad-coordination>div{display:flex;gap:4px;flex-wrap:wrap;padding:4px 0}
-.v39-squad-coordination button{font:inherit;min-height:32px;max-width:100%;padding:4px 6px;background:#19323b;border:1px solid #5e858e;border-radius:5px;color:#e7f1ef}
+.v39-squad-coordination>summary{cursor:pointer;padding:3px 0;color:#dce9e8;overflow-wrap:anywhere}
+.v39-squad-coordination>div{display:grid;gap:4px;padding:4px 0}
+.v39-squad-coordination .v39-squad-order-card{font:inherit;min-width:0;width:100%;text-align:left;padding:4px 6px;background:#19323b;border:1px solid #5e858e;border-radius:5px;color:#e7f1ef}
+.v39-squad-coordination .v39-squad-order-card:disabled{opacity:1;border-color:#70c9d5;background:#234650;cursor:default}
+.v39-squad-order-description{display:block;font-size:var(--font-secondary);color:#a6bec2;overflow-wrap:anywhere;line-height:1.35;margin-top:2px}
+.v39-squad-coordination .v39-squad-order-state{color:#dce9e8;margin:2px 0}
 .v39-squad-coordination p{color:#efc279;margin:4px 0;overflow-wrap:anywhere}
 .v39-squad-mode-label{color:#e8c76c;font-size:var(--font-secondary)}

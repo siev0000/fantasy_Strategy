@@ -1,0 +1,162 @@
+{
+  "thresholdCheck": {
+    "before": false,
+    "afterExposure": true,
+    "afterRestore": false,
+    "scout120": true
+  },
+  "world": "cave:entrance-30-36:1",
+  "unit": {
+    "name": "悪魔魔導士軍1",
+    "x": 12,
+    "y": 11,
+    "scout": 44,
+    "range": 4
+  },
+  "enemies": [
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-8",
+      "name": "ビートル",
+      "x": 12,
+      "y": 10,
+      "distance": 1,
+      "stealth": 0,
+      "inVision": true,
+      "scout": 44,
+      "detected": true,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-0",
+      "name": "ムカデ",
+      "x": 13,
+      "y": 9,
+      "distance": 2,
+      "stealth": 105,
+      "inVision": true,
+      "scout": 44,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-3",
+      "name": "クモ",
+      "x": 12,
+      "y": 9,
+      "distance": 2,
+      "stealth": 117,
+      "inVision": true,
+      "scout": 44,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-1",
+      "name": "ムカデ",
+      "x": 13,
+      "y": 7,
+      "distance": 4,
+      "stealth": 105,
+      "inVision": true,
+      "scout": 19,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-2",
+      "name": "ムカデ",
+      "x": 13,
+      "y": 5,
+      "distance": 6,
+      "stealth": 105,
+      "inVision": true,
+      "scout": null,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-4",
+      "name": "ムカデ",
+      "x": 15,
+      "y": 17,
+      "distance": 6,
+      "stealth": 95,
+      "inVision": true,
+      "scout": null,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-9",
+      "name": "ムカデ",
+      "x": 11,
+      "y": 17,
+      "distance": 6,
+      "stealth": 105,
+      "inVision": true,
+      "scout": null,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-5",
+      "name": "ムカデ",
+      "x": 17,
+      "y": 17,
+      "distance": 8,
+      "stealth": 85,
+      "inVision": false,
+      "scout": null,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    },
+    {
+      "id": "cave-entrance-30-36:floor-1-twin-caverns-enemy-6",
+      "name": "ムカデ",
+      "x": 16,
+      "y": 20,
+      "distance": 9,
+      "stealth": 100,
+      "inVision": false,
+      "scout": null,
+      "detected": false,
+      "fog": {
+        "tiles": 0,
+        "scout": 0,
+        "vision": 0
+      }
+    }
+  ]
+}

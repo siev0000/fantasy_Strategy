@@ -1,3 +1,4 @@
+import {isV39VillageContactUnit,resolveV39MapContact} from '../../lib/v39-village-contacts.js';
 import {describeV39VillagePlan} from '../../lib/v39-village-plans.js';
 import {hasV39VillageContact,recordV39VillageContact} from '../../lib/v39-village-contacts.js';
 import {focusV39MapTile} from '../map/v39-map-focus.js';
@@ -310,20 +311,24 @@ function renderWorldActions() {
   const subdetail = document.getElementById("v39-world-contact-subdetail");
   const buttons = document.getElementById("v39-world-contact-buttons");
   if(section?.__planStatus){section.__planStatus.remove();section.__planStatus=null;}
-  if (!section || !kind || !detail || !subdetail || !buttons || (!selectedTile&&!menuVillageId)) { if (section) section.hidden = true; return; }
+  if (!section || !kind || !detail || !subdetail || !buttons) { if (section) section.hidden = true; return; }
   const state = window.getV39GameState?.({includeWorlds:false});
   const playerId = state?.activePlayerId;
   const pinned=menuVillageId&&state?.neutralVillages?.find(row=>row.id===menuVillageId);
   if(menuVillageId&&(!pinned||(state.activeWorldId||'surface')!=='surface')){closeVillageMenu();return;}
-  const tile=pinned||selectedTile;if(!tile){closeVillageMenu();return;}
+  const ownFaction=state?.players?.find(player=>player.id===playerId)?.factionState;
+  const tile=pinned||selectedTile||ownFaction?.units?.find(unit=>unit.id===ownFaction.selectedUnitId);
+  if(!tile){section.hidden=true;return;}
   const key = keyOf(tile.x, tile.y);
   const wanderer = state?.wandererGroups?.find(row => keyOf(row.x, row.y) === key && row.discoveredByPlayerIds?.includes(playerId));
-  const village = state?.neutralVillages?.find(row => keyOf(row.x, row.y) === key || row?.territoryTileKeys?.includes(key));
+  const contact=resolveV39MapContact(state,tile);
+  const village=pinned||contact?.village;
+  const factionContact=!village&&contact?.kind==='faction'?contact:null;
   const landmark=Object.values(state?.victoryLandmarksByTile||{}).find(row=>row.key===key||row.occupiedTileKeys?.includes(key));
   // Guardian UI only reads remote worlds; do not clone every saved map on each refresh.
   if(landmark?.hegemonyWorldId)state.explorationWorlds=window.getV39EnemyTurnState?.()?.explorationWorlds;
   const discovered=landmark && state.players?.find(row=>row.id===playerId)?.factionState?.exploration?.discoveredFeaturesByTile?.[landmark.key];
-  section.hidden = !wanderer && !village && !discovered;
+  section.hidden = !wanderer && !village && !discovered && !factionContact;
   const empty = document.querySelector('[data-interaction-empty]');
   if (empty) empty.hidden = !section.hidden;
   section.dataset.kind="village";
@@ -332,6 +337,11 @@ function renderWorldActions() {
     section.dataset.targetId = wanderer.id;
     kind.textContent = "放浪者"; detail.textContent = `${wanderer.race} / ${wanderer.population}人`; subdetail.textContent = "";
     buttons.innerHTML = `<button type="button" data-world-action="recruit">勧誘</button>`;
+  } else if(factionContact){
+    section.dataset.kind='faction';section.dataset.targetId=factionContact.id;
+    kind.textContent='勢力';detail.textContent=factionContact.faction.label||factionContact.faction.name||factionContact.id;
+    subdetail.textContent=factionContact.actor?'領土に入らず交流できます':'相手領土の隣へユニットを移動してください';
+    buttons.innerHTML=`<button type="button" data-world-action="faction-trade"${factionContact.actor?'':' disabled'}>取引</button><button type="button" data-world-action="faction-diplomacy"${factionContact.actor?'':' disabled'}>外交・協定</button>`;
   } else if (village) {
     const relation = getV39NeutralVillageRelation(village, playerId);
     const pending=getV39VillageQuests(village,playerId).filter(quest=>quest.accepted&&!quest.completed);
@@ -356,7 +366,7 @@ function renderWorldActions() {
     }
     if(menuVillageId){
       const faction=state.players.find(p=>p.id===playerId).factionState;
-      const units=faction.units.filter(unit=>Number(unit.hp??unit.currentHp)>0&&(unit.worldId||'surface')==='surface'&&village.territoryTileKeys?.includes(`${unit.x},${unit.y}`));
+      const units=faction.units.filter(unit=>isV39VillageContactUnit(unit,village));
       const actor=units.find(unit=>unit.id===faction.selectedUnitId)||units[0];
       section.hidden=true;
       renderV39VillageHub({root:document.getElementById('v39-village-menu'),state,village,actor,units,relation,relationLabel:getV39RelationLabel(relation),
@@ -408,6 +418,13 @@ function performContactAction(action,eventId='',label='',targetId='',kind='villa
   let result;
   if(window.isV39MapInputLocked?.()||state?.timeline?.phase!=='player'){window.showV39TurnBanner?.('処理完了後、操作ターンに実行してください');return;}
   if(action==='village-menu'){openVillageMenu(targetId);return;}
+  if(action==='faction-trade'||action==='faction-diplomacy'){
+    const contact=resolveV39MapContact(state,selectedTile);
+    if(contact?.kind!=='faction'||contact.id!==targetId||!contact.actor){window.showV39TurnBanner?.('相手領土の隣へ生存ユニットを移動してください');return;}
+    if(action==='faction-trade')window.openV39FactionTradeModal?.(targetId);
+    else window.openV39FactionDiplomacy?.(targetId);
+    return;
+  }
   if(action==='village-resettle'){
     result=resettleV39AbandonedVillage(state,playerId,targetId);
     if(result.ok)window.setV39GameState(result.state,{reason:'village-resettled'});
@@ -507,6 +524,8 @@ window.addEventListener("v39:initial-placement-complete", initialize);
 window.addEventListener("v39:turn-stage-world", advance);
 window.addEventListener("v39:tile-selected", event => { selectedTile = event.detail || null; renderWorldActions(); });
 window.addEventListener("v39:game-state-changed", renderWorldActions);
+window.addEventListener('v39:unit-selected',renderWorldActions);
+window.addEventListener('v39:footer-tab-changed',renderWorldActions);
 window.addEventListener('v39:conversation-updated',renderWorldActions);
 window.generateV39WorldPopulation = generateV39WorldPopulation;
 window.recruitV39Wanderer = groupId => { const state = window.getV39GameState?.(); return recruitV39Wanderer(state, state?.activePlayerId, groupId); };

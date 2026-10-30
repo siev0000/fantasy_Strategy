@@ -237,21 +237,8 @@ function toggleSection(key) {
   overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;
   padding:3px 5px 3px 3px;
-  scrollbar-width:thin;
-  scrollbar-color:#405b63 transparent;
-}
 
-.operation-detail-panel::-webkit-scrollbar {
-  width:6px;
-}
 
-.operation-detail-panel::-webkit-scrollbar-thumb {
-  border-radius:999px;
-  background:#405b63;
-}
-
-.operation-detail-panel::-webkit-scrollbar-track {
-  background:transparent;
 }
 
 .operation-detail-panel > .operation-detail-section + .operation-detail-section {

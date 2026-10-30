@@ -1,0 +1,6 @@
+{
+  "mentalDefenseDivisor": 100,
+  "chancePowerDivisor": 100,
+  "minimumChance": 0,
+  "maximumChance": 1
+}

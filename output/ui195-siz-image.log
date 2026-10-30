@@ -1,0 +1,1 @@
+PASS: SIZ anchors/interpolation/limits, missing values, actual field image scaling and SIZ render invalidation. No browser.

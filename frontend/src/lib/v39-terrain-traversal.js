@@ -3,7 +3,11 @@ import {v39HazardMovementMultiplier} from './v39-hazard-zones.js';
 import {resolveV39CityRoadAtTile} from './v39-city-development.js';
 import {applyV39CityAura} from './v39-city-aura.js';
 import { v39WallStepHeight } from "./v39-defense-rules.js";
+import {resolveV39FriendlyWallMovePercent} from './v39-wall-effects.js';
+import {getV39Rubble} from './v39-terrain-destruction.js';
 import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE, V39_FLIGHT_BALANCE } from "./v39-gameplay-balance.js";
+import { canV39EnterFactionTerritory,hasV39ActiveTreaty } from "./v39-diplomacy-rules.js";
+import {resolveV39DisasterMovementPenalty} from './v39-disaster-movement.js';
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -61,6 +65,7 @@ export function resolveV39TileTerrainName(mapData, x, y) {
 }
 
 export function canUnitEnterV39Tile(mapData, x, y, unit) {
+  if(getV39Rubble(mapData,x,y))return false;
   if(mapData?.hegemonyInterior&&mapData.grid?.[y]?.[x]==="岩壁")return false;
   if (mapData?.isUnderground && mapData.grid?.[y]?.[x] !== "洞窟") return false;
   return inspectV39TerrainTraversal(unit, resolveV39TileTerrainName(mapData, x, y)).allowed;
@@ -87,16 +92,33 @@ function resolveV39UnitFlightValue(unit) {
   return 0;
 }
 
+export function resolveV39UnitWeatherMovement(unit,map,points=[unit]){
+  const penalty=resolveV39DisasterMovementPenalty(map,unit,points);
+  const flight=resolveV39UnitFlightValue(unit);
+  const reduction=flight>0?penalty.flightReduction:penalty.movementReduction;
+  return {movement:resolveV39UnitMovementValue(unit)*(1-reduction),flight:flight*(1-penalty.flightReduction),...penalty};
+}
+
 // 1ヘックス移動の共通AP。高低差、飛行、地形移動コストをここで一元判定する。
-export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, unit = null) {
+export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, unit = null, movementState = null) {
   const fromXValue = Math.floor(Number(fromX));
   const fromYValue = Math.floor(Number(fromY));
   const toXValue = Math.floor(Number(toX));
   const toYValue = Math.floor(Number(toY));
   if (![fromXValue, fromYValue, toXValue, toYValue].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
   if (fromXValue === toXValue && fromYValue === toYValue) return 0;
-  const state=globalThis.window?.getV39EnemyTurnState?.();
+  const state=movementState || globalThis.window?.getV39EnemyTurnState?.();
+  if (state && !mapData?.isUnderground && !mapData?.hegemonyInterior && unit?.id) {
+    const owner = state.territoryOwnerByTile?.[`${toXValue},${toYValue}`];
+    if (owner) {
+      const mover = state.players?.find(p => p.factionState?.units?.some(u => u.id === unit.id));
+      if (mover && !canV39EnterFactionTerritory(state,mover.id,owner,{unitId:unit.id,fromKey:`${fromXValue},${fromYValue}`})) return Number.POSITIVE_INFINITY;
+    }
+  }
   if(unit)unit=applyV39CityAura({...unit,x:fromXValue,y:fromYValue},state,resolveV39TileTerrainName(mapData,fromXValue,fromYValue));
+  const weatherMovement=resolveV39UnitWeatherMovement(unit,mapData,[{x:fromXValue,y:fromYValue},{x:toXValue,y:toYValue}]);
+  if(unit&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0))unit={...unit,飛行:weatherMovement.flight,
+    skillLevels:{...unit.skillLevels,飛行:weatherMovement.flight},status:{...unit.status,移動:weatherMovement.movement,飛行:weatherMovement.flight}};
   if (!canUnitEnterV39Tile(mapData, toXValue, toYValue, unit)) return Number.POSITIVE_INFINITY;
 
   const fromLevel = Number(mapData?.heightLevelMap?.[fromYValue]?.[fromXValue]);
@@ -105,7 +127,9 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   const absDiff = hasHeight ? Math.abs(toLevel - fromLevel) : 0;
   const climbDiff = hasHeight ? Math.max(0, toLevel - fromLevel) : 0;
   const flightValue = resolveV39UnitFlightValue(unit);
-  const wallHeight = v39WallStepHeight(mapData, { x:fromXValue, y:fromYValue }, { x:toXValue, y:toYValue });
+  const ownerId=unit?.ownerPlayerId||unit?.playerId||state?.players?.find(p=>p.factionState?.units?.some(u=>u.id===unit?.id))?.id||'';
+  const wallHeight = v39WallStepHeight(mapData, { x:fromXValue, y:fromYValue }, { x:toXValue, y:toYValue },
+    {ownerId,isFriendlyOwner:other=>!!state&&hasV39ActiveTreaty(state,ownerId,other,'alliance')});
   if (!Number.isFinite(wallHeight)) return Number.POSITIVE_INFINITY;
   if (absDiff + wallHeight > 1 && flightValue <= 0) return Number.POSITIVE_INFINITY;
   const heightPenaltyPoints = Math.max(0, climbDiff + wallHeight - flightValue / V39_FLIGHT_BALANCE.skillPerIgnoredHeight)
@@ -113,7 +137,9 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   const road=resolveV39CityRoadAtTile(state,`${toXValue},${toYValue}`,unit?.worldId||state?.activeWorldId||'surface');
   const terrain = resolveV39TerrainMoveCost(unit, road?`道路${road}`:resolveV39TileTerrainName(mapData, toXValue, toYValue), heightPenaltyPoints);
   const cargoSpeed=Number.isFinite(Number(unit?.cargoSpeedMultiplier))?Math.max(0,Math.min(1,Number(unit.cargoSpeedMultiplier))):1;
-  return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * v39HazardMovementMultiplier(mapData,unit,toXValue,toYValue) * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit))/cargoSpeed));
+  const wallMultiplier=1+resolveV39FriendlyWallMovePercent(mapData,{x:fromXValue,y:fromYValue},{x:toXValue,y:toYValue},
+    {ownerId,isFriendlyOwner:other=>!!state&&hasV39ActiveTreaty(state,ownerId,other,'alliance')})/100;
+  return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * v39HazardMovementMultiplier(mapData,unit,toXValue,toYValue) * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit),mapData)/cargoSpeed*wallMultiplier));
 }
 
 export function resolveV39TerrainMoveCost(unit, terrainName, additionalPenaltyPoints = 0) {

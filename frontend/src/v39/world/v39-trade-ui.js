@@ -1,3 +1,4 @@
+import {isV39VillageContactUnit} from '../../lib/v39-village-contacts.js';
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import {V39_TRADE_CONFIG as config,V39_TRADE_RESOURCES,listV39Trades,proposeV39Trade,acceptV39Trade,stopV39Trade,resumeV39Trade,
   tradeBank,tradeBankAmount,tradeMembers,tradeCapacity,tradeTurn,tradeAlive,divertV39TradeIncome,updateTradeBank,updateV39Trade,getTradeCargo,reserveV39TradeFromStock,tradeSpeed,tradeCourierIndex} from '../../lib/v39-trade-state.js';
@@ -67,7 +68,7 @@ function renderResourcePicker(options={}) {
 function endpoints(s) {
   const own=s.players.find(row=>row.id===s.activePlayerId);
   return [...s.players.filter(row=>row.id!==s.activePlayerId).map(row=>({value:`player:${row.id}`,label:row.label||row.name||row.id})),
-    ...(s.neutralVillages||[]).filter(v=>window.isV39TestMode?.()||own?.factionState.units.some(unit=>tradeAlive(unit)&&v.territoryTileKeys?.includes(`${unit.x},${unit.y}`))).map(row=>({value:`village:${row.id}`,label:row.name||row.id}))];
+    ...(s.neutralVillages||[]).filter(v=>window.isV39TestMode?.()||own?.factionState.units.some(unit=>isV39VillageContactUnit(unit,v))).map(row=>({value:`village:${row.id}`,label:row.name||row.id}))];
 }
 function sideFor(s,value) {
   const split=value.indexOf(':'),kind=value.slice(0,split),partyId=value.slice(split+1);
@@ -77,8 +78,8 @@ function sideFor(s,value) {
   const actor=units.find(unit=>tradeAlive(unit)&&(unit.worldId||'surface')==='surface'&&!unit.tradeAssignment)||units[0];
   return {kind,partyId,settlementId:banks[0]?.settlementId||banks[0]?.id||'',unitId:actor?.id||'',center:{x:n(banks[0]?.x),y:n(banks[0]?.y)},radius:1,goods:{}};
 }
-function fresh(s,villageId) {
-  const choices=endpoints(s),other=villageId?`village:${villageId}`:choices[0]?.value;
+function fresh(s,villageId,playerId='') {
+  const choices=endpoints(s),other=playerId?`player:${playerId}`:villageId?`village:${villageId}`:choices[0]?.value;
   if(!other)return null;
   const sides=[sideFor(s,`player:${s.activePlayerId}`),sideFor(s,other)];
   const midpoint={x:Math.round((sides[0].center.x+sides[1].center.x)/2),y:Math.round((sides[0].center.y+sides[1].center.y)/2)};
@@ -172,12 +173,13 @@ function ensure() {
   });
 
 }
-function open(villageId='',show='new',inline=false) {
+function open(villageId='',show='new',inline=false,playerId='') {
   if(!inline){window.closeV39VillageMenu?.();unmountV39TradePanel();}
   ensure();const s=state();if(s.timeline.phase!=='player'){window.showV39TurnBanner?.('操作ターンに取引を開いてください');return;}
-  draftKey=`${s.activePlayerId}:${villageId||'default'}`;
-  const cached=drafts.get(draftKey),matches=row=>row?.sides[0].partyId===s.activePlayerId&&(!villageId||row.sides[1].kind==='village'&&row.sides[1].partyId===villageId);
-  draft=(matches(cached)?cached:null)||(villageId?[...drafts.values()].find(matches):null)||fresh(s,villageId);if(draft)drafts.set(draftKey,draft);
+  if(playerId&&(playerId===s.activePlayerId||!s.players.some(player=>player.id===playerId)))return;
+  draftKey=`${s.activePlayerId}:${playerId?'player:'+playerId:villageId||'default'}`;
+  const cached=drafts.get(draftKey),matches=row=>row?.sides[0].partyId===s.activePlayerId&&(playerId?row.sides[1].kind==='player'&&row.sides[1].partyId===playerId:!villageId||row.sides[1].kind==='village'&&row.sides[1].partyId===villageId);
+  draft=(matches(cached)?cached:null)||(villageId?[...drafts.values()].find(matches):null)||fresh(s,villageId,playerId);if(draft)drafts.set(draftKey,draft);
   if(inline&&embedded?.negotiatorId&&draft)draft.negotiatorId=embedded.negotiatorId;
   closeResourcePicker();tab=show;message='';modal().hidden=false;render();
 }
@@ -192,7 +194,7 @@ function resourceWarnings(s,side){
   const units=party?.factionState?.units||[];
   const maintenance=side.kind==='village'?metrics?.maintenance:buildV39PopulationMaintenanceStock(bank.populationByRace,units.filter(unit=>tradeAlive(unit)&&(unit.settlementId||party.factionState.selectedSettlementId)===side.settlementId),FOOD_RESOURCE_KEYS);
   return Object.fromEntries(Object.entries(side.goods).map(([name,amount])=>{
-    const current=tradeBankAmount(bank,name),needed=Math.ceil(amount/3),income=n(metrics?.income?.food?.[name]??metrics?.income?.material?.[name]??metrics?.food?.[name]??metrics?.material?.[name]),target=Math.ceil(Math.max(0,amount-needed)/turns),upkeep=n(maintenance?.[name]),reasons=[];
+    const current=tradeBankAmount(bank,name),needed=Math.ceil(amount/3),income=n(metrics?.income?.food?.[name]??metrics?.income?.material?.[name]??metrics?.food?.[name]??metrics?.material?.[name])+(side.kind==='player'?n(metrics?.facilityFixedIncome?.[name]):0),target=Math.ceil(Math.max(0,amount-needed)/turns),upkeep=n(maintenance?.[name]),reasons=[];
     if(V39_TRADE_RESOURCES.find(row=>row.name===name)?.specialty){if(current<amount)reasons.push('貸出できる保有数が不足しています');}
     else{
       if(current<needed)reasons.push('初回に予約する在庫が不足しています');
@@ -303,6 +305,7 @@ function advanceNpc(event) {
   const logistics=advanceV39TradeLogistics(next,'',map,turn,true);window.setV39GameState({players:logistics.state.players,neutralVillages:logistics.state.neutralVillages,settlements:logistics.state.settlements},{reason:'trade-village-turn'});
 }
 window.openV39TradeModal=open;
+window.openV39FactionTradeModal=playerId=>open('','new',false,playerId);
 window.getV39TradeRules=()=>({listV39Trades,proposeV39Trade,acceptV39Trade,stopV39Trade,resumeV39Trade,divertV39TradeIncome,advanceV39TradeLogistics,reserveV39TradeFromStock,tradeCapacity,tradeSpeed,getV39SpecialtyAccess,getV39TradeResourceAvailability,getV39KnownTradeResources});
 window.addEventListener('v39:game-state-changed',queue);window.addEventListener('v39:footer-tab-changed',queue);window.addEventListener('v39:tile-selected',event=>{
   if(picking>=0&&draft){draft.sides[picking].center={x:event.detail.x,y:event.detail.y};picking=-1;embedded?.onMapPick?.(false);modal().hidden=false;render();}else queue();

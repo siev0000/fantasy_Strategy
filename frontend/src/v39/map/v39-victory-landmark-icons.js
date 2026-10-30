@@ -147,11 +147,7 @@ function addMarker(scene, container, marker) {
       .setStrokeStyle(Math.max(1, radius * 0.2), 0xffd56b, 1);
     container.add(ring);
   }
-  const label = scene.add.text(center.x, bounds.top - 3, text(marker.name), {
-    fontFamily:"serif", fontSize:`${Math.max(12, Math.floor(radius * 1.5))}px`, fontStyle:"bold", color:"#fff3bd",
-    stroke:"#1b1106", strokeThickness:2
-  }).setOrigin(0.5, 1);
-  container.add(label);
+  container.setData(`landmark:${marker.key}`,{name:marker.name,key:marker.key});
 }
 
 function render() {

@@ -14,6 +14,8 @@ import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { isV39BaseClassRow } from "../../lib/v39-class-rules.js";
+import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
+import {resolveUnitCreateMode} from '../../composables/militaryUnitUtils.js';
 
 const text = value => String(value ?? "").trim();
 const classRows = Array.isArray(classData) ? classData : [];
@@ -33,6 +35,25 @@ export function getV39InitialSovereignClassCandidates(race) {
 function resolveAllowedClass(race, className) {
   return getV39InitialSovereignClassCandidates(race)
     .find(row => text(row?.名前) === text(className)) || null;
+}
+
+export function getV39InitialArmyClassCandidates(race){
+  return getV39InitialSovereignClassCandidates(race).filter(isV39BaseClassRow);
+}
+
+export function createV39InitialArmy(profile={}){
+  const race=normalizeV39RaceName(profile.race),candidates=getV39InitialArmyClassCandidates(race);
+  const requested=text(profile.armyClassName),classRow=candidates.find(row=>text(row.名前)===(requested||text(profile.className)))
+    ||(!requested?candidates[0]:null);
+  if(!text(profile.playerId)||!classRow)return {ok:false,reason:'開始時の軍隊クラスを選択してください。'};
+  const raceDefinition=raceByKey.get(race),raceRow=classByName.get(text(raceDefinition?.className))||classByName.get(race);
+  const equipmentSlots=buildEquipmentSlots(raceRow),mode=resolveUnitCreateMode('army',1);
+  if(mode.mode!=='army')return {ok:false,reason:'軍隊の編成データがありません。'};
+  const unit=buildV39UnitEntity({id:uniqueUnitId(profile.playerId).replace('sovereign-','initial-army-'),
+    name:text(profile.armyName).slice(0,20)||`${text(classRow.ルビ)||text(classRow.名前)}軍`,race,className:text(classRow.名前),
+    level:resolveV39UnitInitialLevel(race,true),unitType:mode.unitTypeLabel,isMob:true,isNamed:false,
+    role:'初期軍隊',combatProfile:mode,equipment:buildInitialEquipment(classRow,equipmentSlots)});
+  return {ok:true,unit:{...unit,equipmentSlots,isSovereign:false,isInitialArmy:true,initialSettlementSlot:0,x:null,y:null,position:null}};
 }
 
 function equipmentSlotEnabled(value) {
@@ -134,6 +155,8 @@ export function applyV39InitialSovereignProfile(state, profile = {}) {
   }
   const created = createV39InitialSovereign(profile);
   if (!created.ok) return { ...created, state };
+  const army=target.isPlayer===false?null:createV39InitialArmy(profile);
+  if(army&&!army.ok)return {...army,state};
 
   const existingUnits = Array.isArray(target?.factionState?.units)
     ? target.factionState.units.filter(unit => !isSovereignUnit(unit))
@@ -152,7 +175,7 @@ export function applyV39InitialSovereignProfile(state, profile = {}) {
 
   const factionState = createPlayerFactionState({
     ...target.factionState,
-    units:[created.unit, ...existingUnits],
+    units:[created.unit, ...(army?[army.unit]:[]), ...existingUnits],
     selectedUnitId:created.unit.id,
     villagePlacementMode:true,
     nationLogKey:created.unit.id,
@@ -162,6 +185,7 @@ export function applyV39InitialSovereignProfile(state, profile = {}) {
   return {
     ok:true,
     unit:created.unit,
+    ...(army?{army:army.unit}:{}),
     state:{
       ...state,
       players:players.map(player => text(player?.id) === playerId ? { ...player, race, factionState } : player)
