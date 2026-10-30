@@ -62,20 +62,27 @@ const criticalAvailable = computed(() => (
   && physicalCriticalTypes.has(String(damageTune.damageType || ""))
 ));
 
+function tuningWeaponName() {
+  if (String(damageTune.attackMethod || "") === "弓") return "調整用弓";
+  if (String(damageTune.attackMethod || "") === "銃") return "調整用銃";
+  return "調整用武器";
+}
+
 function createEquipment(criticalRateOverride = null) {
   const weaponPower = Math.max(0, number(damageTune.weaponPower));
   const criticalRate = criticalRateOverride === null
     ? clamp(damageTune.criticalRate, 0, 100)
     : clamp(criticalRateOverride, 0, 100);
   const criticalPower = Math.max(100, number(damageTune.criticalPower, 125));
+  const weaponName = tuningWeaponName();
   return {
     slot: "武器1",
-    name: "調整用武器",
+    name: weaponName,
     power: weaponPower,
     criticalRate,
     criticalPower,
     source: {
-      装備名: "調整用武器",
+      装備名: weaponName,
       威力: weaponPower,
       Cr率: criticalRate,
       Cr威力: criticalPower
