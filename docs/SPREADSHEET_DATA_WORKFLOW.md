@@ -144,6 +144,13 @@
 python scripts/game_data_converter.py --input path/to/game_data.xlsx --sheet 種族 --dry-run
 ```
 
+## 用語辞書の列追加・一括JSON再生成（2026-11-04）
+
+- 編集原本 `@game_data` の「用語辞書」は A:B=追加効果、D:F=技能説明（F列「関連ステータス」を含む）、H:J=範囲（J列「処理タイプ」を含む）。C/G列は区切り。
+- `scripts/game_data_converter.py` は `--sheet 用語辞書` で論理表3種を `効果.json` / `説明.json` / `範囲.json` に分割出力する。単一の `用語辞書.json` は生成せず、既存ランタイムの参照先を維持する。
+- Windows向け `scripts/export_term_dictionary.bat` は最新エクスポート `game_data.xlsx` のパスを第1引数（省略時はリポジトリ直下）、出力先を第2引数（省略時は `data/source/export/json`）で受け付ける。検証 `--dry-run` が成功した場合にのみ3JSONを生成する。
+- Google Sheetsのオンラインファイルをバッチが直接ダウンロードするものではない。実行前に `@game_data` の最新XLSXを書き出す。GitHub反映とCodexローカルの未コミット変更は別途照合する。
+
 ## 用語辞書・国家設定への統合（2026-10-24、実施済み）
 
 ユーザー指定により6タブを2タブへ統合。原本は**28→24タブ**となった。既存「効果」のsheetIdを保持して「用語辞書」、「体制」を「国家設定」へ改名し、他の4表をコピーして値/注記/書式を確認後、旧「説明・範囲・外交姿勢・組織」タブを除去した。「スキル一覧」の確認タブは今回の指定外なので非表示/削除していない。
@@ -151,8 +158,8 @@ python scripts/game_data_converter.py --input path/to/game_data.xlsx --sheet 種
 | 現在の編集先 | 列 | 論理表 / 従来の生成JSON |
 | --- | --- | --- |
 | 用語辞書 | A:B | 効果 / 効果.json |
-| 用語辞書 | D:E | 技能説明 / 説明.json |
-| 用語辞書 | G:I | 範囲 / 範囲.json |
+| 用語辞書 | D:F | 技能説明 / 説明.json |
+| 用語辞書 | H:J | 範囲 / 範囲.json |
 | 国家設定 | A:Y | 体制 / 体制.json |
 | 国家設定 | AA:AI | 外交姿勢 / 外交姿勢.json |
 | 国家設定 | AK:AN | 組織 / 組織.json |
@@ -351,9 +358,9 @@ UI70追記: 施設CC:CEへ `施設召喚枠ID / 施設召喚再使用T / 召喚�
 | --- | --- |
 | クラス | `クラス.json` |
 | 種族（統合表） | `種族.json`、`勢力.json`を同じ行から生成 |
-| 用語辞書 D:E（技能説明） | `説明.json` |
+| 用語辞書 D:F（技能説明） | `説明.json` |
 | CS（`出力確認=TRUE` の行のみ） | `スキル一覧.json`（`scripts/cs_skill_json_converter.py`） |
-| 用語辞書 G:I（範囲） | `範囲.json` |
+| 用語辞書 H:J（範囲） | `範囲.json` |
 | 用語辞書 A:B（効果） | `効果.json` |
 | 地形 | `地形.json` |
 | 出現敵 | `出現敵.json` |
