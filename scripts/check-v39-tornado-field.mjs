@@ -4,24 +4,24 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
 process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
-const bundle=await build({stdin:{contents:`export * from './frontend/src/v39/map/v39-tornado-layer.js';export * from './frontend/src/lib/v39-tornado-display.js';export {resolveV39EffectPlaybackDescriptor} from './frontend/src/v39/combat/v39-effect-player.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.env.BASE_URL':'"/"'},plugins:[{name:'vite-data',setup(builder){
+const bundle=await build({stdin:{contents:`export * from './frontend/src/v39/map/v39-tornado-layer.js';export * from './frontend/src/lib/v39-tornado-display.js';export {updateV39EffectCategory} from './frontend/src/lib/v39-effect-category-settings.js';export {resolveV39EffectPlaybackDescriptor,resolveV39FieldEffectDescriptor} from './frontend/src/v39/combat/v39-effect-player.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.env.BASE_URL':'"/"'},plugins:[{name:'vite-data',setup(builder){
   builder.onLoad({filter:/game-data-registry\.js$/},args=>{const dir=resolve('data/source/export/json'),modules=Object.fromEntries(readdirSync(dir).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${dir}/${name}`,'utf8'))]));return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};});
-  builder.onLoad({filter:/[\\/]combat[\\/]v39-effect-player\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,'{};'),resolveDir:dirname(args.path),loader:'js'}));
+  builder.onLoad({filter:/[\\/]combat[\\/]v39-effect-player\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,JSON.stringify({'../../../../assets/effect/アニメーション追記/竜巻ループ.webp':'/assets/effect/アニメーション追記/竜巻ループ.webp','../../../../assets/effect/アニメーション追記/帯電1.webp':'/assets/effect/アニメーション追記/帯電1.webp'})+';'),resolveDir:dirname(args.path),loader:'js'}));
 }}]});
 const timers=new Map();let serial=0,loads=0,invalidates=0;
 const originalSet=globalThis.setInterval,originalClear=globalThis.clearInterval,originalImage=globalThis.Image;
 globalThis.setInterval=(fn)=>{const id=++serial;timers.set(id,fn);return id;};globalThis.clearInterval=id=>timers.delete(id);
-globalThis.Image=class{width=768;height=64;set src(value){this.url=value;loads++;queueMicrotask(()=>this.onload());}};
+globalThis.Image=class{width=8400;height=120;set src(value){this.url=value;loads++;queueMicrotask(()=>this.onload());}};
 globalThis.window={localStorage:{getItem:()=>null,setItem(){},removeItem(){}},addEventListener(){},dispatchEvent(){}};
 const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
 try{
   const warn=console.warn;console.warn=()=>{};
   const m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);console.warn=warn;
   assert.ok(window.getV39EffectCatalog().includes('竜巻'));
-  const descriptor=m.resolveV39EffectPlaybackDescriptor('竜巻');assert.equal(descriptor.sequenceSources[0].frameStart,0);assert.equal(descriptor.sequenceSources[0].frameEnd,11);assert.ok(decodeURIComponent(descriptor.sequenceSources[0].src).includes('竜巻.webp'));
+  const descriptor=m.resolveV39EffectPlaybackDescriptor('竜巻');assert.equal(descriptor.sequenceSources[0].frameStart,0);assert.equal(descriptor.sequenceSources[0].frameEnd,69);assert.ok(decodeURIComponent(descriptor.sequenceSources[0].src).includes('竜巻ループ.webp'));
   const textures=new Map(),images=[];
   const manager={game:{renderer:{}},exists:key=>textures.has(key),get:key=>textures.get(key),addImage(key,image){textures.set(key,{getSourceImage:()=>image});}};
-  const game={textures:manager,v39InvalidateRender(){invalidates++;}},scene={game,sys:{game},textures:manager,events:new EventEmitter(),cameras:{main:{worldView:{x:0,y:0,width:1000,height:1000}}},make:{graphics:()=>({fillStyle(){},fillPoints(){},createGeometryMask:()=>({destroy(){}}),destroy(){}})},add:{image(){const image={scene,frame:{data:{}},setOrigin(){},setScale(){},setDepth(){},setAngle(){},setAlpha(){},setBlendMode(){},setName(){},clearTint(){},setCrop(x){this.cropX=x;},setPosition(){},setMask(mask){this.mask=mask;},clearMask(){this.mask=null;},destroy(){this.scene=null;}};images.push(image);return image;}}};
+  const game={textures:manager,v39InvalidateRender(){invalidates++;}},scene={game,sys:{game},textures:manager,events:new EventEmitter(),cameras:{main:{worldView:{x:0,y:0,width:1000,height:1000}}},make:{graphics:()=>({fillStyle(){},fillPoints(){},createGeometryMask:()=>({destroy(){}}),destroy(){}})},add:{image(){const image={scene,frame:{data:{}},setOrigin(){},setScale(x,y){this.scaleX=x;this.scaleY=y;},setDepth(){},setAngle(){},setAlpha(){},setBlendMode(){},setName(){},clearTint(){},setCrop(x){this.cropX=x;},setPosition(){},setMask(mask){this.mask=mask;},clearMask(){this.mask=null;},destroy(){this.scene=null;}};images.push(image);return image;}}};
   const event={id:'tornado',disasterId:'災害:竜巻',x:3,y:3,radius:1,tileKeys:['3,3','4,3'],startsAtTurn:1,expiresAtTurn:4};
   const state={timeline:{turnNumber:1},worldEnvironment:{activeDisasters:[event]}};
   assert.equal(m.collectV39TornadoFields({isUnderground:true},state,null,true).length,0);
@@ -29,12 +29,22 @@ try{
   const fields=m.collectV39TornadoFields({},state,new Set(['3,3']));assert.equal(fields[0].tileKeys.length,1);
   m.drawV39TornadoLayer(scene,[fields[0],{...fields[0],id:'second',x:6}]);await flush();
   assert.equal(loads,1,'all tornadoes share one texture');assert.equal(timers.size,2);assert.equal(images[0].cropX,0);assert.ok(images[0].mask);
-  for(let frame=1;frame<12;frame++){for(const fn of [...timers.values()])fn();assert.equal(images[0].cropX,frame*64);}
+  for(let frame=1;frame<70;frame++){for(const fn of [...timers.values()])fn();assert.equal(images[0].cropX,frame*120);}
   for(const fn of [...timers.values()])fn();assert.equal(images[0].cropX,0);
   m.drawV39TornadoLayer(scene,[{...fields[0],x:4}]);await flush();assert.equal(loads,1);assert.equal(timers.size,1);assert.equal(images[0].scene,null);
   m.drawV39TornadoLayer(scene,[]);await flush();assert.equal(timers.size,0);assert.equal(scene.events.listenerCount('sleep'),0);assert.equal(scene.events.listenerCount('shutdown'),0);
   m.drawV39TornadoLayer(scene,fields);await flush();scene.events.emit('sleep');await flush();assert.equal(timers.size,0);
   assert.equal(m.collectV39TornadoFields({}, {...state,timeline:{turnNumber:5}},null,true).length,0);
   assert.ok(invalidates>0);
-  console.log('PASS: dedicated tornado catalog/descriptor, twelve 64px frames looping, shared texture, visibility, mask, movement, expiration, sleep and cleanup. No browser.');
+  globalThis.CustomEvent=class{constructor(type,options){this.type=type;this.detail=options.detail;}};
+  m.updateV39EffectCategory('tornado',{scaleMultiplierPercent:150,offsetX:4});
+  const changed=m.resolveV39FieldEffectDescriptor('tornado','竜巻');
+  assert.equal(changed.scaleMultiplierPercent,150);assert.equal(changed.offsetX,0);assert.equal(changed.sequenceSources[0].stepTransform.offsetX,4);
+  m.drawV39TornadoLayer(scene,fields);await flush();
+  assert.equal(images.at(-1).scaleX,images[0].scaleX*1.5,'field rendering reads persisted category scale');
+  m.drawV39TornadoLayer(scene,[]);assert.equal(timers.size,0);
+  m.updateV39EffectCategory('disaster_charge',{scaleMultiplierPercent:125,offsetY:7});
+  const charge=m.resolveV39FieldEffectDescriptor('disaster_charge','帯電1');
+  assert.equal(charge.scaleMultiplierPercent,125);assert.equal(charge.offsetY,0);assert.equal(charge.sequenceSources[0].stepTransform.offsetY,7);
+  console.log('PASS: dedicated tornado catalog/descriptor, seventy 120px frames looping, shared texture, visibility, mask, movement, expiration, sleep and cleanup. No browser.');
 }finally{globalThis.setInterval=originalSet;globalThis.clearInterval=originalClear;globalThis.Image=originalImage;}

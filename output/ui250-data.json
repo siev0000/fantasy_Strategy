@@ -1,0 +1,63 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-ui250.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "説明",
+    "技能",
+    "範囲"
+  ],
+  "source_sheets": {
+    "説明": "用語辞書",
+    "技能": "技能",
+    "範囲": "用語辞書"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 3,
+    "records": 108,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "説明",
+      "output": "説明.json",
+      "input_rows": 24,
+      "records": 24,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "技能",
+      "output": "技能.json",
+      "input_rows": 299,
+      "records": 61,
+      "skipped_blank_rows": 238,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "範囲",
+      "output": "範囲.json",
+      "input_rows": 23,
+      "records": 23,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

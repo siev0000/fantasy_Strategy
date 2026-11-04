@@ -4,6 +4,7 @@ import {hasV39VillageContact,recordV39VillageContact} from '../../lib/v39-villag
 import {focusV39MapTile} from '../map/v39-map-focus.js';
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {isV39RacePlayable,normalizeV39RaceName} from '../../lib/v39-race-definitions.js';
+import {planV39InitialVillageSites} from '../../lib/v39-initial-spacing.js';
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
 import {getV39VictoryLandmarkStatus} from '../../lib/v39-victory-rules.js';
@@ -108,34 +109,13 @@ function raceDefinitions() {
   }));
 }
 
-function terrainMatchesRace(tile, race) {
-  const terrain = text(tile?.terrain);
-  const preferredTerrains = text(race?.preferredTerrain).split(",").map(text).filter(Boolean);
-  return preferredTerrains.some(preferred => terrain === preferred || terrain.includes(preferred) || preferred.includes(terrain));
-}
-
-function playerRaces(state) {
-  return new Set((Array.isArray(state?.players) ? state.players : [])
-    .map(player => normalizedRaceName(player?.race))
-    .filter(Boolean));
-}
-
-function selectVillageRace(tile, races, usedRaces) {
-  const unassigned = races.filter(race => !usedRaces.has(race.race));
-  const terrainMatches = races.filter(race => terrainMatchesRace(tile, race));
-  const candidates = unassigned.filter(race => terrainMatchesRace(tile, race)).length
-    ? unassigned.filter(race => terrainMatchesRace(tile, race))
-    : (unassigned.length ? unassigned : (terrainMatches.length ? terrainMatches : races));
-  return candidates[hash(`${tile.key}:race`) % candidates.length];
-}
-
 function initialClasses() {
   return getGameDataRows("クラス").filter(isV39BaseClassRow);
 }
 
-function farFromOwned(tile, state, minimum = 5) {
-  const occupied = Object.keys(state?.territoryOwnerByTile || {}).map(key => key.split(",").map(Number));
-  return occupied.every(([x, y]) => Math.hypot(tile.x - x, tile.y - y) >= minimum);
+// Roaming groups retain their existing exclusion; settlement spacing is handled separately.
+function farFromOwned(tile,state){
+  return Object.keys(state.territoryOwnerByTile||{}).every(key=>{const [x,y]=key.split(',').map(Number);return Math.hypot(tile.x-x,tile.y-y)>=5;});
 }
 
 function initialOccupiedUnitTiles(state) {
@@ -151,8 +131,7 @@ function initialOccupiedUnitTiles(state) {
   return occupied;
 }
 
-function buildNeutralVillage(tile, index, races, classes, mapData, usedRaces, occupiedTileKeys) {
-  const selectedRace = selectVillageRace(tile, races, usedRaces);
+function buildNeutralVillage(tile, index, selectedRace, classes, mapData, occupiedTileKeys) {
   const villageLevel = 1 + (hash(`${tile.key}:level`) % 3);
   const population = Math.max(10, Math.floor(selectedRace.initialPopulation * (0.6 + (hash(`${tile.key}:population`) % 81) / 100)));
   const classRow = classes[hash(`${tile.key}:class`) % Math.max(1, classes.length)];
@@ -182,28 +161,25 @@ export function generateV39WorldPopulation(state, mapData, options = {}) {
   const races = raceDefinitions();
   const classes = initialClasses();
   if (!races.length || !mapData?.grid) return { neutralVillages:[], wandererGroups:[] };
-  const tiles = passableTiles(mapData).filter(tile => farFromOwned(tile, state)).sort((a, b) => hash(a.key) - hash(b.key));
+  const tiles = passableTiles(mapData).sort((a, b) => hash(a.key) - hash(b.key));
   const configuredVillageCount = Math.max(0, Math.min(
     V39_NEUTRAL_VILLAGE_BALANCE.maxInitialVillageCount,
     Math.floor(number(options?.neutralVillageCount, V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount))
   ));
-  const usedRaces = playerRaces(state);
   const occupiedTileKeys = initialOccupiedUnitTiles(state);
+  const plan=planV39InitialVillageSites(state,mapData,races,configuredVillageCount,occupiedTileKeys);
   const neutralVillages = [];
-  for (const tile of tiles) {
-    if (neutralVillages.length >= configuredVillageCount) break;
-    if (neutralVillages.some(row => Math.hypot(row.x - tile.x, row.y - tile.y) < 7)) continue;
-    if (occupiedTileKeys.has(tile.key)) continue;
+  for (const {tile,race} of plan.sites) {
     occupiedTileKeys.add(tile.key);
-    const village = buildNeutralVillage(tile, neutralVillages.length, races, classes, mapData, usedRaces, occupiedTileKeys);
+    const village = buildNeutralVillage(tile, neutralVillages.length, race, classes, mapData, occupiedTileKeys);
     neutralVillages.push(village);
     for (const unit of village.defenseUnits || []) occupiedTileKeys.add(keyOf(unit.x, unit.y));
-    usedRaces.add(village.race);
   }
   const villageKeys = new Set(neutralVillages.map(row => keyOf(row.x, row.y)));
   const wandererCount = Math.min(MAX_WANDERER_GROUPS, Math.max(1, Math.floor(tiles.length / WANDERER_TILES_PER_GROUP)));
-  const wandererGroups = tiles.filter(tile => !villageKeys.has(tile.key)).slice(0, wandererCount).map((tile, index) => buildWanderer(tile, index, races));
-  return { neutralVillages, wandererGroups };
+  const wandererGroups = tiles.filter(tile => !villageKeys.has(tile.key)&&farFromOwned(tile,state)).slice(0, wandererCount).map((tile, index) => buildWanderer(tile, index, races));
+  const {sites,...placementDiagnostics}=plan;
+  return { neutralVillages, wandererGroups, placementDiagnostics };
 }
 
 function neighbors(mapData, x, y) {
@@ -485,7 +461,12 @@ function initialize(event) {
     neutralVillageCount:window.__v39FieldRuntime?.settings?.neutralVillageCount
   });
   const settlements = [...(state.settlements || []).filter(row => !row?.neutral), ...generated.neutralVillages];
-  window.setV39GameState?.({ ...generated, settlements }, { reason:"world-population-generated" });
+  const {placementDiagnostics,...population}=generated;
+  window.setV39GameState?.({ ...population, settlements }, { reason:"world-population-generated" });
+  if(placementDiagnostics?.omitted){
+    const message=`陸地と拠点間隔の制約により、一般村を${placementDiagnostics.requested}から${placementDiagnostics.placed}件へ減らしました`;
+    window.showV39TurnBanner?.(message);window.appendV39ActivityLog?.(state.players.filter(p=>p.isPlayer!==false).map(p=>p.id),'配置',message);
+  }
   window.dispatchEvent(new CustomEvent("v39:world-population-generated", { detail:{ villages:generated.neutralVillages.length, wanderers:generated.wandererGroups.length } }));
 }
 

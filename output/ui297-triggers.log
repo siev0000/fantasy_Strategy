@@ -1,0 +1,8 @@
+PASS: bleeding, reactions, passive isolation, real field fixture, normal test skills and A/B control. No browser.
+PASS: ability damage/curse, floors, full-HP recovery, curse recovery, persistent max/stacking and derived idempotence.
+PASS: complete test skill catalog resolves on both field units.
+PASS: automatic reactions use normal map effects, explicit animation, hit data and suppression/world filtering.
+PASS: test skills use saved effect categories/sequences and existing explicit image names are preserved.
+PASS: 3v3 fixture, adjacent centers, upper/lower/rear placement and piercing/protection skills on all six units.
+PASS: test skill descriptions show actual source data in template notation.
+PASS: self-target defaults and guarding application.

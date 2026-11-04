@@ -74,7 +74,7 @@ BARE_PREFIX_KEYS = sorted({
     "指揮", "威圧", "看破", "知覚", "早業", "技術", "隠密", "索敵",
     "軽業", "農業", "林業", "漁業", "工業", "統治", "交渉", "魔術", "信仰",
     "射程", "範囲", "炸裂", "対象", "効果", "判定", "追加威力", "条件系統",
-    "攻撃手段", "条件", "特殊", "溜め", "CT", "移動", "全力",
+    "攻撃手段", "発動", "条件", "特殊", "溜め", "CT", "移動", "全力",
 }, key=len, reverse=True)
 
 
@@ -441,6 +441,11 @@ def convert(
             xlsx, cs_sheet, "出力確認"
         )
 
+        try:
+            _, trigger_col = _find_header_column(xlsx, cs_sheet, "発動")
+        except ValueError:
+            trigger_col = None
+
         for row_no, row in xlsx.sheet_rows(cs_sheet):
             if row_no <= max(3, output_check_header_row):
                 continue
@@ -457,6 +462,8 @@ def convert(
                 continue
 
             rec, info = row_to_skill(row_no, row, effects)
+            if rec is not None and trigger_col is not None and _clean_text(row.get(trigger_col)):
+                rec["発動"] = _clean_text(row.get(trigger_col))
             infos.append(info)
             if rec is None:
                 continue

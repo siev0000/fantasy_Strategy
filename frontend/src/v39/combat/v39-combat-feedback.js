@@ -1,3 +1,4 @@
+import {V39_COMBAT_POPUPS,resolveV39CombatPopup} from '../../lib/v39-combat-popup-rules.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { addV39FieldSymbol } from "../map/v39-field-symbols.js";
 
@@ -83,6 +84,25 @@ function showOutcomePopup(scene, center, message) {
   scene.tweens.add({ targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400, onComplete:() => label.destroy() });
 }
 
+const popupLanes=new Map();
+function popupOffset(targetId){
+  const now=Date.now(),previous=popupLanes.get(targetId),style=V39_COMBAT_POPUPS.style;
+  const lane=previous&&now-previous.time<style.groupWindowMs?previous.lane+1:0;
+  popupLanes.set(targetId,{time:now,lane});
+  if(popupLanes.size>256)for(const [id,row]of popupLanes)if(now-row.time>style.groupWindowMs)popupLanes.delete(id);
+  return lane*style.lineSpacing;
+}
+function showTypedPopup(scene,entry,center){
+  const display=resolveV39CombatPopup(entry.popupType,entry.amount,entry.popupLabel);
+  if(!display||number(entry.amount)<=0)return;
+  const offset=popupOffset(entry.targetId);
+  const label=scene.add.text(center.x,center.y-24-offset,display.text,{
+    fontFamily:'Noto Sans JP, Meiryo, sans-serif',fontSize:display.secondaryFontSize+'px',fontStyle:'bold',color:display.color,
+    stroke:display.stroke,strokeThickness:display.strokeThickness
+  }).setOrigin(.5).setDepth(POPUP_DEPTH).setName('v39-effect-popup').setData('targetId',entry.targetId).setData('type',entry.popupType);
+  scene.tweens.add({targets:label,y:center.y-46-offset,alpha:{from:1,to:0},duration:1500,onComplete:()=>label.destroy()});
+}
+
 function showDamagePopups(scene, entry, center) {
   if (number(entry?.missCount) > 0 && number(entry?.missCount) >= (Array.isArray(entry?.hits) ? entry.hits.length : 1)) {
     showOutcomePopup(scene, center, "Miss");
@@ -90,23 +110,26 @@ function showDamagePopups(scene, entry, center) {
   }
   const hits = (Array.isArray(entry?.hits) ? entry.hits : []).map((value) => Math.max(0, Math.floor(number(value))));
   if (!hits.length) return;
-  let cumulative = 0;
+  if(number(entry?.detail?.power)===0&&hits.every(hit=>hit===0))return;
+  const offset=popupOffset(entry.targetId);
+  let cumulative = 0,critical=false;
   hits.forEach((hit, index) => {
     cumulative += hit;
-    const final = index === hits.length - 1;
-    const label = scene.add.text(center.x, center.y - 24, String(cumulative), {
+    critical ||= entry.hitResults?.[index]?.critical===true;
+    const display=resolveV39CombatPopup(critical?'critical':'hpDamage',cumulative);
+    const label = scene.add.text(center.x, center.y - 24-offset, display.text, {
       fontFamily:"Noto Sans JP, Meiryo, sans-serif",
-      fontSize:"18px",
+      fontSize:display.fontSize+"px",
       fontStyle:"bold",
-      color:final ? "#fff4ef" : "#ffd15a",
-      stroke:"#38100b",
-      strokeThickness:4
+      color:display.color,
+      stroke:display.stroke,
+      strokeThickness:display.strokeThickness
     }).setOrigin(0.5).setDepth(POPUP_DEPTH).setAlpha(0)
       .setName('v39-damage-popup').setData('targetId',entry.targetId).setData('damage',cumulative);
     scene.tweens.add({
       targets:label,
       alpha:{ from:0, to:1 },
-      y:center.y - 42,
+      y:center.y - 42-offset,
       delay:index * 260,
       duration:220,
       hold:1250,
@@ -148,7 +171,8 @@ function showEntry(entry) {
   if (!scene || !Number.isFinite(Number(entry?.x)) || !Number.isFinite(Number(entry?.y))) return;
   const center = tileCenter(entry.x, entry.y);
   flashMarker(entry.targetId);
-  showDamagePopups(scene, entry, center);
+  if(entry.popupType)showTypedPopup(scene,entry,center);
+  else showDamagePopups(scene, entry, center);
   showDelayedHpBar(scene, entry, center);
 }
 
@@ -170,7 +194,7 @@ window.addEventListener("v39:combat-presentation", event => showCombatFeedback(e
 window.addEventListener("v39:cast-started", (event) => {if(!window.__v39BackgroundWorldTurn&&!event?.detail?.aimAfterCast)startCastBlink(event?.detail?.unitId);});
 window.addEventListener("v39:cast-ended", (event) => stopCastBlink(event?.detail?.unitId));
 
-function showHazardFeedback(entries,worldId) {
+function showHazardFeedback(entries,worldId,forceDeferred=false) {
   if(window.__v39AiSimulationRunning)return;
   if(!entries?.length||window.__v39BackgroundWorldTurn)return;
   const state=window.getV39EnemyTurnState?.()||window.getV39GameState?.({includeWorlds:false});
@@ -189,7 +213,7 @@ function showHazardFeedback(entries,worldId) {
     const normalized={...entry,targetId,total:number(entry.total,number(entry.damage)),
       maxHp:Math.max(1,number(entry.maxHp,number(unit?.maxHp,number(entry.beforeHp,1)))),
       hits:Array.isArray(entry.hits)?entry.hits:[number(entry.damage)],worldId:visibleWorld};
-    if(state?.timeline?.phase==='resolution')pendingHazardFeedback.push(normalized);
+    if(forceDeferred||state?.timeline?.phase==='resolution')pendingHazardFeedback.push(normalized);
     else showEntry(normalized);
   }
 }
@@ -198,8 +222,9 @@ window.flushV39HazardFeedback=()=>{
   const worldId=window.getV39EnemyTurnState?.()?.activeWorldId||'surface',grouped=new Map();
   for(const entry of pendingHazardFeedback){
     if(entry.worldId!==worldId)continue;
-    const previous=grouped.get(entry.targetId);
-    grouped.set(entry.targetId,previous?{...entry,beforeHp:previous.beforeHp,total:previous.total+entry.total,hits:[...previous.hits,...entry.hits]}:entry);
+    const key=entry.popupType?entry.targetId+':'+entry.popupType+':'+entry.popupLabel:entry.targetId;
+    const previous=grouped.get(key);
+    grouped.set(key,previous?{...entry,amount:number(previous.amount)+number(entry.amount),beforeHp:previous.beforeHp,total:previous.total+entry.total,hits:[...previous.hits,...entry.hits]}:entry);
   }
   pendingHazardFeedback=[];
   for(const entry of grouped.values())showEntry(entry);
@@ -208,3 +233,5 @@ window.flushV39HazardFeedback=()=>{
 window.addEventListener('v39:field-generated',()=>{pendingHazardFeedback=[];});
 window.addEventListener('v39:natural-events-resolved',event=>showHazardFeedback(event.detail?.damageEntries,event.detail?.worldId));
 window.addEventListener('v39:terrain-damage',event=>showHazardFeedback(event.detail?.entries,event.detail?.worldId));
+
+window.addEventListener('v39:unit-effect-feedback',event=>{if(window.__v39SuppressCombatEffects!==true)showHazardFeedback(event.detail?.entries,event.detail?.worldId,event.detail?.defer);});

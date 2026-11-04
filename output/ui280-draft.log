@@ -1,0 +1,1 @@
+PASS: local JSON read/write, denied remote/proxy/origin, schema validation, atomic CAS/conflict, frontend autosave/hydration, pending browser protection and corrupt-file preservation. No browser.

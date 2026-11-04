@@ -1,0 +1,2 @@
+Combat ray: interception, penetration, blocking, walls, fields, sight, odd rows, wrap passed
+PASS: arc fire skips only the first third and keeps later occlusion.

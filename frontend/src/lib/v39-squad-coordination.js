@@ -5,6 +5,7 @@ import {resolveV39AutomaticRoute,resolveV39AutomaticMovementSteps} from './v39-t
 import {canUnitEnterV39Tile,resolveV39UnitMovementStepCost} from './v39-terrain-traversal.js';
 import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
 import {isV39UnitWaiting} from './v39-unit-action-rules.js';
+import {reconcileV39SquadFood} from './v39-carried-food.js';
 
 const world=unit=>unit?.worldId || 'surface';
 const alive=unit=>unit&&Number(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
@@ -66,7 +67,8 @@ export function orderV39SquadMovement(state,playerId,squadId,action,unitId='',po
   });
   const squads=faction.squads.map(row=>row.id===squadId?{...row,
     rallyPoint:action==='gather'?{...target,worldId:state.activeWorldId||'surface'}:action==='scatter'||action==='cancel'?null:row.rallyPoint}:row);
-  return {ok:true,state:{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:{...faction,units,squads}}:row)}};
+  const nextFaction=reconcileV39SquadFood(faction,{...faction,units,squads},state);
+  return {ok:true,state:{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:nextFaction}:row)}};
 }
 
 export function advanceV39SquadRallies(state,playerId,map,turn,{move=true}={}) {
@@ -127,5 +129,7 @@ export function advanceV39SquadRallies(state,playerId,map,turn,{move=true}={}) {
   }
   const squads=faction.squads.map(squad=>squad.rallyPoint?.worldId===currentWorld&&!units.some(unit=>squad.unitIds.includes(unit.id)&&v39SquadMoveMode(unit)==='gather'&&world(unit)===currentWorld)?{...squad,rallyPoint:null}:squad);
   changed ||= squads.some((squad,index)=>squad!==faction.squads[index]);
-  return {state:changed?{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:{...faction,units,squads}}:row)}:state,paths};
+  const nextFaction=reconcileV39SquadFood(faction,{...faction,units,squads},state);
+  changed ||= nextFaction.squads.some((row,index)=>row!==faction.squads[index]);
+  return {state:changed?{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:nextFaction}:row)}:state,paths};
 }

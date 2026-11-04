@@ -1,5 +1,19 @@
 Original prompt: 全体を整理してほしい。メモと地形ランダム生成だけは消さないで vueファイルにできるところはVueファイルに
 
+- UI255: NPC/村の種族を未使用優先にし、陸地面積/配置数による領土間隔を共通化。ラップ/手動確定も検証。狭い土地は間隔を縮め、最小でも置けないNPC/村だけ減数通知。後から人間が種族を選んでも未配置自動NPCを調整。16〜100マス級・6×6・実候補/初期化・軍隊/交流をNode検証。画面/通信未確認。
+
+- UI254: 通常ワイバーンの画像対応表が未登録だったため専用シート1番を登録。既存ドレイクは維持。3出現定義の最低/最高Lv・ボス状態・保存復元・共通画像解決をNode検査し、画像フォールバック0件。画面未確認。
+
+- UI253: 原本で修正済みの出現敵34行の種族参照をJSONへ同期。その他の値・ID・件数200は一致、警告/エラー0。148定義296体と地上/洞窟/軍隊/強敵/砂漠をNode検証。原本の追加編集なし。ワイバーン画像は後続。画面未確認。
+
+- UI252: 災害の落雷着弾を既存「落下・落雷」カテゴリ設定のアニメーションへ接続。帯電ループ/被害判定は維持。重複/視界/破棄/素材/設定倍率をNode検証。ビルド成功、画面未確認。
+
+- UI251: 帯電1の18コマを落雷嵐の予兆に使用。落雷エリア（帯電）/竜巻（災害）カテゴリ設定を実フィールドへ共用。既存着弾を維持、Nodeループ/共有画像/設定/破棄検証、画面未確認。
+
+- UI250: 最新原本クラス461/技能説明24/技能テンプレート61件を同期。共通技能の成長/補正/表示を原本定義へ接続。MP/ST未有効化、未設定は補完せず保持。Node検証、画面未確認。
+
+- UI249: 散開時の需要比による携帯食料分配と近接合流時の統合。NPC勢力は備蓄を残して補給し、探索役の食料不足時に帰還目標。竜巻を追加素材の70コマループへ変更。Node検査、画面未確認。一般村/資源班の補給計画は後続。
+
 - UI248: @game_data研究の経済に料理Ⅰ→Ⅱ追加・読み戻し・研究JSONのみ74→76件生成（旧74件一致）。料理Ⅱで拠点補給時の自動携帯食加工、手持ちの通常食料も変換、在庫/容量/特殊食料除外、手動ボタン非表示。Node補給/共有/保存/研究ゲートとdata監査。実画面未確認。
 
 - UI247: 新規プレイヤーの統治者設定後に初期軍隊クラスを選び2駒で開始。既存軍隊factory/初期Lv/装備を利用、無償即時支給、NPC二重追加なし。Node8種族/プロフィール手順/保存/初期食料検査。5173用の旧ブラウザ食料テストは接続先未起動で実行不可、画面未確認。通信側項目転送はサーバー再起動後。
@@ -2718,3 +2732,71 @@ UI162: 風大.webpを確認（8コマ）。竜巻をエフェクト一覧/分類
 - UI198: 施設原本CF:CHに壁効果3列、25/1/10を記入・読み戻し・施設58件再生成。原本先行差分の墓地石材0→15も同期。味方/同盟の壁通過APと住居間内壁の幸福度目標ペナルティ（上限あり）を共通処理へ接続し、幸福度内訳に表示。未完成/破壊/外周除外、値変更と変換器のNode/Python検査。画面未確認。
 
 - UI199: 壁の凹み連結を共用し、結界の常設/設置前プレビュー外周を平滑化。対象マス/共有耐久/持続/遮断は維持。1/3/7/19マス・マップ端・離れた成分の閉じた外周と状態非変更をNode検査。画面未確認。
+
+## UI256: AOE effect display modes
+- Added center/each-cell areaDisplay to image/category settings, JSON roundtrips and editor.
+- Shared multi-position player for combat and preview; shared textures, fog filtering, duplicate removal, cancellation cleanup. Beam placement takes precedence.
+- Shared server persistence/MongoDB remains a proposal, not implemented.
+- Node effect tests and frontend build; no browser QA (user performs visual checks).
+## UI257: Per-cell effect timing
+- Added simultaneous/random timing selection, persisted for images/categories. Existing settings remain simultaneous.
+- Shared combat/preview player delays other cells by 0-120ms; first cell immediate. Stop/replay destroys pending timers; static frame display remains simultaneous.
+- Node regression tests cover bounded delay, cancellation, static frames and JSON roundtrips. No browser QA.
+## UI258: Adjustable random area timing
+- Added delay slider + number input (0-1000ms, default120), persisted for image/category settings and used by combat/preview.
+- All cell delays are assigned together, with guaranteed 0 and configured maximum for multiple cells; endpoints shuffle across cells. Single cell starts immediately.
+- Shared player coordinates all positions through child players, preserving texture sharing, delayed cancellation, static frame display and cleanup.
+- Node tests cover endpoint guarantees, bounds, single/zero cases, randomized first position, JSON persistence and preview propagation. No browser QA.
+## UI259: Sequential effect editor
+- Added ordered sequence list (add/remove/move up/down), per-step image/scale/rotation/local offset and image/category persistence.
+- Runtime and preview resolve identical source sequences; portable player preserves per-source transforms and loops the entire sequence. Legacy base/decorations and colon-based skill sequences retained.
+- Random per-cell delay occurs only once at sequence start. Stop/replay cancels following images.
+- Node tests cover sequence persistence, combat selection, actual ordered playback, transforms, loops, cancellation, one-delay-per-cell, and editor DOM operations. Existing tornado/lightning tests passed. Browser QA left to user.
+## UI260: Sequence tabs and preview scope
+- Horizontal common/numbered/add tabs below category selector/name. Only selected animation settings shown; common settings separated and legacy first-image picker hidden in category mode.
+- Add selects new item; reordering follows item; deletion selects neighbor; category switch resets common scope.
+- Whole-sequence/selected-animation preview for animation, frame/static, source image and map preview, without mutating saved/combat sequences.
+- DOM/unit tests cover tabs, item operations, selection following and preview isolation. No browser QA.
+## UI261: Local effect draft JSON
+- Development-only loopback API mirrors category/attribute/image settings to config/local/v39-effect-settings.json; formal config remains untouched. Atomic writes and content-revision CAS prevent silent conflicting overwrite.
+- Editor autosaves after 500ms, hydrates from file, preserves pending browser changes for explicit selection, and shows file status/manual save/load in data tab. Remote/proxy connections keep browser/download behavior.
+- Local draft files excluded from dev auto-reload; Vite local API proxy added. No new DB dependency.
+- New Node API/client tests cover real file writes, local-only policy, schema/unsafe keys, conflict, hydration and corrupt-file protection. Existing effect tests passed; browser QA not performed.
+- Live server restart requires user confirmation because it disconnects multiplayer rooms; asked asynchronously.
+## UI262: Mobile effect header collapse
+- Added persistent Details toggle in title bar. Mobile defaults compact, retaining category picker, numbered tabs and playback while hiding advanced header controls.
+- Header controls have bounded scroll area; preview keeps minimum height instead of being squeezed to zero. Toggle schedules geometry/preview refresh; new-category naming expands details.
+- Unit tests passed for defaults, toggle/ARIA and preference restore. Browser visual QA remains user-owned.
+- Prior UI261 live server restart is still pending user confirmation. LAN smartphone JSON writes intentionally remain disabled (localhost-only); reported limitation to user.
+## UI263: Vertical animation sidebar and independent preview
+- Moved common/numbered/add navigation into 44px vertical sidebar in lower editor. Attribute mode restores full editor width.
+- Moved name/playback/range/power controls into lower condition pane. Top now only category picker and play button. Conditions toggle no longer changes preview height.
+- Fixed later CSS overriding preview min-height to zero. Dedicated two-row preview grid retains 120px image minimum/180px pane minimum.
+- Node tests cover DOM placement, sidebar direction, nonzero final min-height and existing edit/playback behavior. Browser QA left to user. No server restart performed per explicit user deferral.
+## UI264: Per-animation rotation and position only
+- Removed rotation/X/Y fields and bindings from common panel. Numbered tabs own these settings; scale/direction/area/timing remain common as appropriate.
+- Legacy shared transforms migrate into each source, preserving composed rotations/translations, attribute decorations and old center-fit offset suppression. Shared values clear to zero; JSON roundtrip cannot double-apply migration.
+- Editing a step transform adopts uniform per-source positioning across single/AOE. Added migration geometry, actual center-compatibility playback, editor and persistence tests; tornado/charge/lightning regression checks passed. No browser QA. Server restart remains deferred.
+## UI265: Corrected-angle local position axes
+- User confirmed X should follow rotated image right (90deg => screen down), not fixed screen axes.
+- Centralized final angle then local right/down translation in portable resolveEffectSourceTransform, reused by real playback, idle preview and initial guides. Frames report their actual angle so guides follow per-step rotation.
+- Removed hidden legacy center-area offset exception; normalized old metadata away so visible X/Y always applies in single/AOE and does not jump when editing transforms.
+- Added concise per-step coordinate hint. Node regressions cover cardinal angles, attack-facing composition, preview zoom and actual player frame position/angle; tornado/lightning tests passed. No browser QA. Server restart still deferred.
+
+## UI266: Screen-fixed position offsets
+- User clarified Y must move straight up/down. Rotation now affects image orientation only; X/Y stay on screen/world axes in shared player and preview.
+- Updated offset migration, editor hint and tests including angle30 with Y+10/-10 (no X drift). No browser automation; server restart remains deferred.
+
+
+## UI267: Persist edits on input and same-LAN JSON storage
+- Number fields persist during input without replacing focused controls. JSON autosave mirrors changes after500ms.
+- Local API permits actual server LAN address and same-subnet clients, rejects external/proxy/origin requests and requires editor header for PUT.
+- First connection preserves pre-existing browser customization pending explicit save/load. Tests passed. Restarted live server with explicit user approval; localhost and192.168.0.209 API reads verified.
+- Restored only the identifiable slash test values from prior visual inspection (90deg/Y80) to their original zero/default state; retained backup in output.
+
+
+## UI268: Fix category sequence loss on reload
+- Root cause: category readState whitelist omitted sequenceSteps/decorationTransform, while custom category names used a separate persisted array. Restored both fields on load.
+- Added fresh-module/localStorage reload regression with custom name, 2 images, per-image rotations/X/Y, decoration and subsequent JSON snapshot. No browser automation; frontend-only change.
+
+- UI270: エフェクト別の着弾基準点、数値/タップ指定、中央へ戻す操作を追加。回転・縦横倍率後も着弾点を固定。JSON/再読込とNode回帰テストを確認。画面未確認。

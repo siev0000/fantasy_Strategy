@@ -66,9 +66,14 @@ export function effectPreviewGeometry(stage,setting={}){
   const beam=resolveV39EffectBeam(setting,{x:0,y:0},targetOffset);
   if(beam)return {...layout,...beam,x:attacker.x+beam.x*zoom,y:attacker.y+beam.y*zoom,
     stretchLengthPx:beam.stretchLengthPx*zoom,target:{x:attacker.x+targetOffset.x*zoom,y:attacker.y+targetOffset.y*zoom},self:false};
+  const perTile=setting.areaDisplay==='tiles';
+  const instances=perTile?areaTiles.map(point=>{
+    const position=resolveV39EffectTransform(setting,pixel(point),Math.atan2(offset.y,offset.x)*180/Math.PI);
+    return {...position,x:attacker.x+position.x*zoom,y:attacker.y+position.y*zoom};
+  }):undefined;
   const transformed=resolveV39EffectTransform(center?{...setting,offsetX:0,offsetY:0}:setting,offset,Math.atan2(offset.y,offset.x)*180/Math.PI);
-  const fitDiameterPx=center?center.diameter*zoom*resolveV39PowerAreaScale(Number(setting.scaleMultiplierPercent||100)/100,1):undefined;
-  return {...layout,x:attacker.x+transformed.x*zoom,y:attacker.y+transformed.y*zoom,fitDiameterPx,
+  const fitDiameterPx=center&&!perTile?center.diameter*zoom*resolveV39PowerAreaScale(Number(setting.scaleMultiplierPercent||100)/100,1):undefined;
+  return {...layout,instances,areaTiming:setting.areaTiming,areaDelayMs:setting.areaDelayMs,x:attacker.x+transformed.x*zoom,y:attacker.y+transformed.y*zoom,fitDiameterPx,
     angleDeg:transformed.angleDeg,target:{x:attacker.x+targetOffset.x*zoom,y:attacker.y+targetOffset.y*zoom},self:tile.x===0&&tile.y===0};
 }
 export function getV39EffectPreviewMapRequest(map){

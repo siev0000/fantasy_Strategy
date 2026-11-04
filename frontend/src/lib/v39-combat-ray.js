@@ -44,6 +44,7 @@ export function v39RayStructureAtStep(map, from, to, {wallsOnly=false}={}) {
     if (structure.hp<=0 || (wallsOnly && structure.kind!=="壁")) return false;
     if (structure.kind==="結界") {
       const inside=p=>(structure.tiles || []).some(tile=>key(tile)===key(p));
+      if(inside(from)&&!inside(to)&&structure.allowOutgoingAttacks!==false)return false;
       return inside(from)!==inside(to);
     }
     if (structure.kind!=="壁") return false;
@@ -73,10 +74,15 @@ export function v39UnitBlocksRay(unit, turn) {
     });
 }
 
-export function traceV39AttackRay(map, from, to, units, {length=null, ignoreUnits=false, ignoreUnit=null, turn=1}={}) {
+export function resolveV39ArcDeadZone(row,rangeTiles){
+  return hasV39SkillEffect(row,'曲射')?Math.floor(Math.max(0,Number(rangeTiles)||0)/3):0;
+}
+
+export function traceV39AttackRay(map, from, to, units, {length=null, ignoreUnits=false, ignoreUnit=null, turn=1,ignoreFirstTiles=0}={}) {
   const tiles=[],ray=v39HexRay(map,from,to,length);
   let previous=from;
   for (const point of ray) {
+    if(tiles.length<ignoreFirstTiles){tiles.push(point);previous=point;continue;}
     if(getV39Rubble(map,point.x,point.y))return {tiles:[...tiles,point],impact:point,reason:'瓦礫'};
     if (map.isUnderground && map.grid[point.y][point.x]!=="洞窟") return {tiles:[...tiles,point],impact:point,reason:"地形"};
     tiles.push(point);

@@ -1,3 +1,5 @@
+import {recoverAbilityDamage} from '../../lib/v39-ability-damage.js';
+import {reduceV39Bleeding} from '../../lib/v39-bleeding.js';
 import {usesV39OperationPhases,isV39TerritoryPhase,normalizeV39OperationTimeline,advanceV39OperationCycle,finishV39TerritoryPlanning} from '../../lib/v39-operation-phases.js';
 import {resolveV39TurnPhaseDisplay} from '../ui/v39-turn-phase-display.js';
 import { getV39DiscoveredFeature } from "../../lib/v39-exploration-rules.js";
@@ -92,7 +94,7 @@ function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide =
   if (number(unit?.starvationStage) >= 3) return { ...unit };
   const maxHp = Math.max(1, Math.floor(number(unit.maxHp ?? unit?.status?.HP, 1)));
   const hp = Math.max(0, Math.min(maxHp, Math.floor(number(unit.hp ?? unit.currentHp, maxHp))));
-  if (hp >= maxHp) return { ...unit, hp, currentHp:hp };
+
   if (number(unit?.lastMovedTurn) >= activityTurn || number(unit?.lastCombatTurn) >= activityTurn) {
     return { ...unit, hp, currentHp:hp };
   }
@@ -110,7 +112,7 @@ function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide =
   const nestRecovery = number(nest?.recoveryPercent ?? nest?.回復補正 ?? nest?.回復);
   const recovered = Math.floor(Math.max(1, Math.floor(maxHp * ((5 + featureRecovery + facilityRecovery + nestRecovery) / 100)))*v39HazardRecoveryFromState(state,unit));
   const nextHp = Math.min(maxHp, hp + recovered);
-  return { ...unit, hp:nextHp, currentHp:nextHp };
+  return reduceV39Bleeding(recoverAbilityDamage({ ...unit, hp:nextHp, currentHp:nextHp },recovered),recovered);
 }
 
 function dispatchTurnStage(stage, turnNumber) {

@@ -1,0 +1,6 @@
+{
+  "events": ["攻撃", "防御", "攻撃命中", "被弾", "ダメージ付与", "被ダメージ", "回避成功", "怯ませ", "被怯み", "拘束", "被拘束", "出血付与", "被出血付与", "回復付与", "被回復", "状態解除", "被状態解除", "撃破", "ターン開始", "ターン終了"],
+  "targets": ["自身", "発動元", "攻撃者"],
+  "bleeding": { "durationTurns": 10, "damageDivisor": 10, "healingReductionRate": 1 },
+  "reaction": { "referenceMultiplier": 1, "maximumPerEvent": 8 }
+}

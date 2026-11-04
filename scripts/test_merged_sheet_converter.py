@@ -18,6 +18,15 @@ def cells(values):
 
 
 class MergedSheetTests(unittest.TestCase):
+    def test_dictionary_extra_skill_column_does_not_shift_range(self):
+        reader = Reader({'用語辞書': [
+            (1, cells({0:'追加効果',1:'説明',3:'技能名',4:'説明',5:'関連ステータス',7:'範囲タイプ',8:'説明',9:'処理タイプ'})),
+            (2, cells({0:'連鎖',1:'効果',3:'遊泳',4:'技能',5:'速度',7:'単体',8:'範囲',9:'single'}))]})
+        skills = convert_sheet(reader, '説明', '説明.json')
+        ranges = convert_sheet(reader, '範囲', '範囲.json')
+        self.assertEqual(skills.records, [{'技能名':'遊泳','説明':'技能','関連ステータス':'速度'}])
+        self.assertEqual(ranges.records, [{'範囲タイプ':'単体','説明':'範囲','処理タイプ':'single'}])
+
     def test_dictionary_tables_do_not_leak(self):
         reader = Reader({'用語辞書': [
             (1, cells({0:'追加効果',1:'説明',3:'技能名',4:'説明',6:'範囲タイプ',7:'説明',8:'処理タイプ'})),

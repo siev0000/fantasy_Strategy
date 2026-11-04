@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-enemy-fix-ui253.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "出現敵"
+  ],
+  "source_sheets": {
+    "出現敵": "出現敵"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 200,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "出現敵",
+      "output": "出現敵.json",
+      "input_rows": 999,
+      "records": 200,
+      "skipped_blank_rows": 777,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 22,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

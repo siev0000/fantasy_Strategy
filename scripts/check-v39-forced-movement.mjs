@@ -3,7 +3,7 @@ import {build} from 'esbuild';
 import {readFileSync,readdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 process.on('uncaughtException',error=>{console.error(String(error.stack||error.message).replace(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g,'[bundle]').slice(0,1200));process.exit(1);});
-const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-forced-movement.js';export * from './frontend/src/lib/v39-skill-forced-movement.js';export * from './frontend/src/lib/v39-disaster-knockback.js';export * from './frontend/src/lib/hex-grid.js';export {reconcileV39Casting} from './frontend/src/lib/v39-casting-rules.js';export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack} from './frontend/src/v39/combat/v39-combat.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/combat.js"'},plugins:[{name:'registry',setup(builder){builder.onLoad({filter:/[\\/]combat[\\/]v39-combat\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/\binstall\(\);\s*$/,'export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack};'),resolveDir:dirname(args.path),loader:'js'}));builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-forced-movement.js';export * from './frontend/src/lib/v39-skill-forced-movement.js';export * from './frontend/src/lib/v39-disaster-knockback.js';export * from './frontend/src/lib/hex-grid.js';export {reconcileV39Casting} from './frontend/src/lib/v39-casting-rules.js';export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack} from './frontend/src/v39/combat/v39-combat.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/combat.js"'},plugins:[{name:'registry',setup(builder){builder.onLoad({filter:/[\\/]combat[\\/]v39-combat\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/\binstall\(\);\s*$/,'export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack};'),resolveDir:dirname(args.path),loader:'js'}));builder.onLoad({filter:/game-data-registry\.js$/},args=>{
   const dir=resolve('data/source/export/json');const modules=Object.fromEntries(readdirSync(dir).filter(n=>n.endsWith('.json')).map(n=>[`../../../data/source/export/json/${n}`,JSON.parse(readFileSync(`${dir}/${n}`,'utf8'))]));
   return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
 });}}]});
@@ -42,7 +42,7 @@ const legacy=m.resolveV39SkillForcedMovement({名前:'打ち倒す',ノックバ
 assert.equal(m.resolveV39SkillForcedMovement({名前:'普通の攻撃',打撃:200},caster,map),null);
 const immune={...target,status:{...target.status,怯み耐性:100}};
 assert.equal(m.applyV39SkillForcedMovement({...world,enemies:[immune]},map,caster,skill,hit).entries.length,0);
-const half=m.applyV39SkillForcedMovement(world,map,caster,skill,[{...hit[0],detail:{scale:.5}}],()=>.5);assert.deepEqual(half.enemies[0].position,[10,8]);
+const half=m.applyV39SkillForcedMovement(world,map,caster,skill,[{...hit[0],detail:{scale:.5}}],()=>.5);assert.deepEqual(half.enemies[0].position,[9,8],'65 force rounds 1.3 tiles to one');
 const collisionWorld={...world,enemies:[target,unit('blocker',9,8)]};
 const collision=m.applyV39SkillForcedMovement(collisionWorld,map,caster,skill,hit,()=>.5);assert.equal(collision.damageEntries.length,2);assert.ok(collision.damageEntries.every(e=>e.collisionPower===130));
 const disaster={id:'storm',disasterId:'災害:竜巻',name:'竜巻',x:4,y:8,damagePower:130,damageTickTurn:1,damageTileKeys:['8,8']};
@@ -75,3 +75,86 @@ assert.equal(m.performNeutralVillageGuardAttack({villageId:'v',guardId:'caster',
 assert.deepEqual(live.players[0].factionState.units[0].position,[11,8],'real village guard attack commits forced movement');
 assert.equal(live.neutralVillages[0].defenseUnits[0].ap,60);
 console.log('PASS: shared skill/disaster knockback, away/toward/random and six center directions, no overshoot, legacy/scaled force, hit/miss/immunity/area/AP, collision parity, casting cancellation and all three combat paths wired. No browser.');
+
+const guardedAttack={名前:'守護被害試験',行動:'A',対象:'相手',攻撃手段:'テスト',物理:100,効果:'必中',AP消費:10,射程:100};
+const protector={...unit('protector',8,9),status:{HP:1000,防御:100,速度:1}};
+const guarded={...unit('guarded',8,8),guardedBy:{guardianId:'protector',range:30,expiresAtTurn:5}};
+const guardWorld=()=>({...world,timeline:{turnNumber:1,phase:'player'},players:[{id:'p',factionState:{units:[structuredClone(guarded),structuredClone(protector)],squads:[],combatRuntime:{}}}],enemies:[unit('caster',4,8)],enemyNests:[],settlements:[],groundLootByTile:{}});
+live=guardWorld();
+assert.equal(m.performEnemyAttack({enemyId:'caster',targetUnitId:'guarded',skillRow:guardedAttack,suppressEffect:true}),true);
+assert.equal(live.players[0].factionState.units[0].hp,1000);
+assert.ok(live.players[0].factionState.units[1].hp<1000,'actual enemy attack damages protector');
+live=guardWorld();live.players[0].factionState.units[1].x=19;
+assert.equal(m.performEnemyAttack({enemyId:'caster',targetUnitId:'guarded',skillRow:guardedAttack,suppressEffect:true}),true);
+assert.ok(live.players[0].factionState.units[0].hp<1000,'moving out of range disables guarding');
+assert.equal(live.players[0].factionState.units[1].hp,1000);
+live=guardWorld();live.timeline.turnNumber=5;
+assert.equal(m.performEnemyAttack({enemyId:'caster',targetUnitId:'guarded',skillRow:guardedAttack,suppressEffect:true}),true);
+assert.ok(live.players[0].factionState.units[0].hp<1000,'expired guarding is ignored');
+live=guardWorld();
+const guardRow={名前:'守護付与',行動:'A',対象:'味方',効果:'守護',射程:100,AP消費:10,効果時間:3};
+assert.equal(m.performAttack({x:8,y:8},{playerId:'p',unitId:'protector',skillName:guardRow.名前,skillRow:guardRow}),true);
+assert.equal(live.players[0].factionState.units[0].guardedBy.guardianId,'protector','actual support skill grants guarding link');
+assert.equal(live.players[0].factionState.units[1].ap,70);
+console.log('PASS: real guarding grant, enemy interception, range loss and expiry.');
+
+live=guardWorld();
+const selfHeal={名前:'対象なし自己回復',行動:'A',攻撃手段:'テスト',回復:10,AP消費:10,射程:0};
+live.players[0].factionState={...live.players[0].factionState,selectedUnitId:'guarded',units:[{...live.players[0].factionState.units[0],hp:900,currentHp:900,techniques:[{name:selfHeal.名前,source:selfHeal}]}]};
+window.getV39ActiveFactionState=()=>live.players[0].factionState;
+window.getV39ActivePlayerId=()=>live.activePlayerId;
+assert.equal(m.startAttack(),true,'self-target skill executes without selecting a tile');
+assert.equal(live.players[0].factionState.units[0].hp,910);
+assert.equal(live.players[0].factionState.units[0].ap,70);
+console.log('PASS: unset target executes immediately on self without map selection.');
+
+live=guardWorld();
+const defended=live.players[0];
+live={...live,activePlayerId:'q',players:[{id:'q',factionState:{units:[unit('caster',4,8)],combatRuntime:{},squads:[],selectedUnitId:'caster'}},defended],enemies:[]};
+window.canV39AttackFaction=()=>true;
+assert.equal(m.performAttack({x:8,y:8},{playerId:'q',unitId:'caster',skillName:guardedAttack.名前,skillRow:guardedAttack}),true);
+assert.equal(live.players[1].factionState.units[0].hp,1000);
+assert.ok(live.players[1].factionState.units[1].hp<1000,'player attack is intercepted too');
+console.log('PASS: player-versus-faction guarding shares the same interception path.');
+
+const arcAttack={名前:'曲射実戦試験',行動:'A',対象:'相手',攻撃手段:'テスト',射撃:30,効果:'曲射/必中',射程:60,AP消費:10};
+map.defenseStructures=[{id:'arc-wall',kind:'壁',hp:100,maxHp:100,height:1,tiles:[{x:5,y:8}]}];
+live={...world,timeline:{turnNumber:1,phase:'player'},players:[{id:'p',factionState:{units:[unit('caster',4,8)],squads:[],combatRuntime:{}}}],enemies:[unit('near',5,8),unit('far',8,8)],neutralVillages:[],enemyNests:[],settlements:[],groundLootByTile:{}};
+assert.equal(m.performAttack({x:8,y:8},{playerId:'p',unitId:'caster',skillName:arcAttack.名前,skillRow:arcAttack}),true);
+assert.equal(live.enemies.find(unit=>unit.id==='near').hp,1000);
+assert.ok(live.enemies.find(unit=>unit.id==='far').hp<1000,'arc hits beyond an ignored wall/unit');
+const remainingAp=live.players[0].factionState.units[0].ap;
+assert.equal(m.performAttack({x:5,y:8},{playerId:'p',unitId:'caster',skillName:arcAttack.名前,skillRow:arcAttack}),false);
+assert.equal(live.players[0].factionState.units[0].ap,remainingAp,'dead-zone target does not consume AP');
+map.defenseStructures=[];
+console.log('PASS: real arc attack jumps near cover, leaves near units unharmed and rejects dead-zone targets.');
+
+for(const variant of [{効果:'曲射/貫通/必中',nearX:5,farX:8},{効果:'曲射/必中',炸裂:1,nearX:6,farX:7}]){
+ live={...world,timeline:{turnNumber:1,phase:'player'},players:[{id:'p',factionState:{units:[unit('caster',4,8)],squads:[],combatRuntime:{}}}],enemies:[unit('near',variant.nearX,8),unit('far',variant.farX,8)],neutralVillages:[],enemyNests:[],settlements:[],groundLootByTile:{}};
+ const row={...arcAttack,...variant};
+ assert.equal(m.performAttack({x:variant.farX,y:8},{playerId:'p',unitId:'caster',skillName:row.名前,skillRow:row}),true);
+ assert.equal(live.enemies[0].hp,1000,'piercing/splash cannot hit inside arc dead zone');
+ assert.ok(live.enemies[1].hp<1000);
+}
+console.log('PASS: piercing and splash variants exclude arc dead zone too.');
+
+for(const [power,expected] of [[24,0],[25,1],[74,1],[75,2],[124,2],[125,3]])assert.equal(m.inspectV39ForcedMovement(target,{...req,power},map).distance,expected);
+const armored={...unit('fractional',8,8),status:{HP:1000,防御:170,怯み耐性:0}};
+const fractionalRequest={power:40,origin:{x:4,y:8},targetIds:['fractional'],source:'端数試験'};
+const fractionalInfo=m.inspectV39ForcedMovement(armored,fractionalRequest,map);
+assert.equal(fractionalInfo.distance,0);assert.ok(fractionalInfo.rawDistance>0.2&&fractionalInfo.rawDistance<0.4);
+assert.ok(Math.abs(fractionalInfo.effectivePower-40/2.7)<1e-8,'defense reduces forced-movement power');
+const fractionWorld={...world,enemies:[armored,unit('blocker',9,8)]};
+const fractionHit=m.applyV39ForcedMovement(fractionWorld,map,[fractionalRequest],()=>.5);
+assert.equal(fractionHit.enemies[0].x,8);assert.equal(fractionHit.entries.length,0);
+assert.equal(fractionHit.damageEntries.length,2,'fractional impact damages both adjacent units');
+assert.ok(fractionHit.damageEntries.every(entry=>Math.abs(entry.collisionPower-fractionalInfo.effectivePower)<1e-8));
+const freeFraction=m.applyV39ForcedMovement({...world,enemies:[armored]},map,[fractionalRequest],()=>.5);
+assert.equal(freeFraction.enemies[0].hp,1000);assert.equal(freeFraction.enemies[0].x,8);
+const fractionWall={id:'fraction-wall',kind:'壁',hp:100,maxHp:100,height:1,tiles:[{x:9,y:8}]};
+const wallFraction=m.applyV39ForcedMovement({...world,enemies:[armored]},{...map,defenseStructures:[fractionWall]},[fractionalRequest],()=>.5);
+assert.equal(wallFraction.damageEntries.length,1);assert.equal(wallFraction.damageEntries[0].wallCollision,true);
+assert.equal(wallFraction.enemies[0].x,8);assert.ok(wallFraction.enemies[0].hp<1000);assert.equal(fractionWall.hp,100);
+const solidWall=m.applyV39ForcedMovement({...world,enemies:[target]},{...map,defenseStructures:[fractionWall]},[req],()=>.5);
+assert.equal(solidWall.enemies[0].x,8,'full impulse also cannot pass through a wall');
+console.log('PASS: defense reduction, rounded distances, fractional unit/wall collisions and no movement in open space.');

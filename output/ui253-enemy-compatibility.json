@@ -1,0 +1,79 @@
+{
+  "rawClassCount": 461,
+  "spawnRows": 200,
+  "validDefinitions": 148,
+  "missingClassReferences": [],
+  "generatedEndpoints": 296,
+  "generationErrors": [],
+  "imageFallback": [],
+  "scenarios": [
+    {
+      "terrain": "平地",
+      "height": 1,
+      "strong": false,
+      "count": 25,
+      "armies": 9,
+      "bosses": 0,
+      "nests": 0
+    },
+    {
+      "terrain": "森",
+      "height": 2,
+      "strong": false,
+      "count": 25,
+      "armies": 1,
+      "bosses": 0,
+      "nests": 0
+    },
+    {
+      "terrain": "砂漠",
+      "height": 0,
+      "strong": false,
+      "count": 25,
+      "armies": 9,
+      "bosses": 0,
+      "nests": 0
+    },
+    {
+      "terrain": "砂漠",
+      "height": 2,
+      "strong": false,
+      "count": 1,
+      "armies": 0,
+      "bosses": 0,
+      "nests": 0
+    },
+    {
+      "terrain": "雪原",
+      "height": 3,
+      "strong": false,
+      "count": 25,
+      "armies": 0,
+      "bosses": 0,
+      "nests": 0
+    },
+    {
+      "terrain": "森",
+      "height": 2,
+      "strong": true,
+      "count": 25,
+      "armies": 3,
+      "bosses": 8,
+      "nests": 8
+    },
+    {
+      "terrain": "平地",
+      "height": 7,
+      "strong": false,
+      "count": 25,
+      "armies": 0,
+      "bosses": 0,
+      "nests": 0
+    },
+    {
+      "terrain": "洞窟",
+      "count": 8,
+      "armies": 1
+    }
+  ]
+}

@@ -1,8 +1,9 @@
+import {abilityDamageTarget} from './v39-ability-damage.js';
 import {hegemonyLightMultiplier} from './v39-hegemony-areas.js';
 import {resolveV39ResistanceReduction} from './v39-resistance-math.js';
 import {hasV39CityAuraSources} from './v39-city-aura.js';
 import {applyV39TerrainModifiers} from './v39-terrain-modifiers.js';
-import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, toSafeNumber } from "./skill-power.js";
+import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, SKILL_STATE_KEYS, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { getV39UnitTestSkillRows } from "./v39-test-skill-rules.js";
 import { resolveV39DefenseKind, resolveV39DefenseReducedPower } from "./v39-defense-rules.js";
@@ -10,7 +11,7 @@ import {resolveV39DamageMultiplier} from './v39-combat-settings.js';
 import { hasV39SkillEffect } from "./v39-combat-ray.js";
 import { getV39PassiveRows, matchV39PassiveCondition, resolveV39PassiveContext } from "./v39-passive-rules.js";
 import { resolveV39BodyWeaponAttackRows } from "./v39-body-weapon-rules.js";
-import { DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS } from "../constants/unitCommon.js";
+import { DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS, SKILL_LEVEL_FIELDS } from "../constants/unitCommon.js";
 import {V39_TERRAIN_DESTRUCTION_RULES} from './v39-terrain-destruction.js';
 import {getV39DisasterFieldAt} from './v39-disaster-dynamics.js';
 import { resolveV39RangeTiles, V39_SQUAD_MOVEMENT_BALANCE, V39_CAVE_BALANCE, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
@@ -81,6 +82,7 @@ export function buildWeaponAttackRow(item) {
     名前:name,
     行動:"A",
     攻撃手段:"武器",
+    対象:"相手",
     判定:"攻撃",
     物理:basePower + number(enchantAttack.物理),
     魔法:number(enchantAttack.魔法),
@@ -210,11 +212,16 @@ export function applyV39ActiveCombatEffects(unit, effects) {
   if (!active.length) return unit;
   const status = { ...(unit?.status || {}) };
   const resistances = { ...(unit?.resistances || {}) };
-  for (const effect of active) for (const [key, value] of Object.entries(effect?.modifiers || {})) {
-    if (key.endsWith("耐性")) resistances[key] = number(resistances[key]) + number(value);
-    else status[key] = number(status[key]) + number(value);
+  const skillLevels={...unit?.skillLevels},persistent={},stacked={};
+  for(const effect of active)for(const [key,value] of Object.entries(effect?.modifiers||{})){
+    if(effect.stackGroup==='oneTurn'||effect.stackGroup==='transformation')stacked[key]=number(stacked[key])+number(value);
+    else persistent[key]=persistent[key]===undefined?number(value):Math.max(persistent[key],number(value));
   }
-  return { ...unit, status, resistances };
+  for(const key of new Set([...Object.keys(persistent),...Object.keys(stacked)])){
+    const target=key.endsWith('耐性')?resistances:SKILL_LEVEL_FIELDS.includes(key)?skillLevels:status;
+    target[key]=number(target[key])+number(persistent[key])+number(stacked[key]);
+  }
+  return { ...unit, status, resistances,skillLevels };
 }
 
 export function isV39SupportSkill(skillRow, attacker) {
@@ -358,6 +365,18 @@ export function resolveV39TerrainAttackPower(skillRow,attacker,options={}){
   return Math.round(physicalPower(adjusted.skillRow)+physicalPower(weapon));
 }
 
+// State values use the same defense and resistance math as attacks, without HP damage multipliers.
+export function resolveV39HarmfulEffectPower(attacker,target,row,basePower,resistanceKey){
+  const power=computeSkillScaledTriplet({全威力:basePower,判定:row?.判定,追加威力:row?.追加威力},attacker?.status).power;
+  const defenseKey=text(row?.判定).includes('魔')?'精神':'防御';
+  const resistance=number(target?.status?.[resistanceKey],number(target?.resistances?.[resistanceKey]));
+  const reduced=resolveV39ResistanceReduction(power,number(target?.level,1),resistance,number(attacker?.status?.耐性貫通));
+  return Math.max(0,Math.floor(resolveV39DefenseReducedPower(reduced.reducedPower,number(target?.status?.[defenseKey]))*(1-reduced.resistanceRate)));
+}
+export function resolveV39StateInfliction(attacker,target,row,stateKey){
+  return SKILL_STATE_KEYS.includes(stateKey)?resolveV39HarmfulEffectPower(attacker,target,row,number(row?.[stateKey]),stateKey+'耐性'):0;
+}
+
 export function computeAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '', gameSettings }) {
   const damageMultiplier=resolveV39DamageMultiplier(gameSettings);
   if(hasV39CityAuraSources()||attacker?.cityAuraSkillNames?.length||target?.cityAuraSkillNames?.length){
@@ -367,7 +386,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   target=resolveV39PassiveContext(target,passiveActionContext(target,skillRow),{isCounter:false}).unit;
   const runtime=globalThis.window?.__v39FieldRuntime;
   const areaScale=runtime?.mapData?.hegemonyInterior?hegemonyLightMultiplier(runtime.mapData,attacker,damageType||strongestDamageType(adjusted.skillRow),globalThis.window?.getV39GameState?.({includeWorlds:false})?.activeWorldId):1;
-  const power = resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] })*areaScale;
+  const power = abilityDamageTarget(adjusted.skillRow)?0:resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] })*areaScale;
   const magicalJudge = text(adjusted.skillRow?.判定).includes("魔");
   const defenseKey = magicalJudge ? "精神" : "防御";
   const defense = Math.max(0, number(target?.status?.[defenseKey], 0));

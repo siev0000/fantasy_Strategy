@@ -1,0 +1,760 @@
+PASS: configurable delay range, guaranteed/randomized endpoints, single-cell fallback, delayed-start cancellation, static frames and timing persistence.
+PASS: area mode default/persistence/combat/preview, beam precedence, simultaneous cells, shared texture, cancellation and cleanup.
+PASS: actual map playback filters hidden and duplicate cells.
+PASS: sequence persistence/combat/playback/transforms/cancellation, numbered/common tabs, selection after move/add/delete, isolated preview and editor controls.
+PASS: compact mobile header, toggle/ARIA, preference persistence and expanded desktop default.
+PASS: edit/confirm use identical placement for central and noncentral anchors, rotation and 250% scale.
+PASS: impact point remains fixed through rotation and per-axis scaling; pointer inverse and legacy center.
+PASS: fixed X/Y axes at 0/30/90/180/-90, Y+10/-10 has no horizontal drift, zoom and actual frame position.
+[ゲームデータ検証] 警告 392件 [
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ダークヒューマン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ダークエルフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ダークドワーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:キャットモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ドッグモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ラビットモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:バードモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:リザードモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:オックスモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ゴリラモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:エレファントモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ホースモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ベアモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ボアモーフ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ホーンヴァーミン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ブレードヴァーミン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:テールヴァーミン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:アーマーヴァーミン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:シェルアーマー',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:メタルシェル',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:レアメタルシェル',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:スレッドマスター',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ゲイザーデヴィル',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:クラフトデヴィル',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ディメンジョンアーツ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:エンジェル',
+    field: 'Skill1',
+    value: '浮遊',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:エンジェル',
+    field: 'Skill6',
+    value: '軽回復',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フォールン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:アガシオン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ゴースト',
+    field: 'Skill1',
+    value: '浮遊',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ガスト',
+    field: 'Skill10',
+    value: '魂回収（共通）',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:フレイムエレメンタル',
+    field: 'Skill3',
+    value: '浮遊',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:フロストエレメンタル',
+    field: 'Skill3',
+    value: '浮遊',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:エアエレメンタル',
+    field: 'Skill3',
+    value: '浮遊',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:エアエレメンタル',
+    field: 'Skill4',
+    value: '突風',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:アースエレメンタル',
+    field: 'Skill3',
+    value: '浮遊',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:アースエレメンタル',
+    field: 'Skill4',
+    value: '魔法の石',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムヤングドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムアダルトドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムオールドドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムエルダードラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムエインシャントドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ストームヤングドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ストームアダルトドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ストームオールドドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ストームエルダードラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ストームエインシャントドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストヤングドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストアダルトドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストオールドドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストエルダードラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストエインシャントドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ヴォイドヤングドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ヴォイドアダルトドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ヴォイドオールドドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ヴォイドエルダードラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ヴォイドエインシャントドラゴン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムドラゴニュート',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムドラゴンリニーヂュ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムドラゴンブラッド',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムドラゴンソード',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フレイムドラゴンソードマスター',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:アースドラゴニュート',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:アースドラゴンリニーヂュ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:アースドラゴンブラッド',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:アースドラゴンソード',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:アースドラゴンソードマスター',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストドラゴニュート',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストドラゴンリニーヂュ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストドラゴンブラッド',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストドラゴンソード',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フロストドラゴンソードマスター',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ブラックドラゴニュート',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ブラックドラゴンリニーヂュ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ブラックドラゴンブラッド',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ブラックドラゴンソード',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ブラックドラゴンソードマスター',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:イービルドラゴニュート',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:イービルドラゴンリニーヂュ',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:イービルドラゴンブラッド',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:イービルドラゴンソード',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:イービルドラゴンソードマスター',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:アルケミスト',
+    field: 'Skill9',
+    value: '爆裂',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:パラディン',
+    field: 'Skill4',
+    value: '軽回復',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ドルイド',
+    field: 'Skill2',
+    value: '突風',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ドルイド',
+    field: 'Skill6',
+    value: '魔法の石',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ドルイド',
+    field: 'Skill8',
+    value: '風足',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ガンナー',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ガンスミス',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:イージス',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:フェザーフェンサー',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-required',
+    table: 'クラス',
+    recordId: 'クラス:ラケダイモン',
+    field: '種類'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ソードマスター',
+    field: 'Skill9',
+    value: '剣使い',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ソードレジェンド',
+    field: 'Skill9',
+    value: '剣聖',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:スピアマスター',
+    field: 'Skill9',
+    value: '槍使い',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:スピアレジェンド',
+    field: 'Skill9',
+    value: '槍聖',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:スピアゴッド',
+    field: 'Skill6',
+    value: '神眼',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:スピアゴッド',
+    field: 'Skill9',
+    value: '槍神',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ウィンドブレード',
+    field: 'Skill3',
+    value: '突風',
+    targetTable: 'スキル一覧/説明'
+  },
+  {
+    level: 'warning',
+    type: 'missing-reference',
+    table: 'クラス',
+    recordId: 'クラス:ウィンドブレード',
+    field: 'Skill6',
+    value: '上昇烈風',
+    targetTable: 'スキル一覧/説明'
+  },
+  ... 292 more items
+]
+PASS: genuine fresh-module reload from localStorage preserves category name, two animations, rotation, position and JSON snapshot.
+PASS: vertical numbered sidebar, conditions outside preview, nonzero preview min-height and isolated attribute layout.
+PASS: power axes, default100, legacy settings, tornado category/frames, effect/category JSON roundtrip, combat settings, preview/AOE, real player normal/area/beam scaling (36 cases). No browser.

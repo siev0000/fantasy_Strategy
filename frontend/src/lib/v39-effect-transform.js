@@ -1,12 +1,21 @@
+import { normalizeV39HitEffect } from './v39-effect-hit.js';
 // 画像の初期向きと、画像の向きに連動する位置補正（ワールドpx）の共通設定。
 export const V39_EFFECT_ROTATION_LIMIT = 180;
 export const V39_EFFECT_OFFSET_LIMIT = 300;
 export const V39_EFFECT_BASE_SCALE_PERCENT = 50; // 炸裂なしの実戦・プレビュー共通倍率。
+export const V39_AREA_EFFECT_DEFAULT_DELAY_MS = 120;
+export const V39_AREA_EFFECT_DELAY_LIMIT_MS = 1000;
 const finite = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const clamp = (value, limit) => Math.max(-limit, Math.min(limit, finite(value)));
 
 export function normalizeV39EffectTransform(setting = {}) {
   return {
+    ...normalizeV39HitEffect(setting),
+    areaDisplay:setting.areaDisplay === 'tiles' ? 'tiles' : 'center',
+    areaTiming:setting.areaTiming === 'random' ? 'random' : 'simultaneous',
+    areaDelayMs:Math.round(Math.min(V39_AREA_EFFECT_DELAY_LIMIT_MS,Math.max(0,
+      setting.areaDelayMs != null && Number.isFinite(Number(setting.areaDelayMs))
+        ? Number(setting.areaDelayMs) : V39_AREA_EFFECT_DEFAULT_DELAY_MS))),
     powerScaleAxis:['x','y'].includes(setting.powerScaleAxis) ? setting.powerScaleAxis : 'both',
     rotationDeg:clamp(setting.rotationDeg, V39_EFFECT_ROTATION_LIMIT),
     offsetX:clamp(setting.offsetX, V39_EFFECT_OFFSET_LIMIT),

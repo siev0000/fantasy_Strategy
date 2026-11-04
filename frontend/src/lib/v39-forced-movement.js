@@ -1,3 +1,4 @@
+import {resolveV39DefenseReducedPower,v39WallStepHeight} from './v39-defense-rules.js';
 import defaults from '../../../config/v39-forced-movement.json';
 import {resolveV39ResistanceReduction} from './v39-resistance-math.js';
 import {applyV39PassiveCombatSkills} from './v39-combat-engine.js';
@@ -16,9 +17,11 @@ export function inspectV39ForcedMovement(unit,request,map){
   const resistance=Number(adjusted.status?.[rule.resistanceKey]??adjusted.resistances?.[rule.resistanceKey])||0;
   const power=Math.max(0,Number(request.power)||0);
   const reduction=resolveV39ResistanceReduction(power,unit.level??unit.status?.Lv,resistance);
-  const effectivePower=reduction.reducedPower*(1-reduction.resistanceRate);
-  const distance=effectivePower>0?Math.max(0,Math.min(rule.maximumDistance,Math.ceil(effectivePower/rule.powerPerTile))):0;
-  return {power,resistance,...reduction,effectivePower,distance};
+  const defense=Math.max(0,Number(adjusted.status?.[rule.defenseKey||'防御'])||0);
+  const effectivePower=resolveV39DefenseReducedPower(reduction.reducedPower,defense)*(1-reduction.resistanceRate);
+  const rawDistance=effectivePower/rule.powerPerTile;
+  const distance=effectivePower>0?Math.max(0,Math.min(rule.maximumDistance,Math.round(rawDistance))):0;
+  return {power,resistance,...reduction,defense,effectivePower,rawDistance,distance};
 }
 export function resolveV39ForcedMovementPath(map,unit,request,distance,random=Math.random){
   const mode=request.direction||defaults.direction,origin=request.origin;
@@ -65,30 +68,33 @@ export function applyV39ForcedMovement(state,map,requests,random=Math.random){
     const options=eligible.filter(request=>(!request.worldId||request.worldId===world)
       &&(request.targetIds?.includes(unit.id)||request.targetKeys?.includes(key(unit))))
       .map(request=>({request,...inspectV39ForcedMovement(unit,request,map)})).sort((a,b)=>b.effectivePower-a.effectivePower);
-    const selected=options[0];if(!selected?.distance)return unit;
+    const selected=options[0];if(!selected?.effectivePower)return unit;
     const {request,distance}=selected;
-    const from={x:unit.x,y:unit.y},path=[];let collision=null;
-    for(const point of resolveV39ForcedMovementPath(map,unit,request,distance,random)){
-      if(!canUnitEnterV39Tile(map,point.x,point.y,unit))break;
+    const from={x:unit.x,y:unit.y},path=[];let collision=null,wallCollision=false;
+    // A sub-tile impulse still checks the adjacent obstacle, without moving into a free tile.
+    for(const point of resolveV39ForcedMovementPath(map,unit,request,Math.max(1,distance),random)){
+      const previous=path.at(-1)||from;
+      if(!canUnitEnterV39Tile(map,point.x,point.y,unit)||v39WallStepHeight(map,previous,point)>0){wallCollision=true;break;}
       if(occupied.has(key(point))){
         collision=records.find(other=>other!==record&&present(other.unit)&&key(other.unit)===key(point));
         break;
       }
+      if(!distance)break;
       path.push(point);
     }
     const to=path.at(-1)||from;
     if(path.length)replace(record,{...unit,...to,position:[to.x,to.y]});
-    if(collision){
+    if(collision||wallCollision){
       const power=selected.effectivePower,turn=request.turn??state.timeline?.turnNumber??1;
       // Both sides use the same impact power, but their own armor/resistance/protection.
-      for(const [victim,other]of [[record,collision],[collision,record]]){
+      for(const [victim,other]of collision?[[record,collision],[collision,record]]:[[record,null]]){
         const result=applyV39DisasterDamage(victim.unit,{power,element:'打撃'},turn,'吹き飛ばし衝突',random);
         replace(victim,result.unit);
-        if(result.entry)damageEntries.push({...result.entry,...victim.owner,collisionPower:power,collisionWithUnitId:other.unit.id});
+        if(result.entry)damageEntries.push({...result.entry,...victim.owner,collisionPower:power,collisionWithUnitId:other?.unit.id||null,wallCollision});
       }
     }
     if(path.length)entries.push({unitId:unit.id,name:unit.name,...owner,from,to,path,distance:path.length,requestedDistance:distance,
-      effectivePower:selected.effectivePower,resistance:selected.resistance,source:request.source||'強制移動',direction:request.direction||defaults.direction});
+      effectivePower:selected.effectivePower,rawDistance:selected.rawDistance,defense:selected.defense,resistance:selected.resistance,source:request.source||'強制移動',direction:request.direction||defaults.direction});
   };
   for(const record of records)move(record);
   // Materialize after all impacts so a later collision can damage an earlier mover.

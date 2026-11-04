@@ -2,8 +2,8 @@
   "resolution": 0.5,
   "chunkSize": 1024,
   "textureAlphaFloor": 0.55,
-  "lightning":{"disasterId":"災害:落雷嵐","depth":11.85,"strikeDepth":13,"frameMilliseconds":120,"arcChangeMilliseconds":300,"maximumPreviewTiles":300,"color":"#43A7E8","coreColor":"#B7ECFF","opacity":0.6,"lineWidth":1.8,"minimumScreenWidth":1.2,"strikeCoreColor":"#FFFFFF","strikeColor":"#FFE173","strikeWidthMultiplier":2.8,"strikeHeightTiles":2,"strikeHoldMilliseconds":550,"strikeMilliseconds":1350,"maximumAnimationStepMilliseconds":100},
-  "tornado":{"disasterId":"災害:竜巻","effectName":"竜巻","sourceEffect":"竜巻","firstFrame":1,"lastFrame":12,"frameMilliseconds":120,"depth":11.75},
+  "lightning":{"disasterId":"災害:落雷嵐","effectCategoryId":"disaster_charge","effectName":"帯電1","frameCount":18,"depth":11.85,"strikeDepth":13,"strikeEffectCategoryId":"falling_lightning","strikeEffectName":"落雷","frameMilliseconds":120,"arcChangeMilliseconds":300,"maximumPreviewTiles":300,"color":"#43A7E8","coreColor":"#B7ECFF","opacity":0.6,"lineWidth":1.8,"minimumScreenWidth":1.2,"strikeCoreColor":"#FFFFFF","strikeColor":"#FFE173","strikeWidthMultiplier":2.8,"strikeHeightTiles":2,"strikeHoldMilliseconds":550,"strikeMilliseconds":1350,"maximumAnimationStepMilliseconds":100},
+  "tornado":{"disasterId":"災害:竜巻","effectName":"竜巻","sourceEffect":"竜巻ループ","firstFrame":1,"lastFrame":70,"frameMilliseconds":120,"depth":11.75},
   "vortex":{"disasterId":"災害:台風","image":"assets/images/background/台風_200.webp","depth":11.7,"opacity":0.65,"rotationMilliseconds":30000,"frameMilliseconds":90},
   "fieldArtwork": {
     "depth":11.6,

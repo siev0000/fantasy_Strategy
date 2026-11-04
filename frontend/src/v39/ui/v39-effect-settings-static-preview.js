@@ -1,5 +1,5 @@
 // Drawing only. Playback, visibility and cancellation are owned by v39-effect-settings.js.
-import { resolveEffectSheetLayout, resolveEffectFrameRange, resolveEffectPowerAxes } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
+import { resolveEffectSheetLayout, resolveEffectFrameRange, resolveEffectPowerAxes, resolveEffectSourceTransform, resolveEffectImpactPlacement } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
 import { resolveV39EffectPlaybackDescriptor } from "../combat/v39-effect-player.js";
 import { effectPreviewGeometry } from "./v39-effect-preview-combatants.js";
 import { V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
@@ -107,12 +107,12 @@ function applyFirstFrameColor(context, descriptor, x, y, width, height) {
   context.restore();
 }
 
-export async function drawIdlePreview({ fullImage = false } = {}) {
+export async function drawIdlePreview({ fullImage = false, descriptor:suppliedDescriptor } = {}) {
   if (!panelVisible()) return false;
   const canvas = ensureCanvas();
   const selected = element("v39-effect-setting-source")?.value;
   if (!(canvas instanceof HTMLCanvasElement) || !selected) return false;
-  const descriptor = resolveV39EffectPlaybackDescriptor(selected);
+  const descriptor = suppliedDescriptor || resolveV39EffectPlaybackDescriptor(selected);
   const source = descriptor?.sequenceSources?.[0];
   if (!descriptor || !source?.src) return false;
   const requestId = ++drawRequestId;
@@ -133,15 +133,25 @@ export async function drawIdlePreview({ fullImage = false } = {}) {
     const scale = fullImage ? baseScale : geometry.fitDiameterPx>0?geometry.fitDiameterPx/Math.min(sourceWidth,sourceHeight)
       : geometry.zoom * V39_EFFECT_BASE_SCALE_PERCENT / 100 * settingScale * source.sourceScaleMultiplier;
     const axes=fullImage?{x:1,y:1}:resolveEffectPowerAxes(geometry);
-    const drawWidth = Math.max(1, (!fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='x'?geometry.stretchLengthPx:sourceWidth * scale)*axes.x);
-    const drawHeight = Math.max(1, (!fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='y'?geometry.stretchLengthPx:sourceHeight * scale)*axes.y);
-    const x = (fullImage ? canvasWidth / 2 : geometry.x) - drawWidth / 2;
-    const y = (fullImage ? canvasHeight / 2 : geometry.y) - drawHeight / 2;
+    const step=source.stepTransform || {};
+    const stepScale=fullImage?1:Math.max(.1,Number(step.scalePercent || 100)/100);
+    const transformed=resolveEffectSourceTransform(source,{angleDeg:geometry.angleDeg,positionOffsetScale:geometry.zoom},geometry);
+    const radians=transformed.angleDeg*Math.PI/180;
+
+    const drawWidth = Math.max(1, (!fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='x'?geometry.stretchLengthPx:sourceWidth * scale)*axes.x*stepScale);
+    const drawHeight = Math.max(1, (!fullImage&&geometry.stretchLengthPx>0&&geometry.stretchAxis==='y'?geometry.stretchLengthPx:sourceHeight * scale)*axes.y*stepScale);
+    const impact=resolveEffectImpactPlacement({...transformed,width:drawWidth,height:drawHeight,
+      screenScaleX:(step.scaleXPercent ?? 100)/100,screenScaleY:(step.scaleYPercent ?? 100)/100},step);
+    const centerX=impact.x,centerY=impact.y;
+    const x = (fullImage ? canvasWidth / 2 : centerX) - drawWidth / 2;
+    const y = (fullImage ? canvasHeight / 2 : centerY) - drawHeight / 2;
     context.save();
     if (!fullImage) {
-      context.translate(geometry.x, geometry.y);
-      context.rotate(geometry.angleDeg * Math.PI / 180);
-      context.translate(-geometry.x, -geometry.y);
+      context.translate(centerX, centerY);
+      context.scale(Math.min(4,Math.max(.1,Number(step.scaleXPercent ?? 100)/100)),Math.min(4,Math.max(.1,Number(step.scaleYPercent ?? 100)/100)));
+      context.rotate(radians);
+      context.scale(step.flipX===true?-1:1,step.flipY===true?-1:1);
+      context.translate(-centerX, -centerY);
     }
     const first=fullImage?0:resolveEffectFrameRange(layout.frameCount,descriptor.sequenceSources[0]).start;
     context.drawImage(image,layout.horizontal?first*layout.frameWidth:0,layout.horizontal?0:first*layout.frameHeight,sourceWidth,sourceHeight,x,y,drawWidth,drawHeight);

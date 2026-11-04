@@ -43,6 +43,7 @@ SHEET_TO_JSON = {
     "種族": "種族.json",
     "勢力": "勢力.json",
     "説明": "説明.json",
+    "技能": "技能.json",
     "範囲": "範囲.json",
     "効果": "効果.json",
     "地形": "地形.json",
@@ -188,6 +189,14 @@ def logical_table_rows(reader, table_name):
         yield from reader.sheet_rows(table_name)
         return
     _, first, end = MERGED_SHEET_TABLES[table_name]
+    if source == "用語辞書":
+        # Locate each independent table by its key header; added columns must not shift a neighbour into the wrong table.
+        header = next(iter(reader.sheet_rows(source)), (0, {}))[1]
+        key = UNIQUE_KEYS[table_name][0]
+        first = next((col for col, cell in header.items() if cell.value == key), first)
+        end = first
+        while end in header and not is_blank(header[end].value):
+            end += 1
     for number, cells in reader.sheet_rows(source):
         selected = {col-first: cell for col, cell in cells.items() if first <= col < end}
         if number == 1:
@@ -219,6 +228,7 @@ UNIQUE_KEYS = {
     "クラス": ("名前",),
     "勢力": ("種族",),
     "説明": ("技能名",),
+    "技能": ("技能参照キー",),
     "範囲": ("範囲タイプ",),
     "効果": ("追加効果",),
     "地形": ("地形",),

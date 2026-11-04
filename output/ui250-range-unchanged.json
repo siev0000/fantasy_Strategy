@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-ui248.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "範囲"
+  ],
+  "source_sheets": {
+    "範囲": "用語辞書"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 23,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "範囲",
+      "output": "範囲.json",
+      "input_rows": 23,
+      "records": 23,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

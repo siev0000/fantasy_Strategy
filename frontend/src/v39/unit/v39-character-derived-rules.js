@@ -1,3 +1,4 @@
+import {applyAbilityDamage} from '../../lib/v39-ability-damage.js';
 import { classData as classDb, skillData as skillDb, testClassData as testClassDb, testSkillData as testSkillDb } from "../../lib/game-data-registry.js";
 import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
 import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "../../constants/unitCommon.js";
@@ -318,10 +319,12 @@ export function applyV39DerivedCharacterData(unit = {}) {
   });
   status.移動 = movement + number(derived.passiveBonuses?.status?.移動);
   if(unit.testOnly===true)status.移動=Math.max(status.移動,number(unit.testMovementMinimum));
+  const damaged=applyAbilityDamage({...unit,status,skillLevels:unit.testOnly===true?{...derived.skillLevels,飛行:Math.max(number(derived.skillLevels?.飛行),number(unit.testFlightMinimum))}:derived.skillLevels});
+  Object.assign(status,damaged.status);
   const maxHp=number(status.HP,derived.maxHp),oldMax=Number(unit.maxHp??unit.status?.HP),currentHp=Number(unit.hp??unit.currentHp);
   let hpPatch={};
   if(oldMax>0&&Number.isFinite(currentHp)&&oldMax!==maxHp){
-    const hp=currentHp<=0||unit.state==='死亡'?0:Math.max(1,Math.min(maxHp,Math.round(maxHp*Math.min(1,currentHp/oldMax))));
+    const hp=currentHp<=0||unit.state==='死亡'?0:Math.max(0,Math.min(maxHp,Math.round(maxHp*Math.min(1,currentHp/oldMax))));
     hpPatch={hp,currentHp:hp};
   }
   return {
@@ -335,7 +338,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
     squadSupportModifiers:{},
     squadSupportSkillModifiers:{},
     squadSupportResistanceModifiers:{},
-    skillLevels: { ...derived.skillLevels },
+    skillLevels: { ...damaged.skillLevels },
     resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
     equipment,
     acquiredSkillNames: [...derived.acquiredSkillNames],

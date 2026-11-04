@@ -1,3 +1,6 @@
+import {getHexDistance} from '../../lib/hex-grid.js';
+import {resolveAttackRange} from '../../lib/v39-combat-engine.js';
+import {describeV39Bleeding} from '../../lib/v39-bleeding.js';
 import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
 import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
@@ -64,6 +67,29 @@ export function renderV39UnitAchievements(unit){
     <details class="v39-char-note"><summary>集計ルール</summary><p>攻撃は範囲・連撃も1行動で1回。反撃も含みます。暗殺は系統「暗殺」の使用時に1回（撃破不要）。クリティカルは敵への物理攻撃で成立したヒット数です。治療は他者の実HP回復を対象ごとに記録。自己・自然回復は除外。状態異常解除の統合は未接続です。調査は完了したマス数、移動は実際に歩いた距離（転移・強制移動を除外）。強敵は自分以上のLvです。仲間を守る回数は、効果「守護」を自分以外の味方に使った対象数です。</p><p>破壊内訳：地形 ${number(values.terrain)} / 壁・結界 ${number(values.walls)} / 施設 未接続。土地/壁は壊れた時だけ記録します。</p><p>状態異常・施設破壊、クラス取得条件への使用は未接続です。</p></details>`;
 }
 
+export function renderV39UnitConditions(unit){
+  const rows=[],bleed=describeV39Bleeding(unit);
+  for(const [bucket,label] of [['abilityDamage','能力ダメージ'],['abilityCurses','呪い']])for(const [key,value] of Object.entries(unit?.[bucket]||{}))if(Number(value)>0)rows.push([label+'：'+key,'-'+value]);
+  if(bleed)rows.push(['出血',bleed.value+' / 次回 '+bleed.damage+'ダメージ / 残り'+bleed.remainingTurns+'T']);
+  const state=globalThis.window?.getV39GameState?.({includeWorlds:false}),turn=Number(state?.timeline?.turnNumber)||1;
+  const player=state?.players?.find(p=>p.factionState?.units?.some(row=>row.id===unit?.id));
+  if(unit?.guardedBy){
+    const link=unit.guardedBy;
+    const guardian=[...(state?.players||[]).flatMap(p=>p.factionState?.units||[]),...(state?.enemies||[]),...(state?.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])].find(row=>row.id===link.guardianId);
+    const valid=guardian&&Number(guardian.hp??guardian.currentHp)>0&&(!link.expiresAtTurn||link.expiresAtTurn>turn)
+      &&(guardian.worldId||'surface')===(unit.worldId||'surface')&&getHexDistance(unit,guardian)<=resolveAttackRange({射程:link.range},guardian,globalThis.window?.__v39FieldRuntime?.mapData);
+    rows.push(['守護', (guardian?.name||link.guardianId)+' / '+(valid?'有効':'無効（射程外・死亡・期限切れ）')+(link.expiresAtTurn?' / 残り'+Math.max(0,link.expiresAtTurn-turn)+'T':'')]);
+  }
+  const effects=player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[unit?.id]||[];
+  for(const effect of effects){
+    const remaining=Math.max(0,Number(effect.expiresAtTurn)-turn);
+    if(!remaining)continue;
+    const modifiers=Object.entries(effect.modifiers||{}).map(([name,value])=>name+(Number(value)>0?'+':'')+value).join(' / ');
+    rows.push([effect.skillName||'継続効果',modifiers+' / 残り'+remaining+'T']);
+  }
+  return renderV39DetailSection('受けている状態',rows.length?rows.map(([name,value])=>'<div class="v39-char-growth-row"><span>'+escapeHtml(name)+'</span><b>'+escapeHtml(value)+'</b></div>').join(''):'<div class="squad-empty">なし</div>');
+}
+
 export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
   const adjusted = applyV39TerrainModifiers(unit, mapData);
   const weatherMovement=resolveV39UnitWeatherMovement(adjusted,mapData);
@@ -98,7 +124,8 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
   const aura=adjusted?.cityAuraSkillNames?.length?`<div class="v39-unit-lineage">都市常時：${escapeHtml(adjusted.cityAuraSkillNames.join(' / '))}</div>`:'';
   return renderV39DetailSection(unit?`ステータス Lv${level}`:'ステータス', `${identity}${aura}<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`)
     + renderV39DetailSection("技能", `<div class="proficiency-grid"${id("detailProficiencyList")}>${skills || empty("技能データなし")}</div>`)
-    + renderV39DetailSection("耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("耐性データなし")}</div>`);
+    + renderV39DetailSection("耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("耐性データなし")}</div>`)
+    + renderV39UnitConditions(unit);
 }
 
 export function updateV39UnitAbility(host, unit, options) {

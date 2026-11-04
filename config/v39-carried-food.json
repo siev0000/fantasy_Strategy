@@ -1,6 +1,7 @@
 {
   "defaultTurns": 15,
   "autoResupply": true,
+  "npcReturnThresholdTurns": 2,
   "maxTurns": 30,
   "resupplyApCost": 0,
   "shareRadius": 1,

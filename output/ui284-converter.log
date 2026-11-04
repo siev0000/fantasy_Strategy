@@ -1,0 +1,7 @@
+test_trigger_name_has_no_time_suffix (test_skill_trigger_converter.SkillTriggerConverterTest.test_trigger_name_has_no_time_suffix) ... ok
+test_trigger_token_is_preserved (test_skill_trigger_converter.SkillTriggerConverterTest.test_trigger_token_is_preserved) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+OK

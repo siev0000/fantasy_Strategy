@@ -1,0 +1,4 @@
+PASS: configurable delay range, guaranteed/randomized endpoints, single-cell fallback, delayed-start cancellation, static frames and timing persistence.
+PASS: area mode default/persistence/combat/preview, beam precedence, simultaneous cells, shared texture, cancellation and cleanup.
+PASS: actual map playback filters hidden and duplicate cells.
+PASS: power axes, default100, legacy settings, tornado category/frames, effect/category JSON roundtrip, combat settings, preview/AOE, real player normal/area/beam scaling (36 cases). No browser.

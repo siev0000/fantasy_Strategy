@@ -1,10 +1,11 @@
-import { PhaserEffectPlayer } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
+import { resolveV39HitTargets } from '../../lib/v39-effect-hit.js';
+import { V39AreaEffectPlayer } from "../../lib/v39-area-effect-player.js";
 import effectList320 from "../../../../assets/effect/320×240/effect_list.json";
 import effectListAnimation1 from "../../../../assets/effect/アニメーション1/effect_list.json";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { resolveV39EffectPlaybackSettings, setV39EffectSettingsCatalog } from "../../lib/v39-effect-settings.js";
 import { normalizeV39EffectTransform, resolveV39EffectTransform, resolveV39EffectBeam, V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
-import { getV39EffectCategories } from "../../lib/v39-effect-category-settings.js";
+import { getV39EffectCategories, getV39EffectCategory } from "../../lib/v39-effect-category-settings.js";
 import { getV39EffectAttributes } from "../../lib/v39-effect-attribute-settings.js";
 import { resolveV39CombatEffect } from "../../lib/v39-combat-effect-rules.js";
 import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
@@ -13,6 +14,7 @@ import {applyV39TerrainModifiers} from '../../lib/v39-terrain-modifiers.js';
 import {resolveV39PowerEffectScale,isV39PowerEffectSkillEnabled} from '../../lib/v39-effect-power-scale.js';
 import {resolveV39PowerAreaScale} from '../../lib/v39-effect-power-scale.js';
 import { MAP_ENTITY_SIZE_RULES } from "../../lib/map-entity-size-rules.js";
+import { resolveV39EffectSequence } from '../../lib/v39-effect-sequence.js';
 import atmosphereConfig from '../../../../config/v39-atmosphere-display.json';
 
 const sources = new Map();
@@ -35,12 +37,14 @@ function registerSources(folder, names, sourceScaleMultiplier) {
 registerSources("320×240", effectList320, 1);
 registerSources("アニメーション1", effectListAnimation1, 2);
 const tornado=atmosphereConfig.tornado;
-sources.set(tornado.effectName,{...sources.get(tornado.sourceEffect),frameStart:tornado.firstFrame-1,frameEnd:tornado.lastFrame-1});
 const extraImages = import.meta.glob("../../../../assets/effect/アニメーション追記/*.webp", { eager:true, query:"?url", import:"default" });
 for (const [path, src] of Object.entries(extraImages)) {
   const name = path.split("/").at(-1).replace(/\.webp$/i, "");
-  if (!sources.has(name)) sources.set(name, { src, sourceScaleMultiplier:1 });
+  let key=name,index=1;
+  while(sources.has(key))key=name+(index++===1?'（追記）':`（追記${index-1}）`);
+  sources.set(key, { src, sourceScaleMultiplier:1 });
 }
+sources.set(tornado.effectName,{...sources.get(tornado.sourceEffect),frameStart:tornado.firstFrame-1,frameEnd:tornado.lastFrame-1});
 setV39EffectSettingsCatalog([...sources.keys()]);
 
 export function getV39EffectImageSource(name) {
@@ -80,7 +84,7 @@ function effectPlayer() {
   if (player && playerScene === scene) return player;
   player?.destroy?.();
   playerScene = scene;
-  player = new PhaserEffectPlayer(scene, { totalDurationMs:EFFECT_TOTAL_DURATION_MS, sequenceGapMs:10, depth:1000000 });
+  player = new V39AreaEffectPlayer(scene, { totalDurationMs:EFFECT_TOTAL_DURATION_MS, sequenceGapMs:10, depth:1000000 });
   const ownedPlayer=player;
   const release=()=>{
     scene.events.off('sleep',release);scene.events.off('shutdown',release);
@@ -91,7 +95,8 @@ function effectPlayer() {
   return player;
 }
 
-function resolveSequence(rawName) {
+function resolveSequence(rawName, steps = []) {
+  if(steps.length) return steps.map(step => ({name:step.effectName,source:sources.has(step.effectName) ? {...sources.get(step.effectName),stepTransform:step} : null})).filter(entry=>entry.source);
   const names = text(rawName, "斬撃").split(":").map((name) => text(name)).filter(Boolean);
   const resolved = names.map((name) => ({ name, source:sources.get(name) })).filter((entry) => entry.source);
   if (resolved.length) return resolved;
@@ -102,9 +107,10 @@ function resolveSequence(rawName) {
 export function resolveV39EffectPlaybackDescriptor(rawName) {
   const requestedEffectName = text(rawName, "斬撃");
   const playbackSettings = resolveV39EffectPlaybackSettings(requestedEffectName);
-  const sequence = resolveSequence(playbackSettings.sequenceName);
+  const sequence = resolveSequence(playbackSettings.sequenceName,playbackSettings.sequenceSteps);
   if (!sequence.length) return null;
   return {
+    grayscaleBase:playbackSettings.grayscaleBase === true,brightnessPercent:playbackSettings.brightnessPercent,
     requestedEffectName,
     sequenceName:playbackSettings.sequenceName,
     sequenceSources:sequence.map((entry) => ({ ...entry.source })),
@@ -122,6 +128,13 @@ export function resolveV39EffectPlaybackDescriptor(rawName) {
     gradientSpeedPercentPerSecond:number(playbackSettings.gradientSpeedPercentPerSecond, 0),
     scaleMultiplierPercent:number(playbackSettings.scaleMultiplierPercent, 100)
   };
+}
+
+// Disaster animation categories share the same persisted transforms as the editor.
+export function resolveV39FieldEffectDescriptor(categoryId,fallback){
+  const category=getV39EffectCategory(categoryId);
+  const descriptor=resolveV39EffectPlaybackDescriptor(category?.baseEffect||fallback);
+  return descriptor&&category?{...descriptor,sequenceSources:resolveSequence(category.baseEffect,resolveV39EffectSequence(category)).map(entry=>entry.source),...normalizeV39EffectTransform(category),scaleMultiplierPercent:category.scaleMultiplierPercent}:descriptor;
 }
 
 function requestValue(request, key, fallback) {
@@ -150,12 +163,19 @@ export async function playV39MapEffect(request = {}) {
   const attackAngle = origin ? Math.atan2(position.y - origin.y, position.x - origin.x) * 180 / Math.PI : 0;
   const endpoint=request.worldX !== undefined && request.worldY !== undefined ? {x:number(request.worldX),y:number(request.worldY)} : tileCenter(x,y);
   const beam=resolveV39EffectBeam(playbackSettings,origin,endpoint);
+  const perTile = !beam && playbackSettings.areaDisplay === 'tiles' && areaTiles.length > 0;
+  const visibleTiles = [...new Map(areaTiles.filter(tile => Number.isFinite(tile.x) && Number.isFinite(tile.y)
+    && (request.allowInFog === true || window.isV39TileInCurrentVision?.(tile.x,tile.y) !== false))
+    .map(tile => [String(tile.x)+','+tile.y,tile])).values()];
+  const instances = perTile ? visibleTiles.map(tile => resolveV39EffectTransform(playbackSettings,
+    tileCenter(tile.x,tile.y), attackAngle, request.angleDeg)) : undefined;
+  if (perTile && !instances.length) return false;
   const transform = beam || resolveV39EffectTransform(area ? {...playbackSettings,offsetX:0,offsetY:0} : playbackSettings, position, attackAngle, request.angleDeg);
   const angleDeg = transform.angleDeg;
-  const sequence = resolveSequence(playbackSettings.sequenceName);
+  const sequence = resolveSequence(playbackSettings.sequenceName,playbackSettings.sequenceSteps);
   if (!sequence.length) return false;
   const splash = Math.max(0, number(request.splash, 0));
-  const requestedScalePercent = Math.max(10, number(request.scalePercent, V39_EFFECT_BASE_SCALE_PERCENT * (1 + splash)));
+  const requestedScalePercent = Math.max(10, number(request.scalePercent, V39_EFFECT_BASE_SCALE_PERCENT * (perTile ? 1 : 1 + splash)));
   let power=number(request.power,0);
   if(request.power==null&&request.skillRow){
     const actor=applyV39TerrainModifiers(request.attacker||{},window.__v39FieldRuntime?.mapData);
@@ -201,16 +221,21 @@ export async function playV39MapEffect(request = {}) {
       speedPercentPerSecond:gradientSpeedPercentPerSecond
     } : null
   });
+  const isolatedSource = Number.isInteger(request.previewSequenceIndex) ? sequence[request.previewSequenceIndex] : null;
+  const playbackSequence = isolatedSource ? [isolatedSource] : sequence;
   const endRender = activeScene()?.game?.v39BeginEffectRender?.();
   try {
-    return await targetPlayer.play({
+    const playback = targetPlayer.play({
+      instances,
+      areaTiming:playbackSettings.areaTiming,
+      areaDelayMs:playbackSettings.areaDelayMs,
       x:transform.x,
       y:transform.y,
-      sequenceSources:sequence.map((entry) => entry.source),
+      sequenceSources:playbackSequence.map((entry) => entry.source),
       scalePercent,
       powerScale,
       powerScaleAxis:requestValue(request, 'powerScaleAxis', playbackSettings.powerScaleAxis),
-      fitDiameterPx:!beam && area ? area.diameter * areaScale : undefined,
+      fitDiameterPx:!beam && !perTile && area ? area.diameter * areaScale : undefined,
       stretchLengthPx:beam?.stretchLengthPx,
       stretchAxis:beam?.stretchAxis,
       angleDeg,
@@ -225,7 +250,8 @@ export async function playV39MapEffect(request = {}) {
       gradientSpeedPercentPerSecond:number(gradientSpeedPercentPerSecond, 0),
       colorStrengthPercent:number(requestValue(request, "colorStrengthPercent", playbackSettings.colorStrengthPercent), 100),
       hueAnimationDegPerFrame:number(request.hueAnimationDegPerFrame, 0),
-      grayscaleBase:request.grayscaleBase === true,
+      grayscaleBase:requestValue(request,"grayscaleBase",playbackSettings.grayscaleBase) === true,
+      brightnessPercent:requestValue(request,"brightnessPercent",playbackSettings.brightnessPercent),
       renderStyle:text(request.renderStyle, "soft"),
       showPreviousFrameGhost:request.showPreviousFrameGhost !== false,
       totalDurationMs:number(request.totalDurationMs, EFFECT_TOTAL_DURATION_MS),
@@ -234,6 +260,24 @@ export async function playV39MapEffect(request = {}) {
       displayName:"v39-effect-image",
       onFrame:request.onFrame
     });
+    const generation=targetPlayer.requestId;
+    const played=await playback;
+    const hitTiles=resolveV39HitTargets(request.hitEntries).filter(tile=>request.allowInFog===true || window.isV39TileInCurrentVision?.(tile.x,tile.y)!==false);
+    if(played && generation===targetPlayer.requestId && hitTiles.length && activeScene()===playerScene && playbackSettings.hitEffectMode!=='none'){
+      const descriptor=playbackSettings.hitEffectMode==='common'
+        ? resolveV39FieldEffectDescriptor('hit','小打撃')
+        : sources.has(playbackSettings.hitEffectName)?resolveV39EffectPlaybackDescriptor(playbackSettings.hitEffectName):null;
+      if(descriptor){
+        const scene=activeScene(),hitPlayer=new V39AreaEffectPlayer(scene,{totalDurationMs:EFFECT_TOTAL_DURATION_MS,depth:1000001});
+        const transform=normalizeV39EffectTransform(descriptor);
+        const release=()=>hitPlayer.destroy();scene.events?.once('sleep',release);scene.events?.once('shutdown',release);
+        try{await hitPlayer.play({...descriptor,instances:hitTiles.map(tile=>resolveV39EffectTransform(descriptor,tileCenter(tile.x,tile.y),attackAngle)),
+          scalePercent:V39_EFFECT_BASE_SCALE_PERCENT*descriptor.scaleMultiplierPercent/100,
+          powerScale:1,angleDeg:transform.rotationDeg,showPreviousFrameGhost:false,renderStyle:'soft',displayName:'v39-hit-effect'});}
+        finally{scene.events?.off('sleep',release);scene.events?.off('shutdown',release);hitPlayer.destroy();}
+      }
+    }
+    return played;
   } finally { endRender?.(); }
 }
 

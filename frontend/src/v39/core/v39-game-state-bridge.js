@@ -1,16 +1,18 @@
+import {dispatchV39CombatPopupChanges} from '../../lib/v39-combat-popup-rules.js';
 import {normalizeV39OperationTimeline} from '../../lib/v39-operation-phases.js';
+import {selectV39InitialRace} from '../../lib/v39-initial-spacing.js';
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
 import {normalizeV39SpatialUnitWorlds,normalizeV39SavedWorldUnitIds} from '../../lib/v39-spatial-unit-worlds.js';
 import {reconcileV39Casting} from '../../lib/v39-casting-rules.js';
 import {raceData} from '../../lib/game-data-registry.js';
-import {isV39RacePlayable} from '../../lib/v39-race-definitions.js';
+import {isV39RacePlayable,normalizeV39RaceName} from '../../lib/v39-race-definitions.js';
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
 import {buildV39UnitEntity,buildV39ClassEquipment,getV39UnitCreationOptions,inspectV39UnitCreation} from '../../lib/v39-unit-creation-rules.js';
 import {applyV39InitialSovereignProfile,getV39InitialSovereignClassCandidates} from './v39-initial-sovereign.js';
 import {withV39ConversationPersonality} from '../../lib/v39-conversation-personality.js';
 import {withV39VillageLeader} from '../../lib/v39-village-leaders.js';
 import { createPlayerFactionState, createPlayerRecord } from "../../lib/player-state.js";
-import { normalizeFactionSettlements, normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
+import { normalizeFactionSettlements, normalizeTerritoryStateRecord,getFactionSettlements } from "../../lib/settlement-state.js";
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
@@ -445,7 +447,9 @@ function setState(patch = {}, options = {}) {
   }
   reconcileV39Casting(state,normalized,options.reason);
   applyDeathPurification(state,normalized,Object.keys(patch),options);
+  const popupBefore=state;
   state = normalized;
+  dispatchV39CombatPopupChanges(popupBefore,state,patch,options);
   if (options.silent !== true) dispatchChange(options.reason || "set");
   // Internal writes can omit an unused detached return value; public callers keep it by default.
   return options.returnState === false ? undefined : getState();
@@ -464,7 +468,9 @@ function patchEnemyTurnState(patch = {}, options = {}) {
   if(next.enemyCombatRuntime?.pendingActionsByEnemyId){next.enemyCombatRuntime={...next.enemyCombatRuntime,pendingActionsByEnemyId:{...next.enemyCombatRuntime.pendingActionsByEnemyId}};}
   reconcileV39Casting(state,next,typeof options==='string'?options:options.reason);
   applyDeathPurification(state,next,Object.keys(patch));
+  const popupBefore=state;
   state = next;
+  dispatchV39CombatPopupChanges(popupBefore,state,patch,typeof options==='string'?{reason:options}:options);
   return true;
 }
 
@@ -687,13 +693,16 @@ function createRemoteSessionParticipants(players, participantSource, assignments
   return { players:normalizedPlayers, sessionParticipants:participants };
 }
 
-function createNpcSessionPlayers(count) {
-  const races=raceData.filter(row=>isV39RacePlayable(row)&&getV39InitialSovereignClassCandidates(row.key).length);
+function initialNpcRaceCandidates(){return raceData.filter(row=>isV39RacePlayable(row)&&getV39InitialSovereignClassCandidates(row.key).length);}
+function createNpcSessionPlayers(count,existingPlayers=[],templates=[]) {
+  const races=initialNpcRaceCandidates();
   if(count>0&&!races.length)throw new Error('使用可能な種族がありません。種族シートの設定を確認してください');
+  const assigned=[...existingPlayers];
   return Array.from({length:count},(_,index)=>{
-    const id=`npc-${index+1}`,race=races[Math.floor(Math.random()*races.length)]?.key;
+    const id=templates[index]?.id||`npc-${index+1}`,race=selectV39InitialRace(races,assigned)?.key;
+    assigned.push({race});
     const classes=getV39InitialSovereignClassCandidates(race),className=(classes.find(row=>row.名前==='ファイター')||classes[0])?.名前;
-    const player=createPlayerRecord({id,label:`NPC勢力${index+1}`,race,isPlayer:false,ready:true,controllerParticipantId:'',
+    const player=createPlayerRecord({id,label:templates[index]?.label||`NPC勢力${index+1}`,race,isPlayer:false,autoInitialRace:true,ready:true,controllerParticipantId:'',
       factionState:createPlayerFactionState({nationLogKey:id},id)},index);
     const result=applyV39InitialSovereignProfile({players:[player]},{playerId:id,race,className,characterName:`${race}の統治者`,villageName:`${race}の拠点`});
     if(!result.ok)throw new Error(result.reason);
@@ -719,6 +728,18 @@ function createNpcSessionPlayers(count) {
   });
 }
 
+function reconcileInitialNpcRaces(){
+  const pending=state.players.filter(p=>p.isPlayer===false&&p.autoInitialRace&&!getFactionSettlements(p.factionState).some(s=>s.placed));
+  const assigned=state.players.filter(p=>!pending.includes(p)),replacements=new Map(),races=initialNpcRaceCandidates();
+  for(const player of pending){
+    const count=race=>assigned.filter(p=>normalizeV39RaceName(p.race)===normalizeV39RaceName(race)).length;
+    if(count(player.race)>Math.min(...races.map(row=>count(row.key)))){
+      const next=createNpcSessionPlayers(1,assigned,[player])[0];replacements.set(player.id,next);assigned.push(next);
+    }else assigned.push(player);
+  }
+  if(replacements.size)setState({players:state.players.map(p=>replacements.get(p.id)||p)},{reason:'initial-npc-race-reconciled'});
+}
+
 function startMultiplayerSession(playerCount, options = {}) {
   const count = normalizeV39LocalPlayerCount(playerCount);
   const initialPlayers = createMultiplayerSessionPlayers(count, options?.playerFactionSelections);
@@ -734,7 +755,7 @@ function startMultiplayerSession(playerCount, options = {}) {
     throw new Error("通信参加者がゲーム状態へ接続されていません。");
   }
   const gameSettings = normalizeGameStartSettings(options?.gameSettings || {...state.gameSettings,npcFactionCount:0});
-  const players = [...session.players,...createNpcSessionPlayers(gameSettings.npcFactionCount)];
+  const players = [...session.players,...createNpcSessionPlayers(gameSettings.npcFactionCount,session.players)];
   const activePlayerId = players[0]?.id || "";
   state = normalizeState({
     ...EMPTY_STATE,
@@ -775,7 +796,7 @@ function startLocalSession(playerCount, options = {}) {
     options?.playerParticipantAssignments
   );
   const gameSettings = normalizeGameStartSettings(options?.gameSettings || {...state.gameSettings,npcFactionCount:0});
-  const players = [...session.players,...createNpcSessionPlayers(gameSettings.npcFactionCount)];
+  const players = [...session.players,...createNpcSessionPlayers(gameSettings.npcFactionCount,session.players)];
   const activePlayerId = players[0].id;
   const activeTurnPlayerId = activePlayerId;
   state = normalizeState({
@@ -856,6 +877,7 @@ window.updateV39ActiveFactionState = updateActiveFactionState;
 window.updateV39TileState = updateTileState;
 window.clearV39GameState = clearState;
 window.startV39LocalSession = startLocalSession;
+window.reconcileV39InitialNpcRaces = reconcileInitialNpcRaces;
 window.startV39MultiplayerSession = startMultiplayerSession;
 window.addV39TestFaction = createTestFaction;
 window.__v39GameStateDefaults = normalizeState(window.V39_TEST_GAME_STATE || EMPTY_STATE);

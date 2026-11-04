@@ -59,6 +59,7 @@ function defaultSetting(attributeName = "") {
   const [gradientColorA, gradientColorB] = ATTRIBUTE_DEFAULT_COLORS[attributeName]
     || [DEFAULT_GRADIENT_A, DEFAULT_GRADIENT_B];
   return {
+    grayscaleBase:true,brightnessPercent:100,
     decorationEffect:"",
     tint:"",
     gradientEnabled:false,
@@ -84,6 +85,8 @@ function normalizeSetting(raw = {}, attributeName = "") {
   const direction = text(raw.gradientDirection).toLowerCase();
   const motion = text(raw.gradientMotionMode).toLowerCase();
   return {
+    grayscaleBase:raw.grayscaleBase !== false,
+    brightnessPercent:Math.round(clamp(raw.brightnessPercent,0,200,100)),
     decorationEffect:rawDecoration && catalog.size && !catalog.has(rawDecoration) ? "" : rawDecoration,
     tint:color(raw.tint, ""),
     gradientEnabled:raw.gradientEnabled === true,
@@ -203,6 +206,7 @@ export function getV39EffectAttributeSettingsSnapshot() {
   const attributes = {};
   for (const attribute of getV39EffectAttributes()) {
     attributes[attribute.name] = {
+      grayscaleBase:attribute.grayscaleBase !== false,brightnessPercent:attribute.brightnessPercent,
       decorationEffect:attribute.decorationEffect,
       tint:attribute.tint,
       gradientEnabled:attribute.gradientEnabled,

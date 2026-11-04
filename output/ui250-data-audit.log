@@ -1,0 +1,50 @@
+
+> fantasy-strategy@0.1.0 audit:data
+> node scripts/audit-game-data-usage.mjs
+
+{
+  "output": "artifacts\\game-data-usage-report.json",
+  "tableCount": 36,
+  "fieldCount": 854,
+  "referencedCount": 802,
+  "reservedCount": 1,
+  "unconnectedCount": 51,
+  "unconnectedByTable": [
+    {
+      "table": "イベント_一般村",
+      "count": 4
+    },
+    {
+      "table": "イベント会話",
+      "count": 1
+    },
+    {
+      "table": "クラス",
+      "count": 8
+    },
+    {
+      "table": "スキル一覧",
+      "count": 24
+    },
+    {
+      "table": "テストクラス",
+      "count": 7
+    },
+    {
+      "table": "モンスター合成",
+      "count": 1
+    },
+    {
+      "table": "技能",
+      "count": 4
+    },
+    {
+      "table": "種族",
+      "count": 1
+    },
+    {
+      "table": "説明",
+      "count": 1
+    }
+  ]
+}

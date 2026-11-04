@@ -1,4 +1,4 @@
-import { raceData } from "../lib/game-data-registry.js";
+import { raceData, descriptionData } from "../lib/game-data-registry.js";
 
 const raceClassEntries = raceData
   .flatMap(row => [row.key,row.name,...(Array.isArray(row.旧名称)?row.旧名称:[])]
@@ -18,25 +18,10 @@ export const COMBAT_STATUS_FIELDS = Object.freeze(["HP", "MP", "ST", "攻撃", "
 export const DAMAGE_TYPE_FIELDS = Object.freeze(["物理", "魔法", "射撃", "切断", "貫通", "打撃", "炎", "氷", "雷", "毒", "光", "闇"]);
 export const SKILL_STATE_KEYS = Object.freeze(["精神", "盲目", "怯み", "出血", "拘束", "幻覚"]);
 
-export const SKILL_FIELD_DEFS = Object.freeze([
-  Object.freeze({ key: "指揮", label: "指揮" }),
-  Object.freeze({ key: "威圧", label: "威圧" }),
-  Object.freeze({ key: "看破", label: "看破" }),
-  Object.freeze({ key: "変装", label: "変装" }),
-  Object.freeze({ key: "早業", label: "早業" }),
-  Object.freeze({ key: "飛行", label: "飛行" }),
-  Object.freeze({ key: "技術", label: "技術" }),
-  Object.freeze({ key: "隠密", label: "隠密" }),
-  Object.freeze({ key: "索敵", label: "索敵" }),
-  Object.freeze({ key: "農業", label: "農業" }),
-  Object.freeze({ key: "林業", label: "林業" }),
-  Object.freeze({ key: "漁業", label: "漁業" }),
-  Object.freeze({ key: "工業", label: "工業" }),
-  Object.freeze({ key: "統治", label: "統治" }),
-  Object.freeze({ key: "交渉", label: "交渉" }),
-  Object.freeze({ key: "魔術", label: "魔術", aliases: Object.freeze(["魔法技術"]) }),
-  Object.freeze({ key: "信仰", label: "信仰" })
-]);
+// Keep legacy mechanics until their replacement is specified; do not equate production or crafting skills by guesswork.
+const skillNames=[...new Set([...descriptionData.map(row=>String(row.技能名||'').trim()).filter(Boolean),'技術','工業'])];
+export const SKILL_FIELD_DEFS = Object.freeze(skillNames.map(key=>Object.freeze({key,label:key,
+  ...(key==='魔術'?{aliases:Object.freeze(['魔法技術'])}:{})})));
 
 export const SKILL_LEVEL_FIELDS = Object.freeze(SKILL_FIELD_DEFS.map(field => field.key));
 

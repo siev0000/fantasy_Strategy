@@ -1,9 +1,14 @@
-import { PhaserEffectPlayer, resolveEffectSheetLayout, resolveEffectFrameRange, resolveEffectPowerAxes } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
+import { resolveEffectSheetLayout, resolveEffectFrameRange, resolveEffectPowerAxes, resolveEffectSourceTransform, resolveEffectImpactPlacement, resolveEffectImpactPercent } from "../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs";
+import { installV39EffectImpactDrag, resolveV39EffectImpactGuide } from './v39-effect-impact-drag.js';
+import { installV39EffectHeaderCollapse } from './v39-effect-header-collapse.js';
+import { selectV39EffectPreviewSequence, resolveV39EffectSequence } from '../../lib/v39-effect-sequence.js';
+import { renderV39EffectSequenceEditor } from './v39-effect-sequence-editor.js';
+import { V39AreaEffectPlayer } from '../../lib/v39-area-effect-player.js';
 import { resolveV39EffectPlaybackDescriptor } from "../combat/v39-effect-player.js";
 import { effectPreviewGeometry, renderEffectPreviewCombatants, getV39EffectPreviewMapRequest, V39_EFFECT_PREVIEW_LIMITS } from "./v39-effect-preview-combatants.js";
-import { installEffectImagePicker, syncEffectImagePicker } from "./v39-effect-image-picker.js";
+import { installEffectImagePicker, openEffectImagePicker } from "./v39-effect-image-picker.js";
 import { drawIdlePreview, hideIdlePreview, updateGradientSideLabels } from "./v39-effect-settings-static-preview.js";
-import { V39_EFFECT_ROTATION_LIMIT, V39_EFFECT_OFFSET_LIMIT, V39_EFFECT_BASE_SCALE_PERCENT } from "../../lib/v39-effect-transform.js";
+import { V39_EFFECT_BASE_SCALE_PERCENT, V39_AREA_EFFECT_DEFAULT_DELAY_MS, V39_AREA_EFFECT_DELAY_LIMIT_MS } from "../../lib/v39-effect-transform.js";
 import {
   V39_EFFECT_GRADIENT_SPEED_MAX,
   V39_EFFECT_GRADIENT_SPEED_MIN,
@@ -30,6 +35,16 @@ const BASE_COLORS = Object.freeze([
 ]);
 
 let selectedEffectName = "";
+let activeSequenceIndex = -1;
+let pickingImpact = false;
+let draggingImpact = false;
+let impactEditing = false;
+let sequenceEditorKey = '';
+let selectedPreviewOnly = false;
+
+function selectedPreviewDescriptor() {
+  return selectV39EffectPreviewSequence(resolveV39EffectPlaybackDescriptor(selectedEffectName),activeSequenceIndex,selectedPreviewOnly);
+}
 let activeSettingsTab = "basic";
 let rendering = false;
 let previewGame = null;
@@ -55,7 +70,8 @@ export function setV39EffectPreviewFrame(index) {
   if (previewPanelVisible() && playbackMode === "frame") void showPanelFrame();
 }
 
-export function selectV39EffectSettingsProxy(name, patch, label) {
+export function selectV39EffectSettingsProxy(name, patch, label, editorKey = name) {
+  if (sequenceEditorKey !== editorKey) { pickingImpact=false;activeSequenceIndex = -1; selectedPreviewOnly = false; sequenceEditorKey = editorKey; }
   const source = element("v39-effect-setting-source");
   if (!source || !isV39EffectSettingsTarget(name)) return false;
   if (![...source.options].some(option => option.value === name)) source.add(new Option(label || name, name));
@@ -86,7 +102,7 @@ function installStyles() {
     #v39-effect-settings-host{position:fixed;inset:0;z-index:10160;display:grid;place-items:center;background:rgba(2,8,11,.94);overflow:hidden}
     #v39-effect-settings-host[hidden]{display:none!important}
     #v39-effect-settings-host #v39-effect-settings-panel{width:min(1100px,100%);height:100%;max-height:100dvh;box-sizing:border-box}
-    #v39-effect-settings-panel{height:100%;min-height:0;overflow:hidden;display:grid;grid-template-rows:auto minmax(0,42%) minmax(0,1fr);background:#0e171b;color:#e7efec}
+    #v39-effect-settings-panel{height:100%;min-height:0;overflow:hidden;display:grid;grid-template-rows:auto minmax(180px,42%) minmax(0,1fr);background:#0e171b;color:#e7efec}
     #v39-effect-settings-panel[hidden]{display:none!important}
     @media(min-width:650px) and (max-height:500px){
       #v39-effect-settings-host #v39-effect-settings-panel{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
@@ -97,7 +113,11 @@ function installStyles() {
     .v39-effect-settings-head{min-height:42px;display:flex;align-items:center;gap:8px;padding:5px 7px;border-bottom:1px solid #3a4c53;background:#142126}
     .v39-effect-settings-head strong{font-size:var(--font-body)}
     .v39-effect-settings-back{min-height:34px;border:1px solid #4b626b;border-radius:6px;background:#18282e;color:#e8f2f0;padding:4px 10px;font:inherit;font-weight:800;cursor:pointer}
-    .v39-effect-preview-pane{min-height:0;display:grid;grid-template-rows:auto auto auto minmax(0,1fr);gap:7px;padding:7px;border-bottom:1px solid #354950;background:linear-gradient(180deg,#101b20,#0a1115)}
+    .v39-effect-preview-pane{min-height:0;min-width:0;display:grid;grid-template-rows:auto minmax(120px,1fr);gap:7px;padding:7px;border-bottom:1px solid #354950;background:linear-gradient(180deg,#101b20,#0a1115)}
+    .v39-effect-preview-pane{overflow:hidden}
+    #v39-effect-preview-controls{flex:0 1 auto;min-height:0;max-height:45%;overflow-y:auto;overflow-x:hidden;display:grid;gap:5px;padding:4px;border-bottom:1px solid #354950;overscroll-behavior:contain}
+    #v39-effect-preview-header-toggle{margin-left:auto;flex-shrink:0;min-height:32px;padding:2px 7px;border:1px solid #536a72;border-radius:5px;background:#173039;color:#eef5f2;font:inherit;cursor:pointer}
+    .is-preview-header-collapsed #v39-effect-preview-controls{display:none!important}
     .v39-effect-playback-controls,.v39-effect-frame-controls{display:flex;align-items:center;gap:5px;min-width:0}
     .v39-effect-playback-controls select{min-width:0;flex:1;background:#0b1519;color:#eef5f2;border:1px solid #536a72;border-radius:6px;min-height:32px;font:inherit}
     .v39-effect-frame-controls{flex:2}.v39-effect-frame-controls[hidden]{display:none}
@@ -115,7 +135,7 @@ function installStyles() {
     .v39-effect-preview-selector{min-width:0;flex:1;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:7px;color:#c8d6d7;font-size:var(--font-secondary);font-weight:800}
     .v39-effect-preview-selector select{width:100%;min-width:0;min-height:38px;border:1px solid #536a72;border-radius:7px;background:#0b1519;color:#eef5f2;padding:4px 7px;font:inherit}
     .v39-effect-preview-replay{flex:0 0 auto;min-height:38px;border:1px solid #4f6b74;border-radius:7px;background:#173039;color:#eef8f5;padding:4px 10px;font:inherit;font-weight:800;cursor:pointer}
-    #v39-effect-preview-stage{position:relative;min-height:0;overflow:hidden;border:1px solid #31464d;border-radius:10px;background:radial-gradient(circle at 50% 50%,rgba(50,76,84,.34),rgba(5,10,13,.98) 68%);box-shadow:inset 0 0 28px rgba(0,0,0,.5)}
+    #v39-effect-preview-stage{position:relative;min-width:0;min-height:120px;overflow:hidden;border:1px solid #31464d;border-radius:10px;background:radial-gradient(circle at 50% 50%,rgba(50,76,84,.34),rgba(5,10,13,.98) 68%);box-shadow:inset 0 0 28px rgba(0,0,0,.5)}
     #v39-effect-preview-stage::before,#v39-effect-preview-stage::after{content:"";position:absolute;z-index:0;pointer-events:none;background:rgba(119,161,170,.1)}
     #v39-effect-preview-stage::before{left:50%;top:8%;bottom:8%;width:1px}
     #v39-effect-preview-stage::after{top:50%;left:8%;right:8%;height:1px}
@@ -126,18 +146,22 @@ function installStyles() {
     .v39-effect-preview-combatants>div{position:absolute;transform:translate(-50%,-50%)}
     .v39-effect-preview-combatants img{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:contain;pointer-events:none}
     .v39-effect-preview-combatants [hidden]{display:none}.v39-effect-preview-combatants button{position:absolute;transform:translate(-50%,-50%);padding:0;min-height:0;min-width:0;border:0;background:none;pointer-events:auto;cursor:pointer;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}.v39-effect-preview-combatants svg{width:100%;height:100%}.v39-effect-preview-combatants polygon{fill:#253c39;stroke:#779487;stroke-width:1}.v39-effect-preview-combatants [aria-pressed="true"] polygon{fill:#416055;stroke:#ffe28b;stroke-width:2}.v39-effect-preview-combatants span{color:#eef5f2;font-size:var(--font-secondary);text-shadow:0 1px 3px #000}
+    #v39-effect-hit-image-picker{font:inherit;background:#173039;color:#edf7f4;border:1px solid #536a72;border-radius:5px;padding:5px}
+    #v39-effect-attribute-base-row,#v39-effect-attribute-brightness-row{display:none}.is-attribute-mode #v39-effect-attribute-base-row,.is-attribute-mode #v39-effect-attribute-brightness-row{display:grid}
+    #v39-effect-hit-specific[hidden]{display:none}
     #v39-effect-gradient-guides{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;overflow:hidden}
     #v39-effect-gradient-guides[hidden]{display:none}
     #v39-effect-gradient-guides text{font-size:var(--font-secondary);font-weight:800;paint-order:stroke;stroke:#071015;stroke-width:3px;stroke-linejoin:round}
-    .v39-effect-settings-lower{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#0d161a}
+    .v39-effect-settings-lower{min-height:0;min-width:0;display:grid;grid-template-columns:44px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;background:#0d161a}
     .v39-effect-settings-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;border-bottom:1px solid #354950;background:#111d22}
     #v39-effect-setting-preview-lower{min-width:68px;min-height:42px;border:0;border-left:1px solid #2b3c42;background:#173039;color:#eef8f5;padding:5px 9px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
     #v39-effect-setting-preview-lower:hover{background:#1d424b;color:#fff}
     @media(max-width:600px){#v39-effect-setting-preview-lower{min-width:60px;min-height:44px;padding:4px 7px;font-size:var(--font-compact)}}
     .v39-effect-settings-tab{min-width:0;min-height:42px;border:0;border-right:1px solid #2b3c42;background:#111d22;color:#9eb0b3;padding:5px 3px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
     .v39-effect-settings-tab:last-child{border-right:0}.v39-effect-settings-tab[aria-selected="true"]{background:#1b343b;color:#eff9f7;box-shadow:inset 0 -2px #70c5d2}
-    .v39-effect-settings-body{min-height:0;overflow:hidden}
-    .v39-effect-settings-tabpanel{height:100%;min-height:0;overflow:auto;padding:7px;display:grid;gap:7px;align-content:start;overscroll-behavior:contain}
+    .v39-effect-settings-lower>.v39-effect-settings-tabs,.v39-effect-settings-lower>.v39-effect-settings-body,.v39-effect-settings-lower>#v39-effect-settings-status{grid-column:2;min-width:0}
+    .v39-effect-settings-body{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+    .v39-effect-settings-tabpanel{flex:1 1 0;height:auto;min-height:0;overflow:auto;padding:7px;display:grid;gap:7px;align-content:start;overscroll-behavior:contain}
     .v39-effect-settings-tabpanel[hidden]{display:none!important}
     .v39-effect-settings-note{margin:0;padding:7px 8px;border:1px solid #31464d;border-radius:7px;background:#101d22;color:#aebec1;font-size:var(--font-secondary);line-height:1.45}
     .v39-effect-setting-row{display:grid;grid-template-columns:minmax(105px,.7fr) minmax(0,1.3fr);align-items:center;gap:7px;padding:7px 8px;border:1px solid #33474e;border-radius:7px;background:#111d22}
@@ -145,6 +169,26 @@ function installStyles() {
     .v39-effect-setting-row>span:first-child{font-size:var(--font-secondary);font-weight:800;color:#c7d4d5}
     .v39-effect-setting-row select,.v39-effect-setting-row input[type="number"],.v39-effect-setting-row input[type="text"]{width:100%;min-width:0;min-height:38px;border:1px solid #50646b;border-radius:6px;background:#0d171b;color:#eef5f2;padding:4px 7px;font:inherit}
     .v39-effect-setting-row input:disabled,.v39-effect-setting-row select:disabled{opacity:.45;cursor:not-allowed}
+    #v39-effect-setting-sequence input,#v39-effect-setting-sequence select{min-width:0;min-height:32px;border:1px solid #50646b;border-radius:5px;background:#0d171b;color:#eef5f2;padding:3px 5px;font:inherit}
+    #v39-effect-setting-sequence button{min-height:32px;border:1px solid #536a72;border-radius:5px;background:#173039;color:#edf7f4;padding:3px 7px;font:inherit;cursor:pointer}
+    #v39-effect-setting-sequence button:disabled{opacity:.4;cursor:default}
+    #v39-effect-setting-sequence label{min-width:0;font-size:var(--font-secondary);color:#c7d4d5}
+    #v39-effect-sequence-tabs{grid-column:1;grid-row:1/-1;display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 2px;border-right:1px solid #354950;overscroll-behavior:contain}
+    #v39-effect-sequence-tabs button{flex:0 0 auto;box-sizing:border-box;width:100%;min-width:0;min-height:38px;padding:2px 3px;white-space:nowrap;font-size:var(--font-secondary);border:1px solid #536a72;border-radius:5px;background:#11252c;color:#dbe9e9;font:inherit;font-size:var(--font-secondary);cursor:pointer}
+    #v39-effect-sequence-tabs [aria-selected="true"]{background:#244b55;border-color:#70d2e3;color:#fff}
+    #v39-effect-sequence-tabs button:disabled{opacity:.4}
+    #v39-effect-settings-panel.is-attribute-mode .v39-effect-settings-lower{grid-template-columns:minmax(0,1fr)}
+    #v39-effect-settings-panel.is-attribute-mode .v39-effect-settings-lower>*{grid-column:1}
+    .v39-effect-playback-controls{flex-wrap:wrap}
+    #v39-effect-frame-controls{min-width:100%}
+    #v39-effect-common-settings,#v39-effect-common-actions{display:grid;gap:7px}
+    #v39-effect-settings-panel:not(.is-attribute-mode) #v39-effect-base-row{display:none}
+    #v39-effect-settings-panel:not(.is-attribute-mode)[data-sequence-scope="step"] #v39-effect-common-settings,
+    #v39-effect-settings-panel:not(.is-attribute-mode)[data-sequence-scope="step"] #v39-effect-common-actions,
+    #v39-effect-settings-panel[data-sequence-scope="common"] #v39-effect-setting-sequence,
+    #v39-effect-settings-panel.is-attribute-mode #v39-effect-sequence-tabs,
+    #v39-effect-settings-panel.is-attribute-mode #v39-effect-setting-sequence,
+    #v39-effect-settings-panel.is-attribute-mode #v39-effect-preview-scope{display:none}
     .v39-effect-colors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
     .v39-effect-color-card{min-width:0;display:grid;gap:5px;padding:7px;border:1px solid #33474e;border-radius:7px;background:#111d22}
     .v39-effect-color-card>label{display:flex;align-items:center;gap:6px;font-size:var(--font-secondary)}
@@ -153,15 +197,6 @@ function installStyles() {
     #v39-effect-color-single[hidden],#v39-effect-color-gradient[hidden],#v39-effect-color-strength[hidden]{display:none}
     #v39-effect-color-gradient{display:grid;gap:7px}
     [data-v39-effect-panel="color"] .v39-effect-setting-row{grid-template-columns:85px minmax(0,1fr)}
-    .v39-effect-setting-row.v39-effect-image-picker{grid-template-columns:minmax(0,1fr)}
-    .v39-effect-image-picker-head{display:flex;align-items:center;gap:6px}.v39-effect-image-picker-head>span{flex:1}
-    .v39-effect-image-picker button{font:inherit;color:#edf7f4;background:#173039;border:1px solid #536a72;border-radius:6px;cursor:pointer;padding:6px;min-height:36px}
-    .v39-effect-image-picker [aria-pressed="true"]{border-color:#ffe28b;background:#345249}
-    #v39-effect-image-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;max-height:260px;overflow-y:auto;overscroll-behavior:contain}
-    #v39-effect-image-gallery[hidden],#v39-effect-setting-base[hidden]{display:none}
-    #v39-effect-image-gallery button{display:flex;flex-direction:column;align-items:center;min-width:0}
-    #v39-effect-image-gallery canvas{display:block;width:100%;height:72px;object-fit:contain;background:#091318;border-radius:4px}
-    #v39-effect-image-gallery span{overflow-wrap:anywhere;font-size:var(--font-secondary);line-height:1.3;margin-top:4px}
     .v39-effect-tint-code{color:#a9b8ba;font-size:var(--font-secondary);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
     .v39-effect-gradient-speed{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px}
     .v39-effect-gradient-speed small{color:#9fb0b3;font-size:var(--font-secondary);white-space:nowrap}
@@ -172,7 +207,7 @@ function installStyles() {
     #v39-effect-settings-status{min-height:28px;margin:0;padding:5px 8px;border-top:1px solid #293b41;background:#0a1216;color:#a9bdc0;font-size:var(--font-secondary);line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
     #v39-effect-settings-status.is-error{color:#f3a092;background:#2c1715}
     @media(max-width:600px){
-      .v39-effect-settings-head{min-height:40px;padding:4px 6px}
+      .v39-effect-settings-head{min-height:34px;padding:3px 5px}
       .v39-effect-preview-pane{padding:5px;gap:5px}
       .v39-effect-preview-selector{grid-template-columns:1fr;gap:3px}.v39-effect-preview-selector>span{display:none}
       .v39-effect-preview-selector select,.v39-effect-preview-replay{min-height:40px}
@@ -231,13 +266,28 @@ function ensurePanel() {
     <header class="v39-effect-settings-head">
       <button type="button" id="v39-effect-settings-back" class="v39-effect-settings-back">← 管理</button>
       <strong>エフェクト設定</strong>
+      <button type="button" id="v39-effect-preview-header-toggle" aria-controls="v39-effect-preview-controls" aria-expanded="true">条件 ▴</button>
     </header>
     <section class="v39-effect-preview-pane" aria-label="エフェクトプレビュー">
       <div class="v39-effect-preview-toolbar">
         <label class="v39-effect-preview-selector"><span>対象</span><select id="v39-effect-setting-source" aria-label="対象エフェクト"></select></label>
         <button type="button" id="v39-effect-setting-preview-local" class="v39-effect-preview-replay">▶ 再生</button>
       </div>
+      <div id="v39-effect-preview-stage"><div class="v39-effect-preview-placeholder">プレビューを準備中…</div><svg id="v39-effect-gradient-guides" aria-label="グラデーションの基準位置" hidden></svg><div class="v39-effect-preview-camera"><label>倍率 <input id="v39-effect-preview-zoom" type="number" min="${V39_EFFECT_PREVIEW_LIMITS.minimumZoomPercent}" max="${V39_EFFECT_PREVIEW_LIMITS.maximumZoomPercent}" value="${V39_EFFECT_PREVIEW_LIMITS.defaultZoomPercent}" aria-label="プレビュー倍率">%</label><button type="button" id="v39-effect-preview-fit">全体表示</button></div><output id="v39-effect-preview-summary"></output></div>
+    </section>
+    <section class="v39-effect-settings-lower">
+      <nav id="v39-effect-sequence-tabs"></nav>
+      <nav class="v39-effect-settings-tabs" aria-label="設定カテゴリ" role="tablist">
+        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="basic" role="tab" aria-selected="true">基本</button>
+        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="color" role="tab" aria-selected="false">色</button>
+        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="motion" role="tab" aria-selected="false">動き</button>
+        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="data" role="tab" aria-selected="false">保存</button>
+        <button type="button" id="v39-effect-setting-preview-lower" aria-label="エフェクトを再生">▶ 再生</button>
+      </nav>
+      <div class="v39-effect-settings-body">
+      <div id="v39-effect-preview-controls">
       <div class="v39-effect-playback-controls">
+        <select id="v39-effect-preview-scope" aria-label="再生対象"><option value="all">全体再生</option><option value="selected">このアニメのみ</option></select>
         <input type="hidden" id="v39-effect-preview-direction" value="0">
         <select id="v39-effect-playback-mode" aria-label="再生方式"><option value="once">1回再生</option><option value="loop">ループ</option><option value="frame">コマ切り替え</option><option value="full-image">元画像全体</option></select>
         <div id="v39-effect-frame-controls" class="v39-effect-frame-controls" hidden>
@@ -253,31 +303,31 @@ function ensurePanel() {
         <label>半径<input id="v39-effect-preview-radius" type="number" min="0" max="${V39_EFFECT_PREVIEW_LIMITS.maximumAreaRadius}" value="1" aria-label="範囲半径（マス）" disabled></label>
         <label>威力<input id="v39-effect-preview-power" type="number" min="0" max="10000" value="100" aria-label="威力補正プレビュー"></label>
       </div>
-      <div id="v39-effect-preview-stage"><div class="v39-effect-preview-placeholder">プレビューを準備中…</div><svg id="v39-effect-gradient-guides" aria-label="グラデーションの基準位置" hidden></svg><div class="v39-effect-preview-camera"><label>倍率 <input id="v39-effect-preview-zoom" type="number" min="${V39_EFFECT_PREVIEW_LIMITS.minimumZoomPercent}" max="${V39_EFFECT_PREVIEW_LIMITS.maximumZoomPercent}" value="${V39_EFFECT_PREVIEW_LIMITS.defaultZoomPercent}" aria-label="プレビュー倍率">%</label><button type="button" id="v39-effect-preview-fit">全体表示</button></div><output id="v39-effect-preview-summary"></output></div>
-    </section>
-    <section class="v39-effect-settings-lower">
-      <nav class="v39-effect-settings-tabs" aria-label="設定カテゴリ" role="tablist">
-        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="basic" role="tab" aria-selected="true">基本</button>
-        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="color" role="tab" aria-selected="false">色</button>
-        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="motion" role="tab" aria-selected="false">動き</button>
-        <button type="button" class="v39-effect-settings-tab" data-v39-effect-tab="data" role="tab" aria-selected="false">保存</button>
-        <button type="button" id="v39-effect-setting-preview-lower" aria-label="エフェクトを再生">▶ 再生</button>
-      </nav>
-      <div class="v39-effect-settings-body">
+      </div>
+
         <section class="v39-effect-settings-tabpanel" data-v39-effect-panel="basic" role="tabpanel">
-          <div class="v39-effect-setting-row"><span>基本形状</span><select id="v39-effect-setting-base" aria-label="基本形状"></select></div>
+          <div id="v39-effect-common-settings">
+          <label class="v39-effect-setting-row"><span>ヒット演出</span><select id="v39-effect-setting-hit-mode"><option value="none">なし</option><option value="common">共通（ヒットカテゴリ）</option><option value="specified">指定</option></select></label>
+          <div id="v39-effect-hit-specific" class="v39-effect-setting-row" hidden><span>指定画像</span><select id="v39-effect-setting-hit-name" aria-label="ヒット画像"></select><button type="button" id="v39-effect-hit-image-picker">画像一覧</button></div>
+          <div id="v39-effect-base-row" class="v39-effect-setting-row"><span>基本形状</span><select id="v39-effect-setting-base" aria-label="基本形状"></select></div>
           <label class="v39-effect-setting-row"><span>エフェクトの向き</span><select id="v39-effect-setting-orientation"><option value="fixed">固定向き</option><option value="attack">攻撃方向に回転（右が基準）</option></select></label>
           <label class="v39-effect-setting-row"><span>表示位置・伸長</span><select id="v39-effect-setting-placement"><option value="target">通常：着弾点に表示</option><option value="beam-x">発射元→対象へ伸長（横画像：左→右）</option><option value="beam-y">発射元→対象へ伸長（縦画像：上→下）</option></select></label>
+          <label class="v39-effect-setting-row"><span>範囲エフェクト</span><select id="v39-effect-setting-area"><option value="center">中心に1つ（範囲に合わせて拡大）</option><option value="tiles">対象マスごと（通常サイズ）</option></select></label>
+          <label class="v39-effect-setting-row"><span>マスごとの再生タイミング</span><select id="v39-effect-setting-area-timing"><option value="simultaneous">同時</option><option value="random">ランダムにずらす</option></select></label>
+          <label class="v39-effect-setting-row"><span>ずらす幅（0〜指定値ms）</span><span class="v39-effect-gradient-height"><input type="range" id="v39-effect-setting-area-delay-slider" min="0" max="${V39_AREA_EFFECT_DELAY_LIMIT_MS}" step="1" value="${V39_AREA_EFFECT_DEFAULT_DELAY_MS}" aria-label="ランダム開始遅延の最大値"><input type="number" id="v39-effect-setting-area-delay" min="0" max="${V39_AREA_EFFECT_DELAY_LIMIT_MS}" step="1" value="${V39_AREA_EFFECT_DEFAULT_DELAY_MS}" aria-label="ランダム開始遅延（ms）"></span></label>
           <label class="v39-effect-setting-row"><span>威力による拡大方向</span><select id="v39-effect-setting-power-axis"><option value="both">縦横両方</option><option value="x">横だけ（画像基準）</option><option value="y">縦だけ（画像基準）</option></select></label>
-          <p id="v39-effect-setting-placement-hint" class="v39-effect-setting-hint">伸長時は距離と攻撃方向に追従し、角度・位置補正も適用。位置X/Yは画像の右/下方向の補正です。倍率は太さに適用し、範囲拡大は使いません。カテゴリ設定は実戦にも自動反映します（スキルのアニメ指定を優先）。</p>
-          ${[["rotation", "角度補正 (°)", V39_EFFECT_ROTATION_LIMIT], ["offset-x", "位置X (px)", V39_EFFECT_OFFSET_LIMIT], ["offset-y", "位置Y (px)", V39_EFFECT_OFFSET_LIMIT]].map(([id, label, limit]) => `
-            <label class="v39-effect-setting-row"><span>${label}</span><span class="v39-effect-gradient-height"><input type="range" id="v39-effect-setting-${id}-slider" min="${-limit}" max="${limit}" step="1" value="0" aria-label="${label}"><input type="number" id="v39-effect-setting-${id}" min="${-limit}" max="${limit}" step="1" value="0" aria-label="${label}の数値"></span></label>`).join("")}
-          <p class="v39-effect-settings-note">固定：指定角度。方向連動：攻撃方向＋補正角度。位置は画像の右／下方向が＋で、画像の向きに合わせて回転します。元画像が上向きなら90°補正で右向き基準になります。</p>
+          <p id="v39-effect-setting-placement-hint" class="v39-effect-setting-hint">伸長時は距離と攻撃方向に追従し、角度・位置補正は各番号タブで指定します。倍率は太さに適用し、範囲拡大は使いません。カテゴリ設定は実戦にも自動反映します（スキルのアニメ指定を優先）。</p>
           <label class="v39-effect-setting-row"><span>追加装飾</span><select id="v39-effect-setting-decoration"></select></label>
+          </div>
+          <section id="v39-effect-setting-sequence"><div id="v39-effect-sequence-list"></div><p class="v39-effect-settings-note">1つ目の終了後に次を再生。倍率は共通倍率への追加補正です。角度・位置は各アニメーション固有です。</p></section>
+          <div id="v39-effect-common-actions">
           <label class="v39-effect-setting-row"><span>基準Scale倍率</span><input type="number" id="v39-effect-setting-scale" min="${V39_EFFECT_SCALE_MIN}" max="${V39_EFFECT_SCALE_MAX}" step="5" value="100"></label>
           <div class="v39-effect-settings-actions"><button type="button" id="v39-effect-setting-reset">↺ この設定を初期化</button></div>
+          </div>
         </section>
         <section class="v39-effect-settings-tabpanel" data-v39-effect-panel="color" role="tabpanel" hidden>
+          <label id="v39-effect-attribute-brightness-row" class="v39-effect-setting-row"><span>光度 (%)</span><span class="v39-effect-gradient-height"><input id="v39-effect-setting-brightness-slider" type="range" min="0" max="200" step="1" value="100" aria-label="光度"><input id="v39-effect-setting-brightness" type="number" min="0" max="200" step="1" value="100" aria-label="光度の数値"></span></label>
+          <label id="v39-effect-attribute-base-row" class="v39-effect-setting-row"><span>着色前の画像</span><select id="v39-effect-setting-grayscale"><option value="mono">モノクロ化</option><option value="original">元色を保持</option></select></label>
           <label class="v39-effect-setting-row"><span>着色方式</span><select id="v39-effect-setting-color-mode"><option value="none">なし</option><option value="tint">単色</option><option value="gradient">グラデーション</option></select></label>
           <div id="v39-effect-color-single" hidden>${colorCard("tint", "色")}</div>
           <div id="v39-effect-color-gradient" hidden>
@@ -336,7 +386,7 @@ function setStatus(message, error = false) {
   status.classList.toggle("is-error", error);
 }
 
-function previewSourceUrl(descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName)) {
+function previewSourceUrl(descriptor = selectedPreviewDescriptor()) {
   return descriptor?.sequenceSources?.[0]?.src || "不明";
 }
 
@@ -344,7 +394,7 @@ function previewErrorMessage(error) {
   return String(error?.message || error || "不明なエラー");
 }
 
-function showPreviewFailure(label, error, descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName)) {
+function showPreviewFailure(label, error, descriptor = selectedPreviewDescriptor()) {
   setStatus(`${label}\nURL: ${previewSourceUrl(descriptor)}\n原因: ${previewErrorMessage(error)}`, true);
 }
 
@@ -363,6 +413,31 @@ function switchSettingsTab(tabName) {
 
 function renderGradientGuides(bounds = previewBounds) {
   if (bounds) previewBounds = bounds;
+  const stage=element('v39-effect-preview-stage');
+  let marker=element('v39-effect-impact-marker');
+  if(stage && !marker){marker=document.createElement('div');marker.id='v39-effect-impact-marker';
+    marker.textContent='＋';marker.title='ドラッグして着弾点を指定';marker.setAttribute('aria-label','着弾基準点をドラッグ');marker.style.cssText='position:absolute;pointer-events:auto;touch-action:none;cursor:grab;user-select:none;width:32px;height:32px;text-align:center;z-index:15;color:#ffdf4d;text-shadow:0 0 2px #000;font-size:24px;line-height:32px;transform:translate(-50%,-50%)';stage.append(marker);}
+  if(marker){
+    marker.hidden=!impactEditing || activeSequenceIndex<0 || !previewBounds || !previewGame?.scale || !previewPanelVisible() || playbackMode==='full-image';
+    if(!marker.hidden && !draggingImpact){marker.style.left=((previewBounds.anchorX ?? previewBounds.x)/previewGame.scale.width*100)+'%';
+      marker.style.top=((previewBounds.anchorY ?? previewBounds.y)/previewGame.scale.height*100)+'%';}
+  }
+  let impactGuide=element('v39-effect-impact-guide');
+  if(stage && !impactGuide){
+    impactGuide=document.createElementNS('http://www.w3.org/2000/svg','svg');impactGuide.id='v39-effect-impact-guide';
+    impactGuide.setAttribute('aria-label','着弾点の設定可能範囲：画像1コマ');
+    impactGuide.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:14;overflow:hidden';stage.append(impactGuide);
+  }
+  if(impactGuide){
+    impactGuide.toggleAttribute('hidden',marker?.hidden ?? true);
+    if(!marker?.hidden){
+      impactGuide.setAttribute('viewBox',`0 0 ${previewGame.scale.width} ${previewGame.scale.height}`);
+      const corners=resolveV39EffectImpactGuide(previewBounds);
+      const points=corners.map(p=>`${p.x},${p.y}`).join(' ');
+      const labels=corners.map(p=>`<text x="${p.x+4}" y="${p.y-5}">${p.percentX}%,${p.percentY}%</text>`).join('');
+      impactGuide.innerHTML=`<polygon points="${points}" fill="none" stroke="#ffdf4d" stroke-width="1.5" stroke-dasharray="6 4"/><g fill="#ffdf4d" font-size="11" paint-order="stroke" stroke="#071015" stroke-width="3">${labels}<text x="6" y="16">設定可能範囲（画像1コマ）</text></g>`;
+    }
+  }
   const svg = element("v39-effect-gradient-guides");
   if (!svg) return;
   const setting = getV39EffectSetting(selectedEffectName);
@@ -383,8 +458,8 @@ function renderGradientGuides(bounds = previewBounds) {
     const labelY = horizontal ? Math.max(30, top + 16 + index * 17) : Math.max(30, Math.min(position + (index ? 16 : -4), previewGame.scale.height - 4));
     return `<g data-guide="${index ? "end" : "start"}" data-percent="${percent}" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 4">${line}<text x="${labelX}" y="${labelY}" fill="${color}" stroke-dasharray="none">${name} ${percent}%</text></g>`;
   }).join("");
-  const angle = effectPreviewGeometry(element("v39-effect-preview-stage"), setting).angleDeg;
-  svg.innerHTML = `<g transform="rotate(${angle} ${x} ${y})"><rect x="${left}" y="${top}" width="${width}" height="${height}" fill="none" stroke="#c4d1d4" stroke-dasharray="4 4"/>${guides}</g><text x="6" y="16" fill="#ecf5f1">${axis}（画像内の基準）</text>`;
+  const angle = previewBounds.angleDeg ?? effectPreviewGeometry(element("v39-effect-preview-stage"), setting).angleDeg;
+  svg.innerHTML = `<g transform="translate(${x} ${y}) scale(${previewBounds.screenScaleX ?? 1} ${previewBounds.screenScaleY ?? 1}) rotate(${angle}) scale(${previewBounds.flipX?-1:1} ${previewBounds.flipY?-1:1}) translate(${-x} ${-y})"><rect x="${left}" y="${top}" width="${width}" height="${height}" fill="none" stroke="#c4d1d4" stroke-dasharray="4 4"/>${guides}</g><text x="6" y="16" fill="#ecf5f1">${axis}（画像内の基準）</text>`;
 }
 
 function applyColorControlState(setting) {
@@ -442,8 +517,9 @@ function sleepPreviewAfterRender() {
 
 async function showIdlePreview() {
   if (!previewPanelVisible()) return;
+  if(playbackMode !== 'full-image')return showPanelFrame();
   hideIdlePreview();
-  await drawIdlePreview({ fullImage:playbackMode === "full-image" });
+  await drawIdlePreview({ fullImage:true, descriptor:selectedPreviewDescriptor() });
   sleepPreviewAfterRender();
 }
 
@@ -466,21 +542,23 @@ async function previewSources(descriptor) {
     const image = previewGame.textures.get(key).getSourceImage();
     const layout = resolveEffectSheetLayout(image.width, image.height, previewPlayer.options);
     const scale = source.sourceScaleMultiplier * geometry.zoom;
-    sources.push({ ...source, sourceScaleMultiplier:scale, frameWidth:layout.frameWidth, frameHeight:layout.frameHeight });
+    sources.push({ ...source, stepTransform:source.stepTransform?{...source.stepTransform,offsetX:source.stepTransform.offsetX*geometry.zoom,offsetY:source.stepTransform.offsetY*geometry.zoom}:undefined, sourceScaleMultiplier:scale, frameWidth:layout.frameWidth, frameHeight:layout.frameHeight });
   }
   const first = sources[0], multiplier = descriptor.scaleMultiplierPercent / 100;
   if (first && requestId === previewRequestId && previewPanelVisible()) {
     const bounds=effectPreviewGeometry(host,descriptor),scale=bounds.fitDiameterPx>0?bounds.fitDiameterPx/Math.min(first.frameWidth,first.frameHeight)
       :first.sourceScaleMultiplier*multiplier*V39_EFFECT_BASE_SCALE_PERCENT/100;
     const axes=resolveEffectPowerAxes(bounds);
-    renderGradientGuides({...bounds,width:(bounds.stretchAxis==='x'?bounds.stretchLengthPx:first.frameWidth*scale)*axes.x,height:(bounds.stretchAxis==='y'?bounds.stretchLengthPx:first.frameHeight*scale)*axes.y});
+    const sourceTransform=resolveEffectSourceTransform(first,{angleDeg:bounds.angleDeg},bounds);
+    const stepScale=(Number(first.stepTransform?.scalePercent)||100)/100;
+    renderGradientGuides(resolveEffectImpactPlacement({...bounds,...sourceTransform,screenScaleX:(first.stepTransform?.scaleXPercent ?? 100)/100,screenScaleY:(first.stepTransform?.scaleYPercent ?? 100)/100,width:(bounds.stretchAxis==='x'?bounds.stretchLengthPx:first.frameWidth*scale)*axes.x*stepScale,height:(bounds.stretchAxis==='y'?bounds.stretchLengthPx:first.frameHeight*scale)*axes.y*stepScale},first.stepTransform));
   }
   return sources;
 }
 
 function playPanelPreview() {
   if (!previewPanelVisible() || !previewPlayer || !selectedEffectName) return false;
-  const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
+  const descriptor = selectedPreviewDescriptor();
   if (!descriptor) {
     setStatus("プレビュー用エフェクトを解決できませんでした。", true);
     return false;
@@ -500,7 +578,7 @@ function playPanelPreview() {
       ...effectPreviewGeometry(element("v39-effect-preview-stage"), descriptor),
       sequenceSources:sources,
       scalePercent:V39_EFFECT_BASE_SCALE_PERCENT * scaleMultiplier,
-      tint:descriptor.tint,
+      tint:descriptor.tint,grayscaleBase:descriptor.grayscaleBase === true,brightnessPercent:descriptor.brightnessPercent,
       gradientEnabled:descriptor.gradientEnabled,
       gradientColorA:descriptor.gradientColorA,
       gradientColorB:descriptor.gradientColorB,
@@ -565,7 +643,7 @@ function schedulePanelPreview(delay = 80) {
     }
     if (["color", "motion"].includes(activeSettingsTab) && playbackMode !== "frame") {
       const requestId = previewRequestId;
-      const descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
+      const descriptor = selectedPreviewDescriptor();
       void ensurePreviewGame().then(() => {
         if (requestId === previewRequestId && previewPanelVisible()) return previewSources(descriptor);
       }).catch(error => {
@@ -595,7 +673,7 @@ function ensurePreviewGame() {
         render:{ antialias:true, pixelArt:false, roundPixels:false },
         scene:{
           create:function createEffectSettingsPreviewScene() {
-            previewPlayer = new PhaserEffectPlayer(this, { totalDurationMs:1500, sequenceGapMs:10, depth:10 });
+            previewPlayer = new V39AreaEffectPlayer(this, { totalDurationMs:1500, sequenceGapMs:10, depth:10 });
             host.classList.add("is-ready");
             if (!previewPanelVisible()) this.game.loop.sleep();
             resolve(this.game);
@@ -644,7 +722,7 @@ async function showPanelFrame() {
   try {
     await ensurePreviewGame();
     if (!previewPanelVisible() || requestId !== previewRequestId) return;
-    descriptor = resolveV39EffectPlaybackDescriptor(selectedEffectName);
+    descriptor = selectedPreviewDescriptor();
     const frames = [];
     const sources = await previewSources(descriptor);
     if (requestId !== previewRequestId || !previewPanelVisible()) return;
@@ -693,15 +771,18 @@ function renderSetting() {
   const setting = getV39EffectSetting(selectedEffectName);
   element("v39-effect-setting-orientation").value = setting.orientToAttack ? "attack" : "fixed";
   element("v39-effect-setting-placement").value = setting.placementMode;
+  element("v39-effect-setting-area").value = setting.areaDisplay;
+  element("v39-effect-setting-area-timing").value = setting.areaTiming;
+  for (const suffix of ['', '-slider']) {
+    const input = element('v39-effect-setting-area-delay' + suffix);
+    input.value = setting.areaDelayMs;
+    input.disabled = setting.areaTiming !== 'random' || setting.areaDisplay !== 'tiles' || setting.placementMode !== 'target';
+  }
+  element("v39-effect-setting-area-timing").disabled = setting.areaDisplay !== "tiles" || setting.placementMode !== "target";
+  element("v39-effect-setting-area").disabled = setting.placementMode !== 'target';
   element("v39-effect-setting-power-axis").value = setting.powerScaleAxis;
   const beam=setting.placementMode!=='target';
   element("v39-effect-setting-orientation").disabled=beam;
-  for (const [id, key] of [["rotation", "rotationDeg"], ["offset-x", "offsetX"], ["offset-y", "offsetY"]]) {
-    element(`v39-effect-setting-${id}`).value = String(setting[key]);
-    element(`v39-effect-setting-${id}-slider`).value = String(setting[key]);
-    element(`v39-effect-setting-${id}`).disabled=false;
-    element(`v39-effect-setting-${id}-slider`).disabled=false;
-  }
   renderEffectPreviewCombatants(element("v39-effect-preview-stage"));
   rendering = true;
   try {
@@ -718,10 +799,48 @@ function renderSetting() {
     const gradientDirection = element("v39-effect-setting-gradient-direction");
     const gradientSpeed = element("v39-effect-setting-gradient-speed");
     const scale = element("v39-effect-setting-scale");
+    const count = setting.sequenceSteps.length || 1;
+    activeSequenceIndex = Math.max(-1,Math.min(activeSequenceIndex,count-1));
+    if (activeSequenceIndex < 0) selectedPreviewOnly = false;
+    element('v39-effect-settings-panel').dataset.sequenceScope = activeSequenceIndex < 0 ? 'common' : 'step';
+    const scope = element('v39-effect-preview-scope');
+    scope.disabled = activeSequenceIndex < 0;
+    scope.value = selectedPreviewOnly ? 'selected' : 'all';
+    renderV39EffectSequenceEditor(element('v39-effect-sequence-list'),setting,getV39EffectSettingsCatalog(),(steps,index,{live=false}={})=>{
+      activeSequenceIndex = index;
+      const previousRendering=rendering;
+      if(live)rendering=true;
+      try {updateV39EffectSetting(selectedEffectName,{sequenceSteps:steps,baseEffect:steps[0].effectName});}
+      finally {rendering=previousRendering;}
+      if(live)schedulePanelPreview(0);else renderSetting();
+    }, {tabsHost:element('v39-effect-sequence-tabs'),activeIndex:activeSequenceIndex,impactEditing,onPickImage:(index,selected,onSelect)=>{
+      const key=sequenceEditorKey;
+      openEffectImagePicker({catalog:getV39EffectSettingsCatalog(),selected,returnFocus:element('v39-effect-sequence-list').querySelector('select'),
+        onSelect:name=>{if(key===sequenceEditorKey && index===activeSequenceIndex){onSelect(name);element('v39-effect-sequence-list').querySelector('select')?.focus();}}});
+    },onSetImpactPreview:editing=>{
+      impactEditing=editing;pickingImpact=false;selectedPreviewOnly=true;previewBounds=null;
+      playbackMode='frame';
+      renderSetting();schedulePanelPreview(0);
+      setStatus(editing?'基準点編集：画像上の十字をドラッグしてください。':'着弾確認：編集時と同じ位置・同じコマです。');
+    },onPickImpact:index=>{
+      impactEditing=true;activeSequenceIndex=index;selectedPreviewOnly=true;pickingImpact=true;previewBounds=null;playbackMode='frame';
+      renderSetting();schedulePanelPreview(0);setStatus('プレビュー画像の着弾箇所をタップしてください。');
+    },onSelect:index=>{
+      pickingImpact=false;activeSequenceIndex = index;selectedPreviewOnly=index>=0;previewFrameIndex = 0;
+      switchSettingsTab('basic'); renderSetting();
+    }});
     if (source) source.value = selectedEffectName;
     if (base) base.value = setting.baseEffect;
-    syncEffectImagePicker();
+    element('v39-effect-setting-hit-mode').value=setting.hitEffectMode || 'none';
+    const hitSelect=element('v39-effect-setting-hit-name');
+    hitSelect.replaceChildren();
+    const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='選択してください';hitSelect.append(placeholder);
+    for(const name of getV39EffectSettingsCatalog()){const option=document.createElement('option');option.value=name;option.textContent=name;hitSelect.append(option);}
+    hitSelect.value=setting.hitEffectName || '';
+    element('v39-effect-hit-specific').hidden=setting.hitEffectMode!=='specified';
     if (decoration) decoration.value = setting.decorationEffect;
+    for(const id of ['v39-effect-setting-brightness','v39-effect-setting-brightness-slider'])element(id).value=String(setting.brightnessPercent ?? 100);
+    element('v39-effect-setting-grayscale').value=setting.grayscaleBase?'mono':'original';
     if (colorMode) colorMode.value = setting.gradientEnabled ? "gradient" : setting.tint ? "tint" : "none";
     if (tint) tint.value = setting.tint || "#FFFFFF";
     if (tintCode) tintCode.textContent = setting.tint || "なし";
@@ -754,14 +873,17 @@ function saveCurrentSetting() {
   rendering = true;
   try { updateV39EffectSetting(selectedEffectName, {
     baseEffect:element("v39-effect-setting-base")?.value,
+    sequenceSteps:getV39EffectSetting(selectedEffectName).sequenceSteps.map((step,index)=>index===0?{...step,effectName:element("v39-effect-setting-base").value}:step),
     orientToAttack:element("v39-effect-setting-orientation")?.value === "attack",
+    areaDisplay:element("v39-effect-setting-area").value,
+    areaTiming:element("v39-effect-setting-area-timing").value,
+    areaDelayMs:element("v39-effect-setting-area-delay").value,
     placementMode:element("v39-effect-setting-placement").value,
     powerScaleAxis:element("v39-effect-setting-power-axis").value,
-    rotationDeg:element("v39-effect-setting-rotation").value,
-    offsetX:element("v39-effect-setting-offset-x").value,
-    offsetY:element("v39-effect-setting-offset-y").value,
     decorationEffect:element("v39-effect-setting-decoration")?.value,
     tint:tintValue,
+    grayscaleBase:element("v39-effect-setting-grayscale").value === "mono",
+    brightnessPercent:element("v39-effect-setting-brightness").value,
     gradientEnabled:colorMode === "gradient",
     gradientColorA:element("v39-effect-setting-gradient-a")?.value,
     gradientColorB:element("v39-effect-setting-gradient-b")?.value,
@@ -789,6 +911,7 @@ function previewCurrentEffectOnMap() {
   closePanel();
   void Promise.resolve(play({
     effectName:selectedEffectName,
+    previewSequenceIndex:selectedPreviewOnly && activeSequenceIndex>=0 ? activeSequenceIndex : undefined,
     ...geometry,
     allowInFog:true,
     scalePercent:50
@@ -859,13 +982,15 @@ function closePanel() {
 }
 
 function bindControls() {
-  for (const id of ["rotation", "offset-x", "offset-y"]) {
+  for (const id of ["area-delay"]) {
     for (const suffix of ["", "-slider"]) element(`v39-effect-setting-${id}${suffix}`).addEventListener("input", event => {
       element(`v39-effect-setting-${id}`).value = event.target.value;
       saveCurrentSetting();
     });
   }
   element("v39-effect-setting-orientation").addEventListener("change", saveCurrentSetting);
+  element("v39-effect-setting-area-timing").addEventListener("change", saveCurrentSetting);
+  element("v39-effect-setting-area").addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-placement").addEventListener("change", saveCurrentSetting);
   element("v39-effect-setting-power-axis").addEventListener("change", saveCurrentSetting);
   const updatePreviewGeometry = () => {
@@ -882,6 +1007,43 @@ function bindControls() {
     element("v39-effect-preview-zoom").value=String(Math.floor(effectPreviewGeometry(element("v39-effect-preview-stage")).fitZoom*100));
     updatePreviewGeometry();
   });
+  installV39EffectImpactDrag(element('v39-effect-preview-stage'),{
+    getContext:()=>{
+      if(activeSequenceIndex<0 || !previewBounds || !previewGame?.scale)return null;
+      if(!selectedPreviewOnly || !impactEditing){
+        impactEditing=true;
+        selectedPreviewOnly=true;playbackMode='frame';renderSetting();schedulePanelPreview(0);
+        setStatus('基準点編集に切り替えました。十字をドラッグしてください。');return null;
+      }
+      pickingImpact=false;draggingImpact=true;
+      return {bounds:previewBounds,width:previewGame.scale.width,height:previewGame.scale.height,
+        index:activeSequenceIndex,effect:selectedEffectName};
+    },
+    onPreview:point=>{
+      const marker=element('v39-effect-impact-marker');
+      if(marker){marker.style.left=(point.x/previewGame.scale.width*100)+'%';marker.style.top=(point.y/previewGame.scale.height*100)+'%';}
+    },
+    onCommit:(value,context)=>{
+      draggingImpact=false;
+      if(context.effect!==selectedEffectName || context.index!==activeSequenceIndex){renderGradientGuides();return;}
+      const steps=resolveV39EffectSequence({...getV39EffectSetting(selectedEffectName),decorationEffect:''});
+      if(!steps[context.index])return;
+      Object.assign(steps[context.index],value);updateV39EffectSetting(selectedEffectName,{sequenceSteps:steps});
+      renderSetting();schedulePanelPreview(0);setStatus('着弾基準点を保存しました。');
+    },
+    onCancel:()=>{draggingImpact=false;renderGradientGuides();}
+  });
+  element('v39-effect-preview-stage').addEventListener('pointerdown',event=>{
+    if(!pickingImpact || activeSequenceIndex<0 || !previewBounds || event.target.closest?.('.v39-effect-preview-camera'))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    const rect=element('v39-effect-preview-stage').getBoundingClientRect();
+    const point={x:(event.clientX-rect.left)*previewGame.scale.width/rect.width,y:(event.clientY-rect.top)*previewGame.scale.height/rect.height};
+    const steps=resolveV39EffectSequence({...getV39EffectSetting(selectedEffectName),decorationEffect:''});
+    if(!steps[activeSequenceIndex])return;
+    Object.assign(steps[activeSequenceIndex],resolveEffectImpactPercent(previewBounds,point));
+    pickingImpact=false;updateV39EffectSetting(selectedEffectName,{sequenceSteps:steps});renderSetting();schedulePanelPreview(0);
+    setStatus('着弾基準点を保存しました。');
+  },true);
   new ResizeObserver(() => { renderEffectPreviewCombatants(element("v39-effect-preview-stage")); schedulePanelPreview(0); window.dispatchEvent(new CustomEvent("v39:effect-preview-direction-changed")); })
     .observe(element("v39-effect-preview-stage"));
   element("v39-manage-effect-settings")?.addEventListener("click", openPanel);
@@ -889,7 +1051,11 @@ function bindControls() {
   for (const button of document.querySelectorAll("[data-v39-effect-tab]")) {
     button.addEventListener("click", () => switchSettingsTab(button.dataset.v39EffectTab));
   }
+  element("v39-effect-preview-scope").addEventListener("change", event => {
+    selectedPreviewOnly = event.target.value === "selected"; previewFrameIndex = 0; renderSetting();
+  });
   element("v39-effect-setting-source")?.addEventListener("change", event => {
+    activeSequenceIndex = -1; selectedPreviewOnly = false; sequenceEditorKey = event.target.value;
     selectedEffectName = event.target.value;
     previewFrameIndex = 0;
     renderSetting();
@@ -990,8 +1156,30 @@ function install() {
   fillSelect(element("v39-effect-setting-source"), catalog);
   fillSelect(element("v39-effect-setting-base"), catalog);
   installEffectImagePicker();
+  for(const id of ['v39-effect-setting-brightness','v39-effect-setting-brightness-slider'])element(id).addEventListener('input',event=>{
+    if(event.target.value.trim()==='' || !Number.isFinite(Number(event.target.value)))return;
+    const value=Math.min(200,Math.max(0,Number(event.target.value)));
+    element('v39-effect-setting-brightness').value=String(value);element('v39-effect-setting-brightness-slider').value=String(value);
+    const previous=rendering;rendering=true;
+    try{updateV39EffectSetting(selectedEffectName,{brightnessPercent:value});}finally{rendering=previous;}
+    schedulePanelPreview(0);
+  });
+  element("v39-effect-setting-grayscale").addEventListener("change",saveCurrentSetting);
+  element('v39-effect-setting-hit-mode').addEventListener('change',event=>updateV39EffectSetting(selectedEffectName,{hitEffectMode:event.target.value}));
+  element('v39-effect-setting-hit-name').addEventListener('change',event=>updateV39EffectSetting(selectedEffectName,{hitEffectName:event.target.value}));
+  element('v39-effect-hit-image-picker').addEventListener('click',()=>{
+    const key=sequenceEditorKey,name=selectedEffectName;
+    openEffectImagePicker({catalog:getV39EffectSettingsCatalog(),selected:getV39EffectSetting(name).hitEffectName,
+      returnFocus:element('v39-effect-hit-image-picker'),onSelect:hitEffectName=>{
+        if(key===sequenceEditorKey && name===selectedEffectName)updateV39EffectSetting(name,{hitEffectMode:'specified',hitEffectName});
+      }});
+  });
   fillSelect(element("v39-effect-setting-decoration"), catalog, { includeNone:true });
   bindControls();
+  installV39EffectHeaderCollapse({ panel:element('v39-effect-settings-panel'),toggle:element('v39-effect-preview-header-toggle'),storage:window.localStorage,
+    compact:window.matchMedia('(max-width:600px)').matches,onChange:()=>window.requestAnimationFrame(()=>{
+      renderEffectPreviewCombatants(element('v39-effect-preview-stage'));schedulePanelPreview(0);
+    }) });
   switchSettingsTab(activeSettingsTab);
   renderSetting();
   window.openV39EffectSettings = openPanel;

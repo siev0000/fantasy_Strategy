@@ -1,11 +1,12 @@
 import { normalizeV39EffectTransform } from "./v39-effect-transform.js";
+import { normalizeV39EffectSequence, migrateV39EffectTransformsToSteps, normalizeV39DecorationTransform } from './v39-effect-sequence.js';
 import categoryDefaults from "../../../config/v39-effect-categories.json";
 import compositeDefaults from "../../../config/v39-effect-composite-defaults.json";
 import { getV39EffectSettingsCatalog } from "./v39-effect-settings.js";
 
 const STORAGE_KEY = "v39-effect-category-settings-v1";
 const SCHEMA = "v39-effect-category-settings";
-const VERSION = 6;
+const VERSION = 12;
 let customCategories = [];
 
 function text(value, fallback = "") {
@@ -48,6 +49,8 @@ function defaultSetting(category) {
   const saved = compositeDefaults.categories[category.id] || {};
   return {
     ...normalizeV39EffectTransform(saved),
+    decorationTransform:normalizeV39DecorationTransform(saved.decorationTransform),
+    sequenceSteps:normalizeV39EffectSequence(saved.sequenceSteps,getV39EffectSettingsCatalog()),
     orientToAttack:saved.orientToAttack === true,
     baseEffect:text(saved.baseEffect, category.defaultEffect),
     scaleMultiplierPercent:Math.round(clamp(saved.scaleMultiplierPercent, 10, 400, 100))
@@ -61,6 +64,8 @@ function normalizeSetting(category, raw = {}) {
   const rawBase = text(raw.baseEffect ?? raw.effectName, standard.baseEffect);
   return {
     ...normalizeV39EffectTransform(raw),
+    decorationTransform:normalizeV39DecorationTransform(raw.decorationTransform),
+    sequenceSteps:normalizeV39EffectSequence(raw.sequenceSteps,getV39EffectSettingsCatalog()),
     orientToAttack:raw.orientToAttack === true,
     baseEffect:catalog.size && !catalog.has(rawBase) ? standard.baseEffect : rawBase,
     scaleMultiplierPercent:Math.round(clamp(raw.scaleMultiplierPercent, 10, 400, 100))
@@ -68,10 +73,10 @@ function normalizeSetting(category, raw = {}) {
 }
 
 function sameSetting(a, b) {
-  return a.rotationDeg === b.rotationDeg && a.offsetX === b.offsetX && a.offsetY === b.offsetY
+  return a.hitEffectMode === b.hitEffectMode && a.hitEffectName === b.hitEffectName && JSON.stringify(a.decorationTransform) === JSON.stringify(b.decorationTransform) && JSON.stringify(a.sequenceSteps) === JSON.stringify(b.sequenceSteps) && a.rotationDeg === b.rotationDeg && a.offsetX === b.offsetX && a.offsetY === b.offsetY
     && a.orientToAttack === b.orientToAttack && a.baseEffect === b.baseEffect
     && a.scaleMultiplierPercent === b.scaleMultiplierPercent && a.placementMode === b.placementMode
-    && a.powerScaleAxis === b.powerScaleAxis;
+    && a.powerScaleAxis === b.powerScaleAxis && a.areaDisplay === b.areaDisplay && a.areaTiming === b.areaTiming && a.areaDelayMs === b.areaDelayMs;
 }
 
 function splitLegacyClawFang(settings) {
@@ -92,6 +97,8 @@ function readState() {
     if (parsed.settings && typeof parsed.settings === "object" && !Array.isArray(parsed.settings)) {
       return splitLegacyClawFang(Object.fromEntries(Object.entries(parsed.settings).map(([id, raw]) => [id, {
         ...normalizeV39EffectTransform(raw),
+        sequenceSteps:normalizeV39EffectSequence(raw?.sequenceSteps),
+        decorationTransform:normalizeV39DecorationTransform(raw?.decorationTransform),
         orientToAttack:raw?.orientToAttack === true,
         baseEffect:raw?.baseEffect ?? raw?.effectName,
         scaleMultiplierPercent:raw?.scaleMultiplierPercent
@@ -125,7 +132,7 @@ export function getV39EffectCategories() {
   return defaults().map(category => {
     const standard = defaultSetting(category);
     const setting = normalizeSetting(category, overrides[category.id] || standard);
-    return { ...category, ...setting, effectName:setting.baseEffect, customized:!sameSetting(setting, standard) };
+    return migrateV39EffectTransformsToSteps({ ...category, ...setting, effectName:setting.baseEffect, customized:!sameSetting(setting, standard) },getV39EffectSettingsCatalog());
   });
 }
 
@@ -204,6 +211,8 @@ export function getV39EffectCategorySettingsSnapshot() {
       ...normalizeV39EffectTransform(category),
       orientToAttack:category.orientToAttack,
       baseEffect:category.baseEffect,
+      decorationTransform:normalizeV39DecorationTransform(category.decorationTransform),
+      sequenceSteps:normalizeV39EffectSequence(category.sequenceSteps,getV39EffectSettingsCatalog()),
       scaleMultiplierPercent:category.scaleMultiplierPercent
     };
   }

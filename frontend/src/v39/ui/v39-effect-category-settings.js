@@ -1,3 +1,5 @@
+import { createV39EffectDraftSync, V39_EFFECT_DRAFT_PATH } from '../../lib/v39-effect-local-draft.js';
+import { getV39EffectSettingsSnapshot, importV39EffectSettings } from '../../lib/v39-effect-settings.js';
 import { normalizeV39EffectTransform } from "../../lib/v39-effect-transform.js";
 import { configureV39EffectSettingsEditor, selectV39EffectSettingsProxy } from "./v39-effect-settings.js";
 import { installV39EffectSettingsUiState } from "./v39-effect-settings-ui-state.js";
@@ -82,9 +84,12 @@ function proxyEffect(category = currentCategory()) {
 
 function categoryPreviewPatch(category) {
   return {
+    grayscaleBase:false,brightnessPercent:100,
     ...normalizeV39EffectTransform(category),
     orientToAttack:category.orientToAttack === true,
     baseEffect:category.baseEffect,
+    sequenceSteps:category.sequenceSteps,
+    decorationTransform:category.decorationTransform,
     decorationEffect:"",
     tint:"",
     gradientEnabled:false,
@@ -95,9 +100,12 @@ function categoryPreviewPatch(category) {
 
 function attributePreviewPatch(attribute, category = currentCategory()) {
   return {
+    grayscaleBase:attribute.grayscaleBase !== false,brightnessPercent:attribute.brightnessPercent,
     ...normalizeV39EffectTransform(category),
     orientToAttack:category?.orientToAttack === true,
     baseEffect:category?.baseEffect || proxyEffect(category),
+    sequenceSteps:category?.sequenceSteps,
+    decorationTransform:category?.decorationTransform,
     decorationEffect:attribute.decorationEffect,
     tint:attribute.tint,
     gradientEnabled:attribute.gradientEnabled,
@@ -118,12 +126,14 @@ function categoryPatchFromEffect(setting) {
     ...normalizeV39EffectTransform(setting),
     orientToAttack:setting.orientToAttack === true,
     baseEffect:setting.baseEffect,
+    sequenceSteps:setting.sequenceSteps,
     scaleMultiplierPercent:setting.scaleMultiplierPercent
   };
 }
 
 function attributePatchFromEffect(setting) {
   return {
+    grayscaleBase:setting.grayscaleBase === true,brightnessPercent:setting.brightnessPercent,
     decorationEffect:setting.decorationEffect,
     tint:setting.tint,
     gradientEnabled:setting.gradientEnabled,
@@ -166,13 +176,15 @@ function hiddenRow(controlId, hidden) {
 
 function applyModeVisibility() {
   const attributeMode = editorMode === "attribute";
+  element("v39-effect-settings-panel").classList.toggle("is-attribute-mode", attributeMode);
   hiddenRow("v39-effect-setting-base", attributeMode);
+  element("v39-effect-setting-sequence").hidden = attributeMode;
   hiddenRow("v39-effect-setting-scale", attributeMode);
   hiddenRow("v39-effect-setting-orientation", attributeMode);
   hiddenRow("v39-effect-setting-placement", attributeMode);
   hiddenRow("v39-effect-setting-power-axis", attributeMode);
   element("v39-effect-setting-placement-hint").hidden=attributeMode;
-  for (const id of ["rotation", "offset-x", "offset-y"]) hiddenRow(`v39-effect-setting-${id}`, attributeMode);
+
   hiddenRow("v39-effect-setting-decoration", !attributeMode);
 
   for (const tabName of ["color", "motion"]) {
@@ -260,7 +272,7 @@ function activateCurrent({ announce = true } = {}) {
 
   syncing = true;
   try {
-    selectV39EffectSettingsProxy(proxy, patch, category.custom || category.independent ? category.name : undefined);
+    selectV39EffectSettingsProxy(proxy, patch, category.custom || category.independent ? category.name : undefined, `${editorMode}:${category.id}:${editorMode === "attribute" ? selectedAttributeName : ""}`);
   } finally {
     syncing = false;
   }
@@ -332,6 +344,7 @@ function ensureEditorUi() {
       finally { syncing = false; }
       selectedCategoryId = category.id;
       activateCurrent();
+      if (element('v39-effect-settings-panel').classList.contains('is-preview-header-collapsed')) element('v39-effect-preview-header-toggle').click();
       element("v39-effect-category-name").focus();
       element("v39-effect-category-name").select();
     });
@@ -347,7 +360,7 @@ function ensureEditorUi() {
     input.type = "text";
     input.addEventListener("change", () => renameV39EffectCategory(selectedCategoryId, input.value));
     row.append(caption, input);
-    document.querySelector('[data-v39-effect-panel="basic"]').prepend(row);
+    element('v39-effect-preview-controls').prepend(row);
   }
   return true;
 }
@@ -380,7 +393,12 @@ async function importCompositeJson(file) {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new TypeError("設定JSONの形式が正しくありません。");
     let categoryResult = { importedCount:0, skippedCount:0 };
     let attributeResult = { importedCount:0, skippedCount:0 };
-    if (parsed.schema === COMPOSITE_SCHEMA || (!parsed.schema && parsed.categories && parsed.attributes)) {
+    if (parsed.schema === 'v39-effect-local-draft') {
+      if (parsed.version !== 1) throw new Error('対応していないローカルJSONです。');
+      importV39EffectSettings({ effects:parsed.effects });
+      categoryResult = importV39EffectCategorySettings({ categories:parsed.categories });
+      attributeResult = importV39EffectAttributeSettings({ attributes:parsed.attributes });
+    } else if (parsed.schema === COMPOSITE_SCHEMA || (!parsed.schema && parsed.categories && parsed.attributes)) {
       categoryResult = importV39EffectCategorySettings({ categories:parsed.categories });
       attributeResult = importV39EffectAttributeSettings({ attributes:parsed.attributes });
     } else if (parsed.schema === "v39-effect-category-settings") {
@@ -422,6 +440,52 @@ function configureSaveControls() {
     }
   });
 }
+function installLocalDraft() {
+  const pane = document.querySelector('[data-v39-effect-panel="data"]');
+  const status = document.createElement('p'); status.className = 'v39-effect-settings-note';
+  status.id = 'v39-effect-local-draft-status'; pane.prepend(status);
+  const host=window.location.hostname;
+  const localHost=['localhost','127.0.0.1','[::1]'].includes(host)||/^10\./.test(host)||/^192\.168\./.test(host)||/^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (!localHost) {
+    status.textContent = 'ローカルJSON自動保存はPCまたは同一LANからの接続時のみ利用できます。外部接続ではブラウザ保存・JSON書出しを使用してください。'; return;
+  }
+  const snapshot = () => ({ schema:'v39-effect-local-draft', version:1,
+    categories:getV39EffectCategorySettingsSnapshot().categories,
+    attributes:getV39EffectAttributeSettingsSnapshot().attributes,
+    effects:getV39EffectSettingsSnapshot().effects });
+  const sync = createV39EffectDraftSync({ snapshot, fetch:window.fetch.bind(window), storage:window.localStorage,
+    onStatus:message => { status.textContent = message; },
+    hasLocalChanges:() => getV39EffectCategories().some(item=>item.customized||item.custom)||Object.keys(getV39EffectSettingsSnapshot().effects).length>0,
+    apply:payload => {
+      if (payload.schema !== 'v39-effect-local-draft' || payload.version !== 1) throw new Error('ローカルJSONの形式が正しくありません。');
+      const wasSyncing = syncing; syncing = true;
+      try {
+        importV39EffectSettings({ effects:payload.effects });
+        importV39EffectCategorySettings({ categories:payload.categories });
+        importV39EffectAttributeSettings({ attributes:payload.attributes });
+      } finally { syncing = wasSyncing; }
+      activateCurrent({ announce:false });
+    }
+  });
+  for (const event of ['v39:effect-settings-changed','v39:effect-category-settings-changed','v39:effect-attribute-settings-changed']) window.addEventListener(event, () => sync.changed());
+  const actions = document.createElement('div'); actions.className = 'v39-effect-settings-actions';
+  const save = document.createElement('button'); save.type = 'button'; save.textContent = 'JSONへ保存';
+  save.addEventListener('click', async () => {
+    if (!sync.isReady()) await sync.start();
+    const overwrite = sync.isBlocked();
+    if (overwrite && !window.confirm('現在のブラウザ設定でローカルJSONを上書きしますか？')) return;
+    await sync.flush({ overwrite });
+  });
+  const load = document.createElement('button'); load.type = 'button'; load.textContent = 'JSONを読込';
+  load.addEventListener('click', async () => {
+    if (sync.isDirty() && !window.confirm('ブラウザの未保存変更を破棄してローカルJSONを読み込みますか？')) return;
+    await sync.reload();
+  });
+  actions.append(save, load); status.after(actions);
+  const path = document.createElement('p'); path.className = 'v39-effect-settings-note'; path.textContent = '下書き: ' + V39_EFFECT_DRAFT_PATH + '（正式設定は上書きしません）'; actions.after(path);
+  void sync.start();
+}
+
 async function install() {
   if (installed || installing) return;
   if (!ensureEditorUi()) return;
@@ -447,6 +511,7 @@ async function install() {
       if (!changedName || changedName === selectedAttributeName) activateCurrent({ announce:false });
     });
     installV39EffectSettingsUiState();
+    installLocalDraft();
   } catch (error) {
     console.error("[エフェクト属性設定] 属性一覧の初期化失敗", error);
     setStatus(`属性一覧を読み込めませんでした: ${String(error?.message || error)}`, true);

@@ -26,11 +26,12 @@ export function getV39PassiveRows(unit) {
 }
 
 export function isV39ConditionalPassive(row) {
-  return isV39SquadPassive(row)||!!(text(row.条件)||text(row.条件系統)||text(row.攻撃手段)
+  return !!text(row.発動)||isV39SquadPassive(row)||!!(text(row.条件)||text(row.条件系統)||text(row.攻撃手段)
     ||text(row.対象)&&text(row.対象)!=='自身');
 }
 
 export function matchV39PassiveCondition(row,unit,action,{isCounter=false,mapData,terrainName}={}) {
+  if(text(row.発動))return {matches:false};
   if(text(row.対象)&&text(row.対象)!=='自身')return {matches:false,unsupportedCondition:`対象:${row.対象}`};
   const method=text(row.攻撃手段),actual=text(action?.攻撃手段);
   if (method&&method!==actual) {
@@ -57,7 +58,7 @@ export function matchV39PassiveCondition(row,unit,action,{isCounter=false,mapDat
 
 export function collectV39PassiveBonuses(rows) {
   const result={status:{},skillLevels:{},resistances:{},bodyWeaponValues:{},action:{},power:0,unsupported:[]};
-  for (const row of rows) for (const [raw,value] of Object.entries(row)) {
+  for (const row of rows.filter(row=>!text(row.発動))) for (const [raw,value] of Object.entries(row)) {
     if (!numeric(value)||["Lv"].includes(raw)) continue;
     const key=aliases[raw]||raw,n=Number(value);
     let bucket;

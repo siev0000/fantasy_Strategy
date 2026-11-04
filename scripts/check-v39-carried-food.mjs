@@ -3,7 +3,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {build} from 'esbuild';
 process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
-const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-carried-food.js';export * from './frontend/src/lib/v39-specialty-food-resupply.js';export * from './frontend/src/v39/unit/v39-carried-food-ui.js';export * from './frontend/src/lib/v39-population-economy.js';export * from './frontend/src/lib/v39-economy-rules.js';export * from './frontend/src/lib/v39-logistics-state.js';export * from './frontend/src/lib/v39-cargo-deposit.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-squad-coordination.js';export * from './frontend/src/lib/v39-carried-food.js';export * from './frontend/src/lib/v39-specialty-food-resupply.js';export * from './frontend/src/v39/unit/v39-carried-food-ui.js';export * from './frontend/src/lib/v39-population-economy.js';export * from './frontend/src/lib/v39-economy-rules.js';export * from './frontend/src/lib/v39-logistics-state.js';export * from './frontend/src/lib/v39-cargo-deposit.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
   builder.onLoad({filter:/v39-feedback\.js$/},()=>({contents:'export const showV39Feedback=()=>{};',loader:'js'}));
   builder.onLoad({filter:/game-data-registry\.js$/},args=>{
     const dir=resolve('data/source/export/json'),modules=Object.fromEntries(readdirSync(dir).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${dir}/${name}`,'utf8'))]));
@@ -46,6 +46,46 @@ const away=structuredClone(group.state);away.players[0].factionState.units[1].x=
 assert(!m.resolveV39CarriedFoodStatus(away.players[0].factionState,'b',away).accessible,'distant members cannot eat shared food');
 const detached=structuredClone(group.state);detached.players[0].factionState.units[1].squadMoveMode='independent';
 assert(m.resolveV39CarriedFoodStatus(detached.players[0].factionState,'b',detached).individual);
+{
+  const initial=structuredClone(group.state.players[0].factionState);
+  initial.squads[0].cargo.resourcesByType={保存食:12,鉄:7};
+  initial.squads[0].cargo.equipmentInventory=[{id:'sword'}];
+  const scattered=m.reconcileV39SquadFood(initial,{...initial,units:initial.units.map(u=>({...u,squadMoveMode:'independent'}))},group.state);
+  assert.equal(scattered.squads[0].cargoByUnitId.a.resourcesByType.保存食,6);
+  assert.equal(scattered.squads[0].cargoByUnitId.b.resourcesByType.保存食,6);
+  assert.equal(scattered.squads[0].cargo.resourcesByType.鉄,7);
+  assert.equal(scattered.squads[0].cargo.equipmentInventory.length,1);
+  assert.equal(initial.squads[0].cargo.resourcesByType.保存食,12,'immutable source');
+  const total=f=>f.squads.reduce((sum,s)=>sum+Number(s.cargo?.resourcesByType?.保存食||0)+Object.values(s.cargoByUnitId||{}).reduce((n,c)=>n+Number(c.resourcesByType?.保存食||0),0),0);
+  const away={...scattered,units:scattered.units.map(u=>({...u,squadMoveMode:'gather',...(u.id==='b'?{x:20}:{})}))};
+  const gathering=m.reconcileV39SquadFood(scattered,away,group.state);
+  assert.equal(gathering.squads[0].cargoByUnitId.b.resourcesByType.保存食,6,'far member keeps personal food');
+  const joined=m.reconcileV39SquadFood(gathering,{...gathering,units:initial.units},group.state);
+  assert.equal(joined.squads[0].cargo.resourcesByType.保存食,12);
+  assert.equal(total(m.reconcileV39SquadFood(joined,joined,group.state)),12,'no duplicate merge');
+  const ordered=m.orderV39SquadMovement({...group.state,players:[{...group.state.players[0],factionState:initial}]},'p','s','scatter');
+  assert(ordered.ok);assert.equal(ordered.state.players[0].factionState.squads[0].cargoByUnitId.a.resourcesByType.保存食,6);
+  const gathered=m.orderV39SquadMovement(ordered.state,'p','s','gather');
+  assert(gathered.ok);assert.equal(gathered.state.players[0].factionState.squads[0].cargo.resourcesByType.保存食,12,'real order merges adjacent rations');
+  const tiny={...initial,units:initial.units.map(u=>({...u,status:{SIZ:1}}))};
+  const limited=m.reconcileV39SquadFood(tiny,{...tiny,units:tiny.units.map(u=>({...u,squadMoveMode:'independent'}))},group.state);
+  assert.equal(total(limited),12,'overflow remains shared');
+  assert(limited.squads[0].cargo.resourcesByType.保存食>0);
+  const npc={...state,activePlayerId:'human',timeline:{phase:'enemy',turnNumber:1},players:[{...state.players[0],isPlayer:false}]};
+  const options={npcTurn:true,supplyBudgetBySettlement:{home:{穀物:99,野菜:99,肉:99,魚:99}}};
+  const supplied=m.autoResupplyV39CarriedFood(npc,'p','',options);
+  assert(supplied.reports.length);
+  for(const key of ['穀物','野菜','肉','魚'])assert(supplied.state.players[0].factionState.settlements[0].foodStockByType[key]>=99,'NPC resident reserves');
+  assert.equal(supplied.state.activePlayerId,'human');assert.equal(supplied.state.timeline.phase,'enemy');
+  assert.equal(m.autoResupplyV39CarriedFood({...npc,players:[{...npc.players[0],isPlayer:true}]},'p','',options).reports.length,0,'NPC bypass cannot authorize human faction');
+  const hungry=structuredClone(supplied.state);hungry.players[0].factionState.units[0].x=20;hungry.players[0].factionState.squads[0].cargoByUnitId.a.resourcesByType={};
+  hungry.players[0].factionState.settlements[0].foodStockByType={...home.foodStockByType};
+  assert.equal(m.inspectV39NpcFoodReturn(hungry,'p',options).type,'food-return');
+  assert.equal(m.inspectV39NpcFoodReturn(hungry,'p',{...options,excludedIds:new Set(['a'])}),null,'resource workers keep their assignment');
+  hungry.players[0].factionState.settlements[0].foodStockByType={};
+  assert.equal(m.inspectV39NpcFoodReturn(hungry,'p',options),null,'no return loop to empty base');
+  console.log('PASS: scatter/merge food conservation, distant gathering, capacity overflow and NPC stock reserve/turn isolation.');
+}
 // Resident starvation is unchanged; only the unit can cover its allocated maintenance shortfall.
 const emptyHome={...home,foodStockByType:{},populationGrowthByRace:{只人:{starvationStage:4,remainingTurns:0}}};
 const population=m.advanceV39PopulationEconomy({village:emptyHome,units:[actor],resourceKeys:m.FOOD_RESOURCE_KEYS,normalFoodKeys:m.NORMAL_FOOD_RESOURCE_KEYS,populationCapacity:20,includeUnitFoodShortfalls:true});

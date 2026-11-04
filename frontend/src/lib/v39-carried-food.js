@@ -15,22 +15,42 @@ const alive=u=>u&&n(u.hp??u.currentHp)>0&&u.state!=='死亡';
 export const hasV39CarriedFood=cargo=>V39_CARRIED_FOOD_KEYS.some(key=>n(cargo?.resourcesByType?.[key])>0);
 export const isV39AutoFoodResupplyEnabled=state=>typeof state?.gameSettings?.carriedFoodAutoResupply==='boolean'?state.gameSettings.carriedFoodAutoResupply:balance.autoResupply;
 
-export function autoResupplyV39CarriedFood(state,playerId,unitId=''){
-  if(!isV39AutoFoodResupplyEnabled(state)||state?.activePlayerId!==playerId||state.timeline?.phase!=='player')return {state,reports:[]};
+export function autoResupplyV39CarriedFood(state,playerId,unitId='',options={}){
+  const npc=options.npcTurn&&state?.players?.find(player=>player.id===playerId)?.isPlayer===false;
+  if(!isV39AutoFoodResupplyEnabled(state)||!npc&&(state?.activePlayerId!==playerId||state.timeline?.phase!=='player'))return {state,reports:[]};
   const units=state.players.find(p=>p.id===playerId)?.factionState?.units||[],reports=[];
   for(const unit of units){
     if(unitId&&unit.id!==unitId)continue;
-    const result=resupplyV39CarriedFood(state,playerId,unit.id,unit.carriedFoodTargetTurns||balance.defaultTurns);
+    if(npc&&(unit.transportAssignment||unit.tradeAssignment))continue;
+    const result=resupplyV39CarriedFood(state,playerId,unit.id,unit.carriedFoodTargetTurns||balance.defaultTurns,options);
     if(result.ok){state=result.state;reports.push({unitId:unit.id,resources:result.resources,convertedFood:result.convertedFood});}
   }
   return {state,reports};
+}
+
+export function inspectV39NpcFoodReturn(state,playerId,{supplyBudgetBySettlement={},excludedIds=new Set()}={}){
+  const player=state?.players?.find(row=>row.id===playerId);
+  if(player?.isPlayer!==false||!isV39AutoFoodResupplyEnabled(state))return null;
+  const faction=player.factionState;
+  for(const unit of faction.units||[]){
+    if(!alive(unit)||!unit.carryFood||excludedIds.has(unit.id)||unit.transportAssignment||unit.tradeAssignment||(unit.worldId||'surface')!==(state.activeWorldId||'surface'))continue;
+    const status=resolveV39CarriedFoodStatus(faction,unit.id,state);
+    if(status.base||!status.accessible)continue;
+    const demand=Object.fromEntries(Object.entries(status.demand).map(([key,value])=>[key,value*balance.npcReturnThresholdTurns]));
+    if(!Object.values(demand).some(value=>value>0)||consumeV39CarriedMaintenance(status.cargo.resourcesByType,demand,V39_CARRIED_FOOD_KEYS,normalKeys).fed)continue;
+    const bases=(faction.settlements||[]).filter(base=>base.placed&&(base.worldId||'surface')===(unit.worldId||'surface')
+      &&(!base.ownerPlayerId||base.ownerPlayerId===playerId)&&Object.entries(base.foodStockByType||{}).some(([key,value])=>V39_CARRIED_FOOD_KEYS.includes(key)&&n(value)>n(supplyBudgetBySettlement[base.settlementId||base.id]?.[key])))
+      .sort((a,b)=>getHexDistance(unit,a)-getHexDistance(unit,b));
+    if(bases.length)return {type:'food-return',actorId:unit.id,x:bases[0].x,y:bases[0].y,targetName:bases[0].name||'補給拠点',reason:`携帯食料が${balance.npcReturnThresholdTurns}ターン分未満`};
+  }
+  return null;
 }
 
 export function resolveV39CarriedFoodStatus(faction,unitId,state){
   const status=resolveV39FactionUnitCargoStatus(faction,unitId,state);
   let members=status.members.filter(alive),accessible=true;
   if(!status.individual&&members.length){
-    const leader=members.find(u=>u.id===(status.squad?.moveLeaderId||status.squad?.leaderId))||members[0];
+    const leader=members.find(u=>u.id===(status.squad?.movementLeaderId||status.squad?.moveLeaderId||status.squad?.leaderId))||members[0];
     const connected=new Set([leader.id]);
     for(let i=0;i<members.length;i++)for(const unit of members)if(members.some(other=>connected.has(other.id)&&getHexDistance(unit,other)<=balance.shareRadius))connected.add(unit.id);
     accessible=connected.has(unitId);members=members.filter(u=>connected.has(u.id));
@@ -49,7 +69,54 @@ function replaceCargo(faction,status,cargo){
   return {...faction,squads:faction.squads.map(s=>s.id!==status.squad?.id?s:status.individual
     ?{...s,cargoByUnitId:{...s.cargoByUnitId,[status.unit.id]:normalizeV39Cargo(cargo)}}:{...s,cargo:normalizeV39Cargo(cargo)})};
 }
-export function inspectV39FoodResupply(state,playerId,unitId,turns=balance.defaultTurns){
+// Only rations follow squad orders; trade goods and equipment keep their owner.
+export function reconcileV39SquadFood(previous,faction,state){
+  let squads=faction.squads;
+  for(const old of previous.squads||[]){
+    if(['solo','単独'].includes(old.id))continue;
+    const members=(previous.units||[]).filter(unit=>alive(unit)&&(old.unitIds||[]).includes(unit.id)&&unit.squadMoveMode!=='independent'&&!unit.transportAssignment&&!unit.tradeAssignment);
+    const next=squads.find(row=>row.id===old.id);if(!next||!members.length)continue;
+    const shared=normalizeV39Cargo(next.cargo),personal={...next.cargoByUnitId};let divided=false;
+    const demands=new Map(members.map(unit=>[unit.id,resolveV39UnitMaintenanceDemand(unit,V39_CARRIED_FOOD_KEYS)]));
+    for(const unit of members){
+      const current=faction.units.find(row=>row.id===unit.id);
+      if(!current||current.squadMoveMode!=='independent'||current.transportAssignment||current.tradeAssignment)continue;
+      const cargo=normalizeV39Cargo(personal[unit.id]),allocations={};
+      for(const resource of V39_CARRIED_FOOD_KEYS){
+        const weight=id=>isV39PreservedFood(resource)?normalKeys.reduce((sum,key)=>sum+n(demands.get(id)?.[key]),0):n(demands.get(id)?.[resource]);
+        const total=members.reduce((sum,row)=>sum+weight(row.id),0);
+        allocations[resource]=total>0?n(old.cargo?.resourcesByType?.[resource])*weight(unit.id)/total:0;
+      }
+      const load=Object.values(allocations).reduce((sum,value)=>sum+value,0);
+      const room=Math.max(0,resolveV39UnitCargoCapacity(current,state)-resolveV39CargoLoad(cargo));
+      const ratio=load>0?Math.min(1,room/load):0;
+      for(const [resource,value] of Object.entries(allocations)){
+        const take=Math.min(n(shared.resourcesByType[resource]),Math.floor(value*ratio*1e6)/1e6);
+        if(take<=0)continue;
+        divided=true;
+        shared.resourcesByType[resource]=round(n(shared.resourcesByType[resource])-take);
+        cargo.resourcesByType[resource]=round(n(cargo.resourcesByType[resource])+take);
+      }
+      personal[unit.id]=normalizeV39Cargo(cargo);
+    }
+    if(divided)squads=squads.map(row=>row.id===old.id?{...row,cargo:normalizeV39Cargo(shared),cargoByUnitId:personal}:row);
+  }
+  faction={...faction,squads};
+  for(const unit of faction.units||[]){
+    if(!alive(unit)||unit.transportAssignment||unit.tradeAssignment)continue;
+    const status=resolveV39CarriedFoodStatus(faction,unit.id,state);
+    if(status.individual||!status.accessible||!status.squad)continue;
+    const personal=normalizeV39Cargo(status.squad.cargoByUnitId?.[unit.id]);
+    if(!hasV39CarriedFood(personal))continue;
+    const shared=normalizeV39Cargo(status.squad.cargo);
+    for(const key of V39_CARRIED_FOOD_KEYS){
+      shared.resourcesByType[key]=round(n(shared.resourcesByType[key])+n(personal.resourcesByType[key]));delete personal.resourcesByType[key];
+    }
+    faction={...faction,squads:faction.squads.map(row=>row.id===status.squad.id?{...row,cargo:normalizeV39Cargo(shared),cargoByUnitId:{...row.cargoByUnitId,[unit.id]:normalizeV39Cargo(personal)}}:row)};
+  }
+  return faction;
+}
+export function inspectV39FoodResupply(state,playerId,unitId,turns=balance.defaultTurns,options={}){
   const faction=state?.players?.find(p=>p.id===playerId)?.factionState;
   let status=resolveV39CarriedFoodStatus(faction,unitId,state);
   const originalCargo=status.cargo,originalLoad=status.load;
@@ -73,9 +140,12 @@ export function inspectV39FoodResupply(state,playerId,unitId,turns=balance.defau
   const resources={};
   const ordinaryWanted=normalKeys.reduce((sum,key)=>sum+Math.max(0,n(status.demand[key])*turns-n(status.cargo.resourcesByType[key])),0);
   const savedWanted=Math.max(0,ordinaryWanted/ration.nutrition-n(status.cargo.resourcesByType[ration.name]));
-  const savedTake=round(Math.min(savedWanted,n(status.base?.foodStockByType?.[ration.name]),room));
+  const npc=options.npcTurn&&state?.players?.find(player=>player.id===playerId)?.isPlayer===false;
+  const reserves=npc?options.supplyBudgetBySettlement?.[status.base?.settlementId||status.base?.id]||{}:{};
+  const availableStock=Object.fromEntries(Object.entries(status.base?.foodStockByType||{}).map(([key,value])=>[key,Math.max(0,n(value)-n(reserves[key]))]));
+  const savedTake=round(Math.min(savedWanted,n(availableStock[ration.name]),room));
   if(savedTake>0){resources[ration.name]=savedTake;room-=savedTake;}
-  const ingredients={},availableStock={...status.base?.foodStockByType};
+  const ingredients={};
   let autoCrafted=0;
   if(automaticPreservedFood&&status.base){
     const inputs=normalKeys.filter(key=>!isV39PreservedFood(key));
@@ -105,7 +175,7 @@ export function inspectV39FoodResupply(state,playerId,unitId,turns=balance.defau
     const take=Math.floor(Math.min(substituteWanted,spare,room)*10+1e-8)/10;
     if(take>0){resources[key]=round(n(resources[key])+take);room-=take;substituteWanted=round(substituteWanted-take);}
   }
-  const reason=!alive(status.unit)?'生存ユニットを選択してください':state?.activePlayerId!==playerId||state.timeline?.phase!=='player'?'自分の操作ターンに補給してください'
+  const reason=!alive(status.unit)?'生存ユニットを選択してください':!npc&&(state?.activePlayerId!==playerId||state.timeline?.phase!=='player')?'自分の操作ターンに補給してください'
     :n(status.unit.ap??status.unit.currentAp)<balance.resupplyApCost?'APが不足しています'
     :!status.accessible?'部隊へ合流してから補給してください':!status.base?'自軍の拠点領土内で補給できます'
     :!Object.keys(resources).length&&!convertedFood?'必要量を携帯済み、または拠点在庫・積載余力がありません':'';
@@ -114,8 +184,8 @@ export function inspectV39FoodResupply(state,playerId,unitId,turns=balance.defau
   for(const [key,amount] of Object.entries(ingredients))stockCosts[key]=round(n(stockCosts[key])+amount);
   return {...status,cargo:originalCargo,load:originalLoad,plannedCargo:status.cargo,turns,resources,stockCosts,ingredients,autoCrafted,convertedFood,automaticPreservedFood,reason,available:!reason,maxTurns:balance.maxTurns};
 }
-export function resupplyV39CarriedFood(state,playerId,unitId,turns){
-  const check=inspectV39FoodResupply(state,playerId,unitId,turns);
+export function resupplyV39CarriedFood(state,playerId,unitId,turns,options={}){
+  const check=inspectV39FoodResupply(state,playerId,unitId,turns,options);
   if(!check.available)return {ok:false,state,reason:check.reason};
   const player=state.players.find(p=>p.id===playerId);
   const source=check.convertedFood?replaceCargo(player.factionState,check,check.plannedCargo):player.factionState;

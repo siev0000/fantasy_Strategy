@@ -1,0 +1,51 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-ui250.xlsx",
+  "output_dir": "output\\ui250-preview",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "クラス",
+    "説明"
+  ],
+  "source_sheets": {
+    "クラス": "クラス",
+    "説明": "用語辞書"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "技能",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 2,
+    "records": 485,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "クラス",
+      "output": "クラス.json",
+      "input_rows": 1259,
+      "records": 461,
+      "skipped_blank_rows": 569,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 229,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "説明",
+      "output": "説明.json",
+      "input_rows": 24,
+      "records": 24,
+      "skipped_blank_rows": 0,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 0,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

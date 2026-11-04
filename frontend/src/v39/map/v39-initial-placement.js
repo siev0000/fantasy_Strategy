@@ -2,7 +2,8 @@ import { createInitialV39Village, normalizeV39Village } from "../../lib/v39-econ
 import { getHexOffsetNeighbors, getHexNeighborCoords, getHexDistance } from "../../lib/hex-grid.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
-import { V39_START_AREA_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import { V39_START_AREA_BALANCE,V39_NEUTRAL_VILLAGE_BALANCE } from "../../lib/v39-gameplay-balance.js";
+import {createV39InitialSpacing,inspectV39InitialSpacing,collectV39InitialSites,V39_INITIAL_SPACING} from '../../lib/v39-initial-spacing.js';
 import { classData } from "../../lib/game-data-registry.js";
 import { RACE_CLASS_NAME_MAP } from "../../constants/unitCommon.js";
 import { runV39FieldUpdate } from "../ui/v39-field-update-loading.js";
@@ -81,8 +82,9 @@ function terrainPreferenceScore(data, tile, preferred, unfavorable) {
 
 function placementCandidates() {
   const data = fieldMapData();
-  if (!data?.grid) return [];
+  if (!data?.grid) return {candidates:[],spacing:null};
   const state = getGameState();
+  const spacing=placementSpacing(state);
   const race = getActivePlayer(state)?.race;
   const { preferred, unfavorable } = raceTerrainPreferences(race);
   const center = { x:(data.w - 1) / 2, y:(data.h - 1) / 2 };
@@ -98,18 +100,23 @@ function placementCandidates() {
     if (!unitCanStandAt(data, x, y)) continue;
     const height = Number(data.heightLevelMap?.[y]?.[x]) || 0;
     const tile = { x, y, height, terrain:data.grid[y][x], special:data.specialMap?.[y]?.[x] || "" };
-    if (basePlacementIssue(tile, state)) continue;
-    tiles.push({ ...tile, preference:terrainPreferenceScore(data, tile, preferred, unfavorable) });
+    tiles.push(tile);
   }
+  let available=[];
+  for(;spacing.gap>=spacing.minimumGap;spacing.gap--){
+    available=tiles.filter(tile=>!basePlacementIssue(tile,state,spacing));
+    if(available.length||spacing.gap===spacing.minimumGap)break;
+  }
+  available=available.map(tile=>({...tile,spacing:inspectV39InitialSpacing(tile,race,spacing),preference:terrainPreferenceScore(data,tile,preferred,unfavorable)}));
   const candidates = [];
   const edgePenalty = tile => Math.max(0, margin - Math.min(tile.x, tile.y, data.w - 1 - tile.x, data.h - 1 - tile.y));
   while (candidates.length < V39_START_AREA_BALANCE.candidateCount) {
     // 地図端を避け、種族の適正土地、低地、中央寄りの順で優先する。
     let best = null, bestScore = null;
-    for (const tile of tiles) {
+    for (const tile of available) {
       const separation = candidates.length ? Math.min(...candidates.map(candidate => distance(candidate, tile))) : 0;
       if (candidates.length && separation <= V39_START_AREA_BALANCE.placementRadius * 2) continue;
-      const score = [edgePenalty(tile), ...tile.preference, Math.abs(tile.height), getHexDistance(tile, center), -separation];
+      const score = [Math.max(0,spacing.gap+V39_INITIAL_SPACING.sameRaceExtraDistance-tile.spacing.sameRaceClearance),-Math.min(data.w+data.h,tile.spacing.clearance),edgePenalty(tile), ...tile.preference, Math.abs(tile.height), -separation,getHexDistance(tile, center)];
       const difference = bestScore ? score.findIndex((value, index) => value !== bestScore[index]) : -1;
       if (!best || (difference >= 0 && score[difference] < bestScore[difference])) {
         best = tile; bestScore = score;
@@ -118,7 +125,11 @@ function placementCandidates() {
     if (!best) break;
     candidates.push(best);
   }
-  return candidates;
+  return {candidates,spacing};
+}
+
+function placementSpacing(state){
+  return createV39InitialSpacing({...fieldMapData(),worldWrapEnabled:worldWrapEnabled()},state,{villageCount:window.__v39FieldRuntime?.settings?.neutralVillageCount??V39_NEUTRAL_VILLAGE_BALANCE.initialVillageCount});
 }
 
 function currentCandidateContext() {
@@ -128,8 +139,9 @@ function currentCandidateContext() {
   const count = placedSettlements(getActiveFaction()).length;
   // 種族・クラス選択時点ではマップ未生成。生成後のイベントで候補を再計算する。
   if (!map?.grid) return { map, playerId, race, count, candidates:[], allowedTiles:[], allowedKeys:new Set() };
-  if (candidateContext?.map === map && candidateContext.playerId === playerId && candidateContext.race === race && candidateContext.count === count) return candidateContext;
-  const candidates = placementCandidates();
+  const revision=JSON.stringify([collectV39InitialSites(getGameState(),map).map(s=>[s.x,s.y,s.radius,s.race]),window.__v39FieldRuntime?.settings?.neutralVillageCount,getGameState().players.length]);
+  if (candidateContext?.map === map && candidateContext.playerId === playerId && candidateContext.race === race && candidateContext.count === count&&candidateContext.revision===revision) return candidateContext;
+  const {candidates,spacing} = placementCandidates();
   const tiles = new Map();
   for (const candidate of candidates) {
     const seen = new Set();
@@ -149,13 +161,14 @@ function currentCandidateContext() {
   const state = getGameState();
   for (const tile of preferredLowlandTiles(map, race)) tiles.set(coordKey(tile.x, tile.y), tile);
   const allowedTiles = [...tiles.values()].map(tile => ({ ...tile, terrain:map.grid[tile.y][tile.x] }))
-    .filter(tile => !basePlacementIssue(tile, state));
-  candidateContext = { map, playerId, race, count, candidates, allowedTiles, allowedKeys:new Set(allowedTiles.map(tile => coordKey(tile.x, tile.y))) };
+    .filter(tile => !basePlacementIssue(tile, state,spacing));
+  candidateContext = { map, playerId, race, count, candidates,spacing,revision,allowedTiles, allowedKeys:new Set(allowedTiles.map(tile => coordKey(tile.x, tile.y))) };
   return candidateContext;
 }
 
 function initialPlacementIssue(tile) {
-  return basePlacementIssue(tile) || (currentCandidateContext().allowedKeys.has(coordKey(tile?.x, tile?.y))
+  const context=currentCandidateContext();
+  return basePlacementIssue(tile,getGameState(),context.spacing) || (context.allowedKeys.has(coordKey(tile?.x, tile?.y))
     ? "" : `候補マス・周囲${V39_START_AREA_BALANCE.placementRadius}マス・広い適正低地から選択してください`);
 }
 
@@ -295,7 +308,7 @@ function isPassableTerrain(terrain) {
   return terrain !== "海" && terrain !== "湖";
 }
 
-function basePlacementIssue(tile, state = getGameState()) {
+function basePlacementIssue(tile, state = getGameState(),spacing=null) {
   if (!tile) return "配置先がありません";
   const terrain = text(tile.terrain, "海");
   if (!isPassableTerrain(terrain) || terrain === "火山") return "海・湖・火山には配置できません";
@@ -320,7 +333,9 @@ function basePlacementIssue(tile, state = getGameState()) {
   ].some(unit => unit?.x !== null && unit?.x !== undefined && unit?.y !== null && unit?.y !== undefined
     && unit?.state !== "死亡" && Number(unit?.hp ?? unit?.currentHp ?? 1) > 0
     && keys.has(coordKey(unit.x, unit.y)));
-  return occupied ? "周囲に他勢力のキャラクターまたは敵がいます" : "";
+  if(occupied)return "周囲に他勢力のキャラクターまたは敵がいます";
+  const context=spacing||placementSpacing(state);
+  return inspectV39InitialSpacing(tile,getActivePlayer(state)?.race,context).available?'':`他の拠点・村の領土から${context.gap}マス以上離してください`;
 }
 
 function canPlaceBaseOnTile(tile) {
@@ -691,15 +706,28 @@ function placeInitialBase(tile, options = {}) {
 let placingNpcs=false;
 function placePendingNpcBases() {
   if(placingNpcs)return false;
-  const state=getGameState();
+  let state=getGameState();
   if(state.players.some(player=>player.isPlayer!==false&&needsInitialPlacement(player)))return false;
+  window.reconcileV39InitialNpcRaces?.();state=getGameState();
   const pending=state.players.filter(player=>player.isPlayer===false&&needsInitialPlacement(player));
   if(!pending.length)return false;
+  const reduced=[];let completionTriggered=false;
   placingNpcs=true;
   try{for(const player of pending){
     const result=autoPlaceInitialBases(player.id);
-    if(!result.ok){showBanner(`${player.label}: ${result.reason}。マップを広げるかNPC勢力数を減らしてください`,true);break;}
+    completionTriggered ||= result.initialPlacementComplete===true;
+    if(!result.ok){
+      const current=getGameState(),failed=current.players.find(p=>p.id===player.id),placed=placedSettlements(failed?.factionState).length;
+      const players=current.players.flatMap(p=>p.id!==player.id?[p]:placed?[{...p,factionState:{...p.factionState,initialSettlementCount:placed,initialSettlementPlans:initialSettlementPlans(p.factionState).slice(0,placed),villagePlacementMode:false}}]:[]);
+      window.setV39GameState?.({players,gameSettings:{...current.gameSettings,npcFactionCount:players.filter(p=>p.isPlayer===false).length}},{reason:'initial-placement-capacity-reduction'});
+      reduced.push(player.label||player.id);
+    }
   }}finally{placingNpcs=false;}
+  if(reduced.length){
+    const message=`陸地と拠点間隔の制約によりNPCの配置数を減らしました: ${reduced.join(' / ')}`;
+    showBanner(message,true);window.appendV39ActivityLog?.(state.players.filter(p=>p.isPlayer!==false).map(p=>p.id),'配置',message);
+    if(!completionTriggered)window.dispatchEvent(new CustomEvent('v39:initial-placement-complete',{detail:{playerId:state.activePlayerId,mapData:fieldMapData(),reducedNpcCount:reduced.length}}));
+  }
   return true;
 }
 
@@ -738,7 +766,7 @@ function autoPlaceInitialBases(playerId) {
       detail:{ playerId:player.id, auto:true, mapData:fieldMapData() }
     }));
   }
-  return { ok:true, playerId:player.id };
+  return { ok:true, playerId:player.id,initialPlacementComplete:allPlaced&&!sitesGenerated };
 }
 
 function handleTileSelected(event) {

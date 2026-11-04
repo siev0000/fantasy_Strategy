@@ -41,6 +41,33 @@ function normalizeAngle(value) {
   return normalized < 0 ? normalized + 360 : normalized;
 }
 
+// Rotation affects the image only; position offsets use fixed screen/world axes.
+// Image center relative to the fixed impact point after rotation and screen-axis scale.
+export function resolveEffectImpactPlacement(bounds, step = {}) {
+  const angle=numberOr(bounds.angleDeg,0)*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle);
+  const dx=(clamp(numberOr(step.impactXPercent,50),0,100)/100-.5)*bounds.width*(step.flipX===true?-1:1);
+  const dy=(clamp(numberOr(step.impactYPercent,50),0,100)/100-.5)*bounds.height*(step.flipY===true?-1:1);
+  const sx=numberOr(bounds.screenScaleX,1),sy=numberOr(bounds.screenScaleY,1);
+  return {...bounds,flipX:step.flipX===true,flipY:step.flipY===true,anchorX:bounds.x,anchorY:bounds.y,
+    x:bounds.x-sx*(dx*c-dy*s),y:bounds.y-sy*(dx*s+dy*c)};
+}
+
+export function resolveEffectImpactPercent(bounds, point) {
+  const a=numberOr(bounds.angleDeg,0)*Math.PI/180,c=Math.cos(a),s=Math.sin(a);
+  const dx=(point.x-bounds.x)/numberOr(bounds.screenScaleX,1),dy=(point.y-bounds.y)/numberOr(bounds.screenScaleY,1);
+  return {impactXPercent:clamp(50+100*(dx*c+dy*s)/bounds.width*(bounds.flipX?-1:1),0,100),
+    impactYPercent:clamp(50+100*(-dx*s+dy*c)/bounds.height*(bounds.flipY?-1:1),0,100)};
+}
+
+export function resolveEffectSourceTransform(source = {}, request = {}, position = {}) {
+  const step=source.stepTransform || {};
+  const angleDeg=normalizeAngle(numberOr(request.angleDeg,0)+numberOr(step.rotationDeg,0));
+  const offsetScale=numberOr(request.positionOffsetScale,1);
+  const x=numberOr(step.offsetX,0)*offsetScale,y=numberOr(step.offsetY,0)*offsetScale;
+  return {angleDeg,x:numberOr(position.x,0)+x,
+    y:numberOr(position.y,0)+y};
+}
+
 function normalizeTint(value) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -209,14 +236,21 @@ export class PhaserEffectPlayer {
     request.onStart?.({ x, y, sources });
 
     let played = false;
-    for (let index = 0; index < sources.length; index += 1) {
-      if (requestId !== this.requestId || this.destroyed) break;
-      const source = sources[index];
-      played = await this.playSingle(source, request, { x, y }, requestId) || played;
-      if (index < sources.length - 1 && requestId === this.requestId) {
-        await wait(request.sequenceGapMs ?? this.options.sequenceGapMs);
+    do {
+      let roundPlayed = false;
+      for (let index = 0; index < sources.length; index += 1) {
+        if (requestId !== this.requestId || this.destroyed) break;
+        const source = sources[index];
+        const didPlay = await this.playSingle(source, sources.length > 1 ? {...request,loop:false} : request, { x, y }, requestId);
+        roundPlayed = didPlay || roundPlayed;
+        played = didPlay || played;
+        if (index < sources.length - 1 && requestId === this.requestId) {
+          await wait(request.sequenceGapMs ?? this.options.sequenceGapMs);
+        }
       }
-    }
+
+      if (!roundPlayed) break;
+    } while (request.loop === true && sources.length > 1 && requestId === this.requestId && !this.destroyed);
 
     if (requestId === this.requestId) request.onComplete?.({ x, y, played });
     return played;
@@ -260,6 +294,7 @@ export class PhaserEffectPlayer {
       return {
         src: String(item?.src || "").trim(),
         frameStart:item?.frameStart,frameEnd:item?.frameEnd,
+        stepTransform:item?.stepTransform,
         sourceScaleMultiplier: numberOr(item?.sourceScaleMultiplier ?? request.sourceScaleMultiplier, 1)
       };
     }).filter(item => item.src);
@@ -321,6 +356,8 @@ export class PhaserEffectPlayer {
       image.clearMask?.(true);
       image.destroy?.();
     }
+    for (const container of this.sourceContainers || []) container.destroy?.();
+    this.sourceContainers = [];
     this.maskImage?.destroy?.();
     this.effectImage = null;
     this.previousImage = null;
@@ -349,8 +386,17 @@ export class PhaserEffectPlayer {
     if (!layout.frameCount) return false;
     this.clearActiveObjects();
 
-    const angle = normalizeAngle(request.angleDeg);
-    const angleRadians = angle * Math.PI / 180;
+    const step=source.stepTransform || {};
+    const transformed=resolveEffectSourceTransform(source,request,position);
+    const angle=transformed.angleDeg;
+    const angleRadians=angle*Math.PI/180;
+    position={x:transformed.x,y:transformed.y};
+    const stepScale=clamp(numberOr(step.scalePercent,100),10,400)/100;
+    const screenX=clamp(numberOr(step.scaleXPercent,100),10,400)/100;
+    const screenY=clamp(numberOr(step.scaleYPercent,100),10,400)/100;
+    const screenScaled=screenX!==1 || screenY!==1;
+    const placeImage=(image,x,y)=>image.setPosition(
+      screenScaled?(x-position.x)/screenX:x,screenScaled?(y-position.y)/screenY:y);
     const scalePercent = clamp(numberOr(request.scalePercent, 50), 1, 1000);
     // 範囲を包む指定時は実コマ寸法から等倍拡縮。フォルダごとの倍率を重ねない。
     const scale = request.fitDiameterPx > 0
@@ -359,8 +405,12 @@ export class PhaserEffectPlayer {
       * Math.max(0.01, numberOr(source.sourceScaleMultiplier, 1));
     const stretched=Number.isFinite(request.stretchLengthPx)&&request.stretchLengthPx>0;
     const powerAxes=resolveEffectPowerAxes(request);
-    const scaleX=(stretched&&request.stretchAxis!=='y'?request.stretchLengthPx/layout.frameWidth:scale)*powerAxes.x;
-    const scaleY=(stretched&&request.stretchAxis==='y'?request.stretchLengthPx/layout.frameHeight:scale)*powerAxes.y;
+    const scaleX=(step.flipX===true?-1:1)*stepScale*(stretched&&request.stretchAxis!=='y'?request.stretchLengthPx/layout.frameWidth:scale)*powerAxes.x;
+    const scaleY=(step.flipY===true?-1:1)*stepScale*(stretched&&request.stretchAxis==='y'?request.stretchLengthPx/layout.frameHeight:scale)*powerAxes.y;
+    const impactBounds=resolveEffectImpactPlacement({x:position.x,y:position.y,
+      width:layout.frameWidth*Math.abs(scaleX),height:layout.frameHeight*Math.abs(scaleY),
+      angleDeg:angle,screenScaleX:screenX,screenScaleY:screenY},step);
+    position={x:impactBounds.x,y:impactBounds.y};
     const tint = normalizeTint(request.tint);
     const tintStrength = clamp(numberOr(request.colorStrengthPercent, 100), 0, 100);
     const huePerFrame = clamp(numberOr(request.hueAnimationDegPerFrame, 0), -360, 360);
@@ -388,22 +438,23 @@ export class PhaserEffectPlayer {
       return {
         cropX,
         cropY,
-        x: position.x + (localX * Math.cos(angleRadians)) - (localY * Math.sin(angleRadians)) + numberOr(frameOffset.x, 0),
-        y: position.y + (localX * Math.sin(angleRadians)) + (localY * Math.cos(angleRadians)) + numberOr(frameOffset.y, 0)
+        x: position.x + screenX*((localX * Math.cos(angleRadians)) - (localY * Math.sin(angleRadians))) + numberOr(frameOffset.x, 0),
+        y: position.y + screenY*((localX * Math.sin(angleRadians)) + (localY * Math.cos(angleRadians))) + numberOr(frameOffset.y, 0)
       };
     };
 
     const applyColor = (image, frameIndex, elapsedMs) => {
       if (!image?.scene || !image.frame?.data) return;
       const hueShift = huePerFrame * frameIndex;
-      if (!gradientEnabled) {
+      const brightness=clamp(numberOr(request.brightnessPercent,100),0,200);
+      if (!gradientEnabled && request.grayscaleBase !== true && brightness===100) {
         if (tint === null) image.clearTint?.();
         else image.setTint(mixTintWithWhite(rotateHue(tint, hueShift), tintStrength));
         return;
       }
 
-      const colorA = rotateHue(gradientColorA, hueShift);
-      const colorB = rotateHue(gradientColorB, hueShift);
+      const colorA = rotateHue(gradientEnabled?gradientColorA:(tint ?? 0xffffff), hueShift);
+      const colorB = rotateHue(gradientEnabled?gradientColorB:(tint ?? 0xffffff), hueShift);
       const phase = Math.max(0, numberOr(elapsedMs, 0)) / 1000 * (gradientSpeed / 100);
       const ratioAt = (p, start = gradientStart, end = gradientEnd) => end === start
         ? (p >= end ? 1 : 0)
@@ -452,40 +503,54 @@ export class PhaserEffectPlayer {
       const context = texture.context;
       const placement = resolvePlacement(frameIndex);
       const horizontal = gradientDirection === "left" || gradientDirection === "right";
+      const multiplySource=request.grayscaleBase===true || !gradientEnabled;
       const gradient = context.createLinearGradient(0, 0, horizontal ? layout.frameWidth : 0, horizontal ? 0 : layout.frameHeight);
-      for (const stop of stops) gradient.addColorStop(clamp(stop.p, 0, 1), `#${mixColors(colorA, colorB, stop.ratio).toString(16).padStart(6, "0")}`);
+      for (const stop of stops) gradient.addColorStop(clamp(stop.p, 0, 1), `#${(multiplySource?mixTintWithWhite(mixColors(colorA,colorB,stop.ratio),tintStrength):mixColors(colorA,colorB,stop.ratio)).toString(16).padStart(6, "0")}`);
       const drawSource = () => context.drawImage(sourceImage, placement.cropX, placement.cropY, layout.frameWidth, layout.frameHeight, 0, 0, layout.frameWidth, layout.frameHeight);
       context.globalCompositeOperation = "source-over";
       context.clearRect(0, 0, layout.frameWidth, layout.frameHeight);
-      drawSource();
+      context.filter=request.grayscaleBase===true?'grayscale(1)':'none';
+      drawSource();context.filter='none';
       // source-atop preserves even partially transparent pixels at every strength.
-      context.globalCompositeOperation = "source-atop";
-      context.globalAlpha = tintStrength / 100;
+      context.globalCompositeOperation = multiplySource?"multiply":"source-atop";
+      context.globalAlpha = multiplySource?1:tintStrength / 100;
       context.fillStyle = gradient;
-      context.fillRect(0, 0, layout.frameWidth, layout.frameHeight);
+      if(gradientEnabled || tint!==null)context.fillRect(0, 0, layout.frameWidth, layout.frameHeight);
       context.globalAlpha = 1;
+      if(multiplySource && (gradientEnabled || tint!==null)){context.globalCompositeOperation='destination-in';drawSource();}
       context.globalCompositeOperation = "source-over";
+      if(brightness!==100){
+        context.save();context.filter=`brightness(${brightness}%)`;context.globalCompositeOperation='copy';
+        context.drawImage(context.canvas,0,0);context.restore();
+      }
       texture.refresh();
       image.setTexture(key).setCrop(0, 0, layout.frameWidth, layout.frameHeight).clearTint();
       const frameOffset = frameOffsets[frameIndex] || frameOffsets[String(frameIndex)] || {};
-      image.setPosition(position.x + numberOr(frameOffset.x, 0), position.y + numberOr(frameOffset.y, 0));
+      placeImage(image,position.x + numberOr(frameOffset.x, 0), position.y + numberOr(frameOffset.y, 0));
     };
 
     const applyFrame = (image, frameIndex, elapsedMs = nowMs() - playbackStartedAt) => {
       if (!image?.scene || !image.frame?.data) return;
       const placement = resolvePlacement(frameIndex);
       image.setCrop(placement.cropX, placement.cropY, layout.frameWidth, layout.frameHeight);
-      image.setPosition(placement.x, placement.y);
+      placeImage(image,placement.x,placement.y);
       applyColor(image, frameIndex, elapsedMs);
       if (image === this.effectImage) {
         const offset = frameOffsets[frameIndex] || frameOffsets[String(frameIndex)] || {};
         request.onFrame?.({ x:position.x + numberOr(offset.x, 0), y:position.y + numberOr(offset.y, 0),
-          width:layout.frameWidth * scaleX, height:layout.frameHeight * scaleY, frameIndex });
+          width:layout.frameWidth * Math.abs(scaleX), height:layout.frameHeight * Math.abs(scaleY), flipX:step.flipX===true, flipY:step.flipY===true, angleDeg:angle, screenScaleX:screenX, screenScaleY:screenY, anchorX:impactBounds.anchorX + numberOr(offset.x,0), anchorY:impactBounds.anchorY + numberOr(offset.y,0), frameIndex });
       }
     };
 
     const createImage = (imageDepth, alpha = 1) => {
       const image = this.scene.add.image(position.x, position.y, textureKey);
+      if(screenScaled){
+        // Parent scale is applied after the child's rotation, in screen axes.
+        const container=this.scene.add.container(position.x,position.y);
+        container.setScale(screenX,screenY);container.setDepth(imageDepth);container.add(image);
+        (this.sourceContainers ||= []).push(container);
+        image.setPosition(0,0);
+      }
       image.setOrigin(0.5, 0.5);
       image.setScale(scaleX,scaleY);
       image.setDepth(imageDepth);
@@ -493,7 +558,7 @@ export class PhaserEffectPlayer {
       image.setAlpha(alpha);
       image.setBlendMode(request.blendMode ?? this.options.blendMode);
       image.setName(String(request.displayName || "portable-effect-image"));
-      this.applyGrayscale(image, !!request.grayscaleBase);
+      // Monochrome conversion is applied to the source frame before attribute coloring.
       return image;
     };
 
@@ -506,14 +571,20 @@ export class PhaserEffectPlayer {
       const maskKey = this.ensureSoftMaskTexture();
       if (maskKey) {
         this.maskImage = this.scene.make.image({ x: position.x, y: position.y, key: maskKey, add: false });
-        const displayWidth = layout.frameWidth * scaleX;
-        const displayHeight = layout.frameHeight * scaleY;
+        const displayWidth = layout.frameWidth * Math.abs(scaleX);
+        const displayHeight = layout.frameHeight * Math.abs(scaleY);
         const elliptical = stretched || displayWidth > displayHeight * this.options.ellipseRatioThreshold;
         const maskWidth = elliptical ? displayWidth : Math.min(displayWidth, displayHeight);
         const maskHeight = elliptical ? displayHeight : Math.min(displayWidth, displayHeight);
         this.maskImage.setOrigin(0.5, 0.5);
         this.maskImage.setDisplaySize(Math.max(1, maskWidth), Math.max(1, maskHeight));
-        this.maskImage.setAngle(angle);
+        if(screenScaled){
+          const c=Math.cos(angleRadians),s=Math.sin(angleRadians),a=maskWidth*maskWidth,b=maskHeight*maskHeight;
+          const xx=screenX*screenX*(a*c*c+b*s*s),yy=screenY*screenY*(a*s*s+b*c*c);
+          const xy=screenX*screenY*(a-b)*c*s,d=Math.hypot(xx-yy,2*xy);
+          this.maskImage.setDisplaySize(Math.sqrt(Math.max(1,(xx+yy+d)/2)),Math.sqrt(Math.max(1,(xx+yy-d)/2)));
+          this.maskImage.setAngle(Math.atan2(2*xy,xx-yy)*90/Math.PI);
+        }else this.maskImage.setAngle(angle);
         this.effectImage.setMask(this.maskImage.createBitmapMask());
       }
     }

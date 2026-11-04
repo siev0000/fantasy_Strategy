@@ -1,0 +1,293 @@
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import { readFileSync,readdirSync } from 'node:fs';
+import { dirname,resolve } from 'node:path';
+process.on('uncaughtException',error=>{console.error(String(error.stack||error).replace(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g,'[bundle]').slice(0,1400));process.exit(1);});
+const bundle=await build({stdin:{resolveDir:process.cwd(),contents:`
+export * from './frontend/src/lib/v39-bleeding.js';
+export * from './frontend/src/lib/v39-combat-popup-rules.js';
+export {createV39DefenseStructure,v39WallStepHeight} from './frontend/src/lib/v39-defense-rules.js';
+export {v39RayStructureAtStep} from './frontend/src/lib/v39-combat-ray.js';
+export * from './frontend/src/lib/v39-unit-guarding.js';
+export {getHexDistance} from './frontend/src/lib/hex-grid.js';
+export {resolveV39CombatEffect} from './frontend/src/lib/v39-combat-effect-rules.js';
+export {playV39TriggerEffect} from './frontend/src/v39/combat/v39-trigger-presentation.js';
+export * from './frontend/src/lib/v39-ability-damage.js';
+export {applyV39ActiveCombatEffects} from './frontend/src/lib/v39-combat-engine.js';
+export {applyV39DerivedCharacterData} from './frontend/src/v39/unit/v39-character-derived-rules.js';
+export {renderV39UnitConditions} from './frontend/src/v39/unit/v39-unit-detail.js';
+export {resolveV39StateInfliction} from './frontend/src/lib/v39-combat-engine.js';
+export * from './frontend/src/lib/v39-skill-triggers.js';
+export * from './frontend/src/v39/dev/v39-skill-trigger-test.js';
+export * from './frontend/src/lib/v39-passive-rules.js';
+export {computeAttackDamage,resolveSkillHealing} from './frontend/src/lib/v39-combat-engine.js';
+export {canV39FactionAttack} from './frontend/src/lib/v39-diplomacy-rules.js';
+export {getV39UnitTestTechniques,describeV39TestSkillData} from './frontend/src/lib/v39-test-skill-rules.js';
+`},bundle:true,write:false,loader:{'.css':'empty'},format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/skill-trigger.js"'},plugins:[{name:'registry',setup(b){
+ b.onLoad({filter:/icon-library\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([\s\S]*?\);/,'{};'),resolveDir:dirname(args.path),loader:'js'}));
+ b.onLoad({filter:/game-data-registry\.js$/},args=>{
+  const root=resolve('data/source/export/json'),data=Object.fromEntries(readdirSync(root).filter(n=>n.endsWith('.json')).map(n=>[`../../../data/source/export/json/${n}`,JSON.parse(readFileSync(`${root}/${n}`,'utf8'))]));
+  return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,JSON.stringify(data)+';'),resolveDir:dirname(args.path),loader:'js'};
+ });
+}}]});
+globalThis.window={addEventListener(){},dispatchEvent(){},getV39GameState:()=>null};
+const warn=console.warn;let m;
+try{console.warn=()=>{};m=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));}finally{console.warn=warn;}
+let unit=m.addV39Bleeding({hp:1000},100,1),sum=0;
+assert.equal(m.tickV39Bleeding(unit,1).damage,0,'no extra tick in application turn');
+for(let turn=2;turn<=11;turn++){
+ const result=m.tickV39Bleeding(unit,turn);sum+=result.damage;unit=result.unit;
+ assert.equal(m.tickV39Bleeding(unit,turn).damage,0,'same turn is idempotent');
+}
+assert.equal(unit.bleeding,null);assert.equal(sum,55,'100 bleeding causes 10,9,...,1 damage');
+unit=m.addV39Bleeding({hp:1000},100,1);unit=m.tickV39Bleeding(unit,2).unit;
+unit=m.addV39Bleeding(unit,10,2);assert.equal(unit.bleeding.initialValue,100);assert.equal(unit.bleeding.remainingTurns,10);
+assert.equal(m.tickV39Bleeding(unit,3).unit.bleeding.value,90,'additional bleeding resets baseline and ten turns');
+assert.equal(m.reduceV39Bleeding(unit,25).bleeding.value,75);assert.equal(m.reduceV39Bleeding(unit,100).bleeding,null);
+const fixture=JSON.parse(readFileSync('config/v39-skill-trigger-test.json','utf8')),random=()=>.5;
+function createState(){return {activeWorldId:'surface',activePlayerId:'trigger-test',timeline:{turnNumber:1},enemies:[],neutralVillages:[],players:[{id:'trigger-test',factionState:{units:fixture.units.map((unit,index)=>({...unit,worldId:'surface',hp:fixture.hp,currentHp:fixture.hp,maxHp:fixture.hp,ap:100,status:{...fixture.status,HP:fixture.hp},techniques:index?[{source:fixture.passives[0]}]:[]}))}}]};}
+function act(state,index,row,{random}){
+ const units=state.players[0].factionState.units,actor=units[index],target=Number(row.回復)>0?actor:units[1-index];
+ const after=structuredClone(state),next=after.players[0].factionState.units,entries=[];
+ if(Number(row.回復)>0){next[index].hp=Math.min(actor.maxHp,actor.hp+m.resolveSkillHealing(row,actor));next[index].currentHp=next[index].hp;}
+ else {const damage=m.computeAttackDamage({attacker:actor,target,skillRow:row,random});next[1-index].hp=Math.max(0,target.hp-damage.total);next[1-index].currentHp=next[1-index].hp;entries.push({...damage,targetId:target.id,beforeHp:target.hp,afterHp:next[1-index].hp});}
+ return m.applyV39SkillTriggerCombat(state,after,actor,row,entries,{random});
+}
+const eventTargets={ownerId:'受けた人',sourceId:'原因の相手',attackerId:'攻撃した人',cause:'攻撃'};
+assert.equal(m.resolveV39SkillTriggerTarget('自身',eventTargets),'受けた人');
+assert.equal(m.resolveV39SkillTriggerTarget('発動元',eventTargets),'原因の相手');
+assert.equal(m.resolveV39SkillTriggerTarget('攻撃者',eventTargets),'攻撃した人');
+assert.equal(m.resolveV39SkillTriggerTarget('攻撃者',{...eventTargets,cause:'回復'}),null);
+assert.equal(m.resolveV39SkillTriggerTarget('攻撃者',{ownerId:'a',sourceId:'b',cause:'攻撃'}),null);
+assert.equal(m.resolveV39SkillTriggerTarget('未知',eventTargets),null);
+assert.equal(m.resolveV39SkillTriggerTarget('',eventTargets),null);
+const bloodAction=m.resolveV39TriggeredAttack(fixture.passives[0],{name:'被出血付与',amount:100});
+assert.equal(bloodAction.切断,100);assert.equal(bloodAction.全威力,undefined);assert.equal(bloodAction.判定,'HP');
+const arbitrary={名前:'任意の反撃',行動:'P',効果:'反撃_被ダメージ_打撃',判定:'攻撃'};
+assert.equal(m.resolveV39TriggeredAttack(arbitrary,{name:'被ダメージ',amount:37}).打撃,37,'same grammar supports other names, references and attributes');
+assert.equal(m.resolveV39TriggeredAttack(arbitrary,{name:'被出血付与',amount:37}),null);
+assert.equal(m.resolveV39TriggeredAttack({...arbitrary,効果:'反撃_未知_打撃'},{name:'被ダメージ',amount:37}),null);
+assert.equal(m.resolveV39TriggeredAttack({...arbitrary,効果:'反撃_被ダメージ_未知'},{name:'被ダメージ',amount:37}),null);
+const actor={...createState().players[0].factionState.units[1],status:{...fixture.status,HP:100}},target=createState().players[0].factionState.units[0];
+const low=m.computeAttackDamage({attacker:actor,target,skillRow:bloodAction,random}).total;
+const high=m.computeAttackDamage({attacker:{...actor,status:{...actor.status,HP:300}},target,skillRow:bloodAction,random}).total;
+assert.ok(high>low,'HP judgment scales converted base power through normal damage calculation');
+let state=createState();
+const bleed=act(state,0,fixture.actions[1],{random});state=bleed.state;
+assert.equal(state.players[0].factionState.units[1].bleeding.value,66);
+assert.equal(bleed.logs.filter(log=>log.kind==='trigger').length,1);
+assert.equal(bleed.logs.find(log=>log.kind==='trigger').event,'被出血付与');
+assert.ok(state.players[0].factionState.units[0].hp<fixture.hp,'reaction attacks actual source');
+const normal=act(state,0,fixture.actions[0],{random});
+assert.equal(normal.logs.filter(log=>log.kind==='trigger').length,0,'being already bleeding does not trigger blood blade');
+const turn=m.advanceV39SkillTriggerTurn(state,2,{random});state=turn.state;
+assert.equal(turn.logs.filter(log=>log.kind==='trigger').length,0,'bleed tick does not trigger on-application reaction');
+assert.equal(state.players[0].factionState.units[1].bleeding.value,59.4);
+const again=m.advanceV39SkillTriggerTurn(state,2,{random});
+assert.deepEqual(again.state.players,state.players,'repeat same turn does not damage twice');assert.equal(again.changed,false);
+const before=state.players[0].factionState.units[1];
+const healing=act(state,1,fixture.actions[2],{random});
+const after=healing.state.players[0].factionState.units[1];
+assert.equal(after.bleeding?.value||0,Math.max(0,before.bleeding.value-(after.hp-before.hp)),'actual HP recovery reduces bleeding');
+const miss=act(createState(),0,fixture.actions[1],{random:()=>1});
+assert.equal(miss.state.players[0].factionState.units[1].bleeding,undefined);assert.equal(miss.logs.filter(log=>log.kind==='trigger').length,0);
+const passive={...fixture.passives[1],攻撃:999};
+assert.equal(m.isV39ConditionalPassive(passive),true);
+assert.equal(m.matchV39PassiveCondition(passive,{},{}).matches,false,'reactive passive is never always-on');
+assert.equal(m.collectV39PassiveBonuses([passive]).status.攻撃,undefined);
+state=createState();state.players[0].factionState.units[0].techniques=[{source:fixture.passives[1]}];
+const noLoop=act(state,0,fixture.actions[1],{random});
+assert.equal(noLoop.logs.filter(log=>log.kind==='trigger').length,1,'reaction does not start recursive reactions');
+const unknown=m.dispatchV39SkillTriggerEvents(state,[{name:'未知',ownerId:'trigger-test-a',sourceId:'trigger-test-b'}],{random});
+assert.equal(unknown.logs.length,0);
+const sides=bleed.events.filter(event=>event.name.includes('出血付与'));
+assert.equal(sides.find(event=>event.name==='被出血付与').ownerId,'trigger-test-b');
+assert.equal(sides.find(event=>event.name==='出血付与').ownerId,'trigger-test-a');
+assert.ok(!healing.events.some(event=>event.name==='攻撃'),'healing does not emit attack');
+state=createState();state.players[0].factionState.units[1].hp=1;
+state.players[0].factionState.units[1]=m.addV39Bleeding(state.players[0].factionState.units[1],100,1);
+const death=m.advanceV39SkillTriggerTurn(state,2,{random});
+assert.equal(death.state.players[0].factionState.units[1].state,'死亡');
+assert.equal(death.state.players[0].factionState.units[1].deathCause,'出血');
+
+window.isV39TestMode=()=>true;
+const field=m.createV39SkillTriggerFieldFixture({id:'p',controllerParticipantId:'local',factionState:{}});
+assert.equal(field.players.length,2);
+assert.ok(field.players.every(p=>p.isPlayer&&p.controllerParticipantId==='local'));
+assert.ok(m.canV39FactionAttack(field,'p','trigger-test-opponent'));
+assert.ok(m.canV39FactionAttack(field,'trigger-test-opponent','p'));
+for(const player of field.players)assert.ok(m.getV39UnitTestTechniques(player.factionState.units[0]).some(row=>row.name==='検証・出血攻撃'));
+assert.equal(m.getV39TriggeredSkills(field.players[1].factionState.units[0])[0].発動,'被出血付与');
+let current={...field,activePlayerId:'p',timeline:{turnNumber:1}},loaded=false,tab='';
+window.__v39FieldRuntime={mapData:field.map,settings:{}};
+window.getV39GameState=()=>current;
+window.setV39GameState=patch=>{current={...current,...patch};};
+window.startV39ExpeditionTest=()=>({ok:true});
+window.loadV39FieldSnapshot=map=>{loaded=true;window.__v39FieldRuntime.mapData=map;};
+window.activateV39FooterTab=value=>{tab=value;};
+assert.equal(await m.startV39SkillTriggerTest(),true);
+assert.equal(loaded,true);assert.equal(tab,'squad');
+assert.equal(m.selectV39SkillTriggerTestSide(1),true);
+assert.equal(current.activePlayerId,'trigger-test-opponent');
+assert.equal(current.timeline.activeTurnPlayerId,current.activePlayerId);
+assert.equal(m.selectV39SkillTriggerTestSide(0),true);assert.equal(current.activePlayerId,'p');
+console.log('PASS: bleeding, reactions, passive isolation, real field fixture, normal test skills and A/B control. No browser.');
+
+const inflictor={status:{攻撃:0}},defender={level:1,status:{防御:50}};
+assert.equal(m.resolveV39StateInfliction(inflictor,defender,{出血:100},'出血'),66);
+assert.ok(m.resolveV39StateInfliction(inflictor,{...defender,status:{防御:200}},{出血:100},'出血')<66);
+assert.equal(m.resolveV39StateInfliction(inflictor,{...defender,resistances:{出血耐性:100}},{出血:100},'出血'),0);
+assert.equal(m.describeV39Bleeding({bleeding:{value:66,remainingTurns:10}}).damage,6);
+assert.match(m.renderV39UnitConditions({bleeding:{value:66,remainingTurns:10}}),/次回 6ダメージ/);
+assert.match(m.renderV39UnitConditions({}),/なし/);
+
+const reaction=bleed.logs.find(row=>row.kind==='trigger');
+assert.equal(reaction.power,reaction.entry.detail.power);
+assert.match(m.formatV39SkillTriggerLog(reaction),new RegExp('反撃威力'+reaction.power));
+assert.match(m.formatV39SkillTriggerLog(reaction),new RegExp(reaction.damage+'ダメージ'));
+
+assert.equal(m.abilityDamageTarget({効果:'速度ダメージ'}),'速度');
+assert.equal(m.abilityDamageTarget({効果:'架空ダメージ'}),null);
+let damaged=m.addAbilityDamage({status:{速度:20,APP:-10},skillLevels:{隠密:40}},'速度',15);
+damaged=m.addAbilityDamage(damaged,'速度',10);
+damaged=m.addAbilityDamage(damaged,'APP',5,{curse:true});
+assert.equal(m.applyAbilityDamage(damaged).status.速度,0);
+assert.equal(m.applyAbilityDamage(damaged).status.APP,-15);
+assert.equal(m.recoverAbilityDamage(damaged,10).abilityDamage.速度,15);
+assert.equal(m.recoverAbilityDamage(damaged,100).abilityCurses.APP,5);
+assert.deepEqual(m.recoverAbilityDamage(damaged,5,{curse:true}).abilityCurses,{});
+assert.equal(m.applyV39ActiveCombatEffects({status:{攻撃:100}},[{modifiers:{攻撃:20}},{modifiers:{攻撃:30}},{modifiers:{攻撃:5},stackGroup:'oneTurn'},{modifiers:{攻撃:10},stackGroup:'transformation'}]).status.攻撃,145);
+let abilityState=createState();
+let applied=act(abilityState,0,{名前:'能力試験',行動:'A',効果:'速度ダメージ',全威力:100,射程:5,AP消費:0},{random});
+assert.equal(applied.state.players[0].factionState.units[1].abilityDamage.速度,66);
+assert.equal(applied.state.players[0].factionState.units[1].hp,fixture.hp,'ability damage does not also reduce HP');
+abilityState=applied.state;
+const cured=m.applyV39SkillTriggerCombat(abilityState,abilityState,abilityState.players[0].factionState.units[0],{名前:'回復試験',回復:10},[],{random,supportTargetIds:['trigger-test-b']});
+assert.equal(cured.state.players[0].factionState.units[1].abilityDamage.速度,56,'full HP recovery still restores ability damage');
+const curseApplied=act(createState(),0,{名前:'呪い試験',行動:'A',効果:'速度ダメージ',呪い:50,射程:5,AP消費:0},{random});
+assert.equal(curseApplied.state.players[0].factionState.units[1].abilityCurses.速度,33);
+const curseCured=m.applyV39SkillTriggerCombat(curseApplied.state,curseApplied.state,curseApplied.state.players[0].factionState.units[0],{名前:'解呪',効果:'呪い回復',回復:10},[],{random,supportTargetIds:['trigger-test-b']});
+assert.equal(curseCured.state.players[0].factionState.units[1].abilityCurses.速度,23);
+let derived=m.applyV39DerivedCharacterData(m.addAbilityDamage(field.players[0].factionState.units[0],'速度',10));
+const speed=derived.status.速度;
+assert.equal(m.applyV39DerivedCharacterData(derived).status.速度,speed,'derived recalculation does not double subtract');
+console.log('PASS: ability damage/curse, floors, full-HP recovery, curse recovery, persistent max/stacking and derived idempotence.');
+
+for(const player of field.players){
+ const unit=player.factionState.units[0],techniques=m.getV39UnitTestTechniques(unit),names=techniques.map(row=>row.name);
+ for(const name of [...fixture.actions.map(row=>row.名前),...fixture.additionalSkillNames,...fixture.units[field.players.indexOf(player)].passiveSkillNames])assert.ok(names.includes(name),'fixture skill resolves: '+name);
+ assert.equal(new Set(names).size,names.length,'no duplicated fixture skills');
+}
+assert.ok(fixture.actions.some(row=>row.効果==='速度ダメージ'&&row.呪い===50));
+assert.ok(fixture.actions.some(row=>row.効果==='呪い回復'));
+console.log('PASS: complete test skill catalog resolves on both field units.');
+
+const requests=[];window.playV39MapEffect=request=>requests.push(request);
+const reactionLog=bleed.logs.find(log=>log.entry);
+assert.equal(m.playV39TriggerEffect(reactionLog),true);
+assert.equal(requests[0].skillRow, reactionLog.skillRow,'normal effect resolver receives the actual reaction skill');
+assert.equal(requests[0].attackerTile.x,reactionLog.attacker.x);
+assert.equal(requests[0].tileX,reactionLog.entry.x);
+assert.deepEqual(requests[0].hitEntries,[reactionLog.entry]);
+const explicit={...reactionLog,skillRow:{...reactionLog.skillRow,アニメ:'落雷'}};
+assert.equal(m.playV39TriggerEffect(explicit),true);assert.equal(requests[1].skillRow.アニメ,'落雷');
+window.__v39SuppressCombatEffects=true;assert.equal(m.playV39TriggerEffect(explicit),false);
+window.__v39SuppressCombatEffects=false;
+assert.equal(m.playV39TriggerEffect({...explicit,attacker:{...explicit.attacker,worldId:'cave:test'}}),false);
+assert.equal(requests.length,2);
+console.log('PASS: automatic reactions use normal map effects, explicit animation, hit data and suppression/world filtering.');
+
+const savedEffects=JSON.parse(readFileSync('config/local/v39-effect-settings.json','utf8'));
+const effectCategories=Object.entries(savedEffects.categories).map(([id,row])=>({id,...row}));
+for(const skill of [...fixture.actions,...fixture.passives]){
+ const resolved=m.resolveV39CombatEffect(skill,{},effectCategories,[]);
+ assert.equal(resolved.categoryId,skill.アニメ,'fixture uses saved category: '+skill.名前);
+ assert.equal(resolved.effectName,effectCategories.find(row=>row.id===skill.アニメ).baseEffect);
+ assert.ok(resolved.settings.sequenceSteps.length>0);
+}
+assert.deepEqual(m.resolveV39CombatEffect({アニメ:'任意の画像'}, {},effectCategories,[]),{effectName:'任意の画像',reason:'スキル指定'});
+assert.deepEqual(m.resolveV39CombatEffect({アニメ:'斬撃'}, {},effectCategories,[]),{effectName:'斬撃',reason:'スキル指定'},'existing image-name override stays unchanged');
+console.log('PASS: test skills use saved effect categories/sequences and existing explicit image names are preserved.');
+
+assert.equal(field.players.length,2);
+assert.ok(field.players.every(player=>player.factionState.units.length===3));
+const positions=field.players.flatMap(player=>player.factionState.units.map(unit=>unit.x+','+unit.y));
+assert.equal(new Set(positions).size,6,'six units occupy distinct tiles');
+for(const player of field.players){
+ assert.equal(player.factionState.squads[0].unitIds.length,3);
+ for(const unit of player.factionState.units){
+  const names=m.getV39UnitTestTechniques(unit).map(row=>row.name);
+  assert.ok(names.includes('TEST_貫通'));assert.ok(names.includes('検証・守護'));
+ }
+}
+const [teamA,teamB]=field.players.map(player=>player.factionState.units);
+assert.equal(m.getHexDistance(teamA[0],teamB[0]),1,'central opponents are adjacent');
+for(const team of [teamA,teamB])for(const companion of team.slice(1))assert.equal(m.getHexDistance(team[0],companion),1,'companions adjacent to own center');
+assert.ok(teamA[1].y<teamA[0].y);assert.ok(teamA[2].x<teamA[0].x);
+assert.ok(teamB[1].y>teamB[0].y);assert.ok(teamB[2].x>teamB[0].x);
+console.log('PASS: 3v3 fixture, adjacent centers, upper/lower/rear placement and piercing/protection skills on all six units.');
+
+assert.equal(m.describeV39TestSkillData({攻撃手段:'素手',物理:15,怯み:25,判定:'攻撃'}),'攻撃手段:素手 物理+15 怯み+25 判定:攻撃');
+const described=m.getV39UnitTestTechniques(field.players[0].factionState.units[0]).find(row=>row.name==='検証・出血攻撃');
+assert.match(described.source.詳細,/切断\+30/);assert.match(described.source.詳細,/出血\+100/);
+assert.match(described.source.詳細,/AP消費:10/);
+assert.equal(described.source.出血,100,'description never changes effective values');
+console.log('PASS: test skill descriptions show actual source data in template notation.');
+
+assert.equal(m.isV39SelfTargetSkill({}),true);
+assert.equal(m.isV39SelfTargetSkill({対象:'自身'}),true);
+assert.equal(m.isV39SelfTargetSkill({対象:'味方'}),false);
+assert.equal(m.isV39SelfTargetSkill({対象:'相手'}),false);
+const guardedState=m.applyV39SkillTriggerCombat(field,field,field.players[0].factionState.units[1],fixture.actions.find(row=>row.効果==='守護'),[],{supportTargetIds:['trigger-test-a']});
+assert.equal(guardedState.state.players[0].factionState.units[0].guardedBy.guardianId,'trigger-test-a2');
+console.log('PASS: self-target defaults and guarding application.');
+
+const normalBarrier=m.createV39DefenseStructure(field.map,{x:4,y:4},{名前:'双方向遮断結界',効果:'結界/外向攻撃不可',ガード:100,範囲:'単体'}, {id:'caster',ownerPlayerId:'p'},1);
+const outwardBarrier=m.createV39DefenseStructure(field.map,{x:4,y:4},{名前:'外向結界',効果:'結界/外向攻撃可',ガード:100,範囲:'単体'}, {id:'caster',ownerPlayerId:'p'},1);
+const boundaryMap={...field.map,defenseStructures:[normalBarrier]},inside={x:4,y:4},outside={x:5,y:4};
+assert.equal(m.v39RayStructureAtStep(boundaryMap,inside,outside)?.id,normalBarrier.id);
+assert.equal(m.v39RayStructureAtStep(boundaryMap,outside,inside)?.id,normalBarrier.id);
+boundaryMap.defenseStructures=[outwardBarrier];
+assert.equal(m.v39RayStructureAtStep(boundaryMap,inside,outside),null);
+assert.equal(m.v39RayStructureAtStep(boundaryMap,outside,inside)?.id,outwardBarrier.id);
+assert.equal(m.v39WallStepHeight(boundaryMap,inside,outside,{ownerId:'p'}),0);
+assert.equal(m.v39WallStepHeight(boundaryMap,inside,outside,{ownerId:'ally',isFriendlyOwner:id=>id==='p'}),0);
+assert.equal(m.v39WallStepHeight(boundaryMap,outside,inside,{ownerId:'enemy'}),Infinity);
+assert.equal(m.v39WallStepHeight(boundaryMap,inside,outside,{ownerId:'enemy'}),Infinity);
+outwardBarrier.hp=0;assert.equal(m.v39WallStepHeight(boundaryMap,inside,outside,{ownerId:'enemy'}),0);
+assert.deepEqual(new Set(field.players[0].factionState.units.map(unit=>unit.race)),new Set(['只人']));
+assert.deepEqual(new Set(field.players[1].factionState.units.map(unit=>unit.race)),new Set(['天使']));
+assert.equal(new Set(field.players.flatMap(player=>player.factionState.units.map(unit=>unit.className))).size,6);
+for(const unit of field.players[1].factionState.units)assert.ok(m.applyV39DerivedCharacterData(unit).skillLevels.飛行>=100);
+console.log('PASS: barrier direction, friendly/enemy movement, destruction and distinct human/flying-angel teams.');
+
+const defaultBarrier=m.createV39DefenseStructure(field.map,{x:4,y:4},{名前:'標準結界',効果:'結界',ガード:100,範囲:'単体'},{id:'caster',ownerPlayerId:'p'},1);
+assert.equal(defaultBarrier.allowOutgoingAttacks,true);
+boundaryMap.defenseStructures=[defaultBarrier];
+assert.equal(m.v39RayStructureAtStep(boundaryMap,inside,outside),null);
+assert.equal(m.v39RayStructureAtStep(boundaryMap,outside,inside)?.id,defaultBarrier.id);
+delete defaultBarrier.allowOutgoingAttacks;
+assert.equal(m.v39RayStructureAtStep(boundaryMap,inside,outside),null,'missing property uses new default');
+assert.equal(normalBarrier.allowOutgoingAttacks,false,'explicit prohibition takes precedence');
+console.log('PASS: barriers allow outgoing attacks by default; explicit prohibition blocks both directions.');
+
+assert.equal(m.resolveV39CombatPopup('abilityDamage',12,'速度').text,'速度 −12');
+assert.equal(m.resolveV39CombatPopup('critical',48).text,'48!');
+assert.equal(m.resolveV39CombatPopup('curseHeal',10,'速度').text,'速度 呪回復10');
+assert.equal(new Set(Object.values(m.V39_COMBAT_POPUPS.types).map(rule=>rule.color)).size,10);
+const popupBefore={activeWorldId:'surface',timeline:{turnNumber:1},players:[{id:'p',factionState:{units:[{id:'u',x:1,y:1,hp:80,maxHp:100,abilityDamage:{攻撃:20,速度:20},abilityCurses:{速度:20}}],combatRuntime:{}}}]};
+const popupAfter=structuredClone(popupBefore),pu=popupAfter.players[0].factionState.units[0];
+pu.hp=90;pu.abilityDamage={攻撃:10,速度:10};pu.abilityCurses={速度:10};pu.bleeding={value:15};
+popupAfter.players[0].factionState.combatRuntime={activeEffectsByUnitId:{u:[{modifiers:{攻撃:20},expiresAtTurn:4},{modifiers:{攻撃:30},expiresAtTurn:4}]}};
+const popups=m.collectV39CombatPopupChanges(popupBefore,popupAfter);
+assert.equal(popups.filter(row=>row.popupType==='abilityHeal').length,2);
+assert.equal(popups.find(row=>row.popupType==='hpHeal').amount,10);
+assert.equal(popups.find(row=>row.popupType==='curseHeal').amount,10);
+assert.equal(popups.find(row=>row.popupType==='state').amount,15);
+assert.equal(popups.find(row=>row.popupType==='buff').amount,30,'maximum buff is shown, not sum');
+assert.deepEqual(m.collectV39CombatPopupChanges(popupAfter,popupAfter),[]);
+assert.deepEqual(m.collectV39CombatPopupChanges(popupBefore,{...popupAfter,activeWorldId:'cave:test'}),[]);
+const hurt=structuredClone(popupBefore);hurt.players[0].factionState.units[0].abilityDamage.速度=32;hurt.players[0].factionState.units[0].abilityCurses.速度=27;
+assert.equal(m.collectV39CombatPopupChanges(popupBefore,hurt).find(row=>row.popupType==='abilityDamage').amount,12);
+assert.equal(m.collectV39CombatPopupChanges(popupBefore,hurt).find(row=>row.popupType==='curse').amount,7);
+console.log('PASS: configurable popup colors/formats, actual ability/curse/heal/state/buff changes, idempotence and world filtering.');

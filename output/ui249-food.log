@@ -1,0 +1,8 @@
+PASS: scatter/merge food conservation, distant gathering, capacity overflow and NPC stock reserve/turn isolation.
+PASS: personal/shared rations, resupply target/capacity/stock, unload and auto-deposit retention, remote exclusion, resident starvation isolation and no double feeding. No browser.
+PASS: preserved food recipe, fivefold nutrition/capacity, precise consumption/deposit, no special-resource substitution, refill priority, and UI action. No browser.
+PASS: preserved food protects the unit in the real economy turn.
+PASS: territorial supply, normal-food substitution, no duplicate refill, assigned-base stock, ownership and world isolation. No browser.
+PASS: food UI separates capacity/help, supplies status and themed disabled buttons. No browser.
+PASS: default 15T and automatic refill ON/OFF, custom target and no repeat/foreign-turn supply.
+PASS: Cooking II exact research gate, automatic recipe/stock conservation, carried food conversion, preview purity, repeated/save guards, scarce stock, special food exclusion and automatic resupply. No browser.

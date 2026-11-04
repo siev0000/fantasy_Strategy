@@ -1,0 +1,53 @@
+{
+  "style": {
+    "fontSize": 18,
+    "secondaryFontSize": 14,
+    "stroke": "#15121C",
+    "strokeThickness": 4,
+    "lineSpacing": 21,
+    "groupWindowMs": 450,
+    "decimals": 1
+  },
+  "types": {
+    "hpDamage": {
+      "color": "#FFFFFF",
+      "template": "{amount}"
+    },
+    "critical": {
+      "color": "#FFAA45",
+      "template": "{amount}!"
+    },
+    "abilityDamage": {
+      "color": "#BB8CFF",
+      "template": "{label} −{amount}"
+    },
+    "curse": {
+      "color": "#C84C98",
+      "template": "{label} 呪−{amount}"
+    },
+    "state": {
+      "color": "#FFE16A",
+      "template": "{label} +{amount}"
+    },
+    "dot": {
+      "color": "#FF6B6B",
+      "template": "{label} {amount}"
+    },
+    "hpHeal": {
+      "color": "#68E58A",
+      "template": "+{amount}"
+    },
+    "abilityHeal": {
+      "color": "#7CE5F4",
+      "template": "{label} +{amount}"
+    },
+    "curseHeal": {
+      "color": "#F3E2A2",
+      "template": "{label} 呪回復{amount}"
+    },
+    "buff": {
+      "color": "#70B9FF",
+      "template": "{label} +{amount}"
+    }
+  }
+}

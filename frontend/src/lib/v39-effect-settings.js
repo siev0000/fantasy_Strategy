@@ -1,7 +1,8 @@
 import { normalizeV39EffectTransform } from "./v39-effect-transform.js";
+import { normalizeV39EffectSequence, resolveV39EffectSequence, migrateV39EffectTransformsToSteps, normalizeV39DecorationTransform } from './v39-effect-sequence.js';
 const STORAGE_KEY = "v39-effect-settings-v1";
 const SCHEMA_NAME = "v39-effect-settings";
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 12;
 const SCALE_MIN = 10;
 const SCALE_MAX = 400;
 const GRADIENT_SPEED_MIN = 0;
@@ -73,9 +74,11 @@ function persistState() {
 function defaultSetting(effectName) {
   const name = text(effectName, "斬撃");
   return {
+    grayscaleBase:false,brightnessPercent:100,
     effectName:name,
     baseEffect:name,
     decorationEffect:"",
+    sequenceSteps:[],
     tint:"",
     ...normalizeV39EffectTransform(),
     orientToAttack:false,
@@ -102,10 +105,14 @@ function normalizeSetting(effectName, rawSetting = {}) {
   const oldHeight = clampNumber(rawSetting?.gradientHeightPercent, 0, 100, 50);
   const start = clampNumber(rawSetting?.gradientStartPercent, 0, 100, Math.max(0, oldHeight - 50));
   const end = clampNumber(rawSetting?.gradientEndPercent, 0, 100, Math.min(100, oldHeight + 50));
-  return {
+  return migrateV39EffectTransformsToSteps({
+    grayscaleBase:rawSetting?.grayscaleBase === true,
+    brightnessPercent:Math.round(clampNumber(rawSetting?.brightnessPercent,0,200,100)),
     effectName:defaults.effectName,
     baseEffect,
     decorationEffect,
+    sequenceSteps:normalizeV39EffectSequence(rawSetting.sequenceSteps,effectCatalog),
+    decorationTransform:normalizeV39DecorationTransform(rawSetting.decorationTransform),
     tint:normalizeTint(rawSetting?.tint),
     ...normalizeV39EffectTransform(rawSetting),
     orientToAttack:rawSetting?.orientToAttack === true,
@@ -125,17 +132,22 @@ function normalizeSetting(effectName, rawSetting = {}) {
     )),
     scaleMultiplierPercent:Math.round(clampNumber(rawSetting?.scaleMultiplierPercent, SCALE_MIN, SCALE_MAX, 100)),
     customized:true
-  };
+  },effectCatalog);
 }
 
 function isDefaultSetting(setting) {
-  return setting.baseEffect === setting.effectName
+  return setting.brightnessPercent===100 && !setting.grayscaleBase && setting.hitEffectMode === 'none' && !setting.hitEffectName && setting.baseEffect === setting.effectName
     && setting.decorationEffect === ""
+    && setting.sequenceSteps.length === 0
+    && !setting.decorationTransform
     && setting.tint === ""
     && setting.rotationDeg === 0 && setting.offsetX === 0 && setting.offsetY === 0
     && setting.orientToAttack !== true
     && setting.placementMode === 'target'
     && setting.powerScaleAxis === 'both'
+    && setting.areaDisplay === 'center'
+    && setting.areaTiming === 'simultaneous'
+    && setting.areaDelayMs === normalizeV39EffectTransform().areaDelayMs
     && setting.gradientEnabled !== true
     && setting.gradientStartPercent === 0
     && setting.gradientEndPercent === 100
@@ -145,7 +157,10 @@ function isDefaultSetting(setting) {
 
 function serializableSetting(setting) {
   return {
+    grayscaleBase:setting.grayscaleBase === true,brightnessPercent:setting.brightnessPercent,
     baseEffect:setting.baseEffect,
+    decorationTransform:normalizeV39DecorationTransform(setting.decorationTransform),
+    sequenceSteps:normalizeV39EffectSequence(setting.sequenceSteps,effectCatalog),
     decorationEffect:setting.decorationEffect,
     tint:setting.tint,
     ...normalizeV39EffectTransform(setting),
@@ -285,7 +300,8 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
   const rawName = text(rawEffectName, "斬撃");
   if (!isV39EffectSettingsTarget(rawName)) {
     return {
-      requestedEffect:rawName,
+      grayscaleBase:false,brightnessPercent:100,
+    requestedEffect:rawName,
       sequenceName:rawName,
       tint:"",
       ...normalizeV39EffectTransform(),
@@ -304,8 +320,10 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
   }
   const setting = getV39EffectSetting(rawName);
   return {
+    grayscaleBase:setting.grayscaleBase === true,brightnessPercent:setting.brightnessPercent,
     requestedEffect:rawName,
-    sequenceName:[setting.baseEffect, setting.decorationEffect].filter(Boolean).join(":"),
+    sequenceName:resolveV39EffectSequence(setting).map(step=>step.effectName).join(":"),
+    sequenceSteps:resolveV39EffectSequence(setting),
     tint:setting.tint,
     ...normalizeV39EffectTransform(setting),
     orientToAttack:setting.orientToAttack,

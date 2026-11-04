@@ -174,7 +174,7 @@ async function playAttack(event) {
   await delay(Math.max(0, number(V39_ENEMY_TURN_PRESENTATION_CONFIG.preAttackPauseMs, 500)));
   await window.playV39MapEffect?.({
     effectName:event.effectName || "斬撃",
-    skillRow:event.skillRow, attacker:event.attacker,
+    skillRow:event.skillRow, attacker:event.attacker,hitEntries:(event.combatLogs || []).flatMap(log=>log.entries || []),
     attackerTile:event.from,
     tileX:target.x,
     tileY:target.y,

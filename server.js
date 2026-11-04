@@ -22,6 +22,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const DEV_MODE = process.env.NODE_ENV !== "production";
 const app = express();
+require('./server/v39-effect-local-draft.cjs').installV39EffectLocalDraft(app, { root:__dirname, enabled:DEV_MODE });
 const server = http.createServer(app);
 const FRONTEND_DIST_DIR = path.join(__dirname, "web-vue-dist");
 const V39_GAME_SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
@@ -1301,6 +1302,7 @@ function setupDevAutoReload() {
 
   const watcher = chokidar.watch(DEV_WATCH_TARGETS, {
     ignoreInitial: true,
+    ignored:filePath => path.resolve(filePath).startsWith(path.join(__dirname, "config", "local") + path.sep),
     awaitWriteFinish: {
       stabilityThreshold: 120,
       pollInterval: 20
@@ -1313,6 +1315,7 @@ function setupDevAutoReload() {
 
   function isFrontReloadTarget(filePath, eventName) {
     const relativePath = path.relative(__dirname, filePath).replace(/\\/g, "/");
+    if (relativePath === "config/local" || relativePath.startsWith("config/local/")) return false;
     if (!relativePath.startsWith("web-vue-dist/")) return true;
     if (eventName !== "change") return false;
     if (relativePath === "web-vue-dist/index.html") return true;

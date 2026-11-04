@@ -1,6 +1,7 @@
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
 import {advanceV39NpcCommerce} from '../../lib/v39-npc-commerce.js';
 import {advanceV39NpcGrowth} from '../../lib/v39-npc-growth.js';
+import {autoResupplyV39CarriedFood,inspectV39NpcFoodReturn} from '../../lib/v39-carried-food.js';
 import {focusV39NpcFoodSettlement} from '../../lib/v39-npc-food-priority.js';
 import {advanceV39NpcSubjectConversion} from '../../lib/v39-subject-conversion.js';
 import {getV39VictoryLandmarkStatus} from '../../lib/v39-victory-rules.js';
@@ -396,6 +397,9 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     if(subjectConversion){state=subjectConversion.state;player=playerFrom(state,playerId);commands.push(subjectConversion.message);}
     state=focusV39NpcFoodSettlement(state,playerId,mapData);player=playerFrom(state,playerId);
     const development=inspectV39NpcDevelopmentPlan(state,player,mapData);
+    const supply=autoResupplyV39CarriedFood(state,playerId,'',{npcTurn:true,supplyBudgetBySettlement:development.supplyBudgetBySettlement});
+    state=supply.state;player=playerFrom(state,playerId);
+    for(const report of supply.reports)commands.push(`携帯食料補給:${report.unitId}`);
     const growth=advanceV39NpcGrowth(state,playerId,mapData,turn,development);
     state=growth.state;player=playerFrom(state,playerId);commands.push(...growth.commands);
     development.resourceGoals.push(...growth.resourceGoals);
@@ -413,7 +417,8 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     state=assignV39NpcResourceTeams(state,playerId,development.resourceGoals,mapData,{supplyBudgetBySettlement:development.supplyBudgetBySettlement}).state;
     const work=advanceV39NpcResourceTeams(state,playerId,mapData,turn);
     state=work.state;player=playerFrom(state,playerId);commands.push(...work.commands);
-    let objective = decideAiObjective(state, player, mapData, turn);
+    let objective = inspectV39NpcFoodReturn(state,playerId,{supplyBudgetBySettlement:development.supplyBudgetBySettlement,excludedIds:getV39NpcResourceUnitIds(player)})||decideAiObjective(state, player, mapData, turn);
+    if(objective.type==='food-return')commands.push(`目的:携帯食料補給 / ${objective.targetName}`);
     if (objective.type === "victory-landmark") commands.push(`目的:勝利対象 ${objective.targetName}`);
     if (objective.type === "foreign-faction") commands.push(`目的:他勢力 ${objective.targetName}`);
     if (objective.resource || objective.type === 'resource-return') commands.push(`目的:資源確保 ${objective.resource || '持帰り'} / ${objective.targetName}`);
@@ -450,6 +455,9 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
     }
     const territoryAction = combatAction ? null : planAiTerritoryAssault(state, playerFrom(state, playerId));
     if (territoryAction) commands.push(`領土攻撃準備:${text(territoryAction.skillRow?.名前)}@${territoryAction.tileKey}`);
+    const arrivedSupply=autoResupplyV39CarriedFood(state,playerId,'',{npcTurn:true,supplyBudgetBySettlement:development.supplyBudgetBySettlement});
+    state=arrivedSupply.state;
+    for(const report of arrivedSupply.reports)commands.push(`携帯食料補給:${report.unitId}`);
     state = storeAiResult(state, playerId, turn, commands, objective, mapData);
     reports.push({ playerId, turn, commands, objective, combatActions, territoryActions:territoryAction ? [territoryAction] : [] });
   }

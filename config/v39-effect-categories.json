@@ -1,4 +1,5 @@
 [
+  { "id": "hit", "group": "attack", "name": "ヒット", "defaultEffect": "小打撃", "independent": true },
   { "id": "slash", "group": "attack", "name": "斬撃", "defaultEffect": "斬撃" },
   { "id": "thrust", "group": "attack", "name": "刺突", "defaultEffect": "刺突" },
   { "id": "strike", "group": "attack", "name": "打撃", "defaultEffect": "打撃3" },
@@ -27,7 +28,8 @@
   { "id": "sweep_breath", "group": "attack", "name": "波・薙ぎ払い / ブレス", "defaultEffect": "薙ぎ払い" },
   { "id": "explosion", "group": "attack", "name": "爆発", "defaultEffect": "爆裂" },
   { "id": "falling_lightning", "group": "attack", "name": "落下・落雷", "defaultEffect": "落雷" },
-  { "id": "tornado", "group": "attack", "name": "竜巻", "defaultEffect": "竜巻", "independent": true },
+  { "id": "tornado", "group": "attack", "name": "竜巻（災害）", "defaultEffect": "竜巻", "independent": true },
+  { "id": "disaster_charge", "group": "attack", "name": "落雷エリア（帯電）", "defaultEffect": "帯電1", "independent": true },
   { "id": "rain_barrage", "group": "attack", "name": "雨・連続落下", "defaultEffect": "斬撃の雨" },
   { "id": "area_burst", "group": "attack", "name": "範囲放射", "defaultEffect": "虹の波動" },
   { "id": "heal", "group": "support", "name": "回復", "defaultEffect": "回復" },

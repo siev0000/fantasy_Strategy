@@ -1,0 +1,2 @@
+PASS: inside/adjacent outer territory, distant/dead/cave/departing exclusions, center fallback, dialogue access and shared hub/quest/trade/special-village rules. Rest unchanged. No browser.
+PASS: actual interaction renderer displays NPC trade/diplomacy and village entry from selected border unit; actual handlers route to the selected faction. No browser.

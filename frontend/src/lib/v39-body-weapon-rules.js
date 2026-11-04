@@ -31,7 +31,7 @@ export function resolveV39BodyWeaponAttackRows(unit) {
     const quality = qualities.filter(value => Number(value.品質倍率) <= multiplier).at(-1) || qualities[0];
     const skill = findGameDataRow("スキル一覧", "名前", row.装備名);
     return {
-      名前:row.装備名, 行動:"A", 攻撃手段:row.装備名, 判定:"攻撃",
+      名前:row.装備名, 行動:"A", 対象:"相手", 攻撃手段:row.装備名, 判定:"攻撃",
       物理:(Number(row.威力) || 0) * multiplier,
       ガード:(Number(row.ガード) || 0) * multiplier,
       AP消費:Number(row.攻撃AP) || 0, 攻撃回数:Number(row.攻撃回数) || 1,

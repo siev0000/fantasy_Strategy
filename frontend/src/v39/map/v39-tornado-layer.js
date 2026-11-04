@@ -1,5 +1,6 @@
 import {PhaserEffectPlayer} from '../../../../配布用/アニメーション再生機能/phaser-effect-player.mjs';
-import {resolveV39EffectPlaybackDescriptor} from '../combat/v39-effect-player.js';
+import {resolveV39FieldEffectDescriptor} from '../combat/v39-effect-player.js';
+import {resolveV39EffectTransform} from '../../lib/v39-effect-transform.js';
 import {HEX_TILE_CONFIG as hex} from '../../lib/phaser-map-panel-config.js';
 import {V39_TORNADO_DISPLAY as config} from '../../lib/v39-tornado-display.js';
 import {v39VortexPlacement} from '../../lib/v39-vortex-display.js';
@@ -17,7 +18,7 @@ function clear(scene){
 }
 export function drawV39TornadoLayer(scene,fields){
   if(!fields.length){clear(scene);return;}
-  const descriptor=resolveV39EffectPlaybackDescriptor(config.effectName);if(!descriptor)return;
+  const descriptor=resolveV39FieldEffectDescriptor('tornado',config.effectName);if(!descriptor)return;
   let layer=layers.get(scene);
   if(!layer){layer={entries:new Map(),cleanup:()=>clear(scene)};layers.set(scene,layer);scene.events.once('shutdown',layer.cleanup);scene.events.once('sleep',layer.cleanup);}
   const keep=new Set(fields.map(field=>field.id));
@@ -38,8 +39,9 @@ export function drawV39TornadoLayer(scene,fields){
     }});
     const entry={signature,player,mask,graphic};layer.entries.set(field.id,entry);
     const placement=v39VortexPlacement(field,hex);
-    void player.play({...descriptor,sequenceSources:descriptor.sequenceSources.slice(0,1),x:placement.x,y:placement.y,
-      fitDiameterPx:placement.diameter*descriptor.scaleMultiplierPercent/100,angleDeg:descriptor.rotationDeg,
+    const transform=resolveV39EffectTransform(descriptor,placement);
+    void player.play({...descriptor,sequenceSources:descriptor.sequenceSources,...transform,
+      fitDiameterPx:placement.diameter*descriptor.scaleMultiplierPercent/100,
       loop:true,totalDurationMs:config.frameMilliseconds*(config.lastFrame-config.firstFrame+1),
       showPreviousFrameGhost:false,renderStyle:'none',depth:config.depth,displayName:'v39-tornado-effect',
       onFrame:()=>{

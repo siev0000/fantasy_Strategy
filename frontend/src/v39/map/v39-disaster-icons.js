@@ -221,6 +221,8 @@ function install() {
   window.addEventListener("v39:map-render-batch-ended", scheduleRender);
   window.addEventListener('v39:visibility-rendered',scheduleRender);
   window.addEventListener('v39:display-settings-changed',scheduleRender);
+  for(const name of ['v39:effect-settings-changed','v39:effect-category-settings-changed'])
+    window.addEventListener(name,()=>{lastSignature=null;scheduleRender();});
   window.renderV39DisasterIcons = scheduleRender;
   window.getV39DisasterIconStatus = () => ({ ...(window.__v39DisasterIconStatus || {}) });
   if (window.__v39FieldRuntime?.mapData) scheduleRender();

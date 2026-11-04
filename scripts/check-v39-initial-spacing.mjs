@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync} from 'node:fs';
+import {dirname,resolve} from 'node:path';
+import {build} from 'esbuild';
+process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
+const root=resolve('data/source/export/json');
+const modules=Object.fromEntries(readdirSync(root).filter(p=>p.endsWith('.json')).map(p=>[`../../../data/source/export/json/${p}`,JSON.parse(readFileSync(resolve(root,p),'utf8'))]));
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-initial-spacing.js';export * from './frontend/src/v39/core/v39-game-state-bridge.js';export * from './frontend/src/v39/world/v39-world-population.js';export * from './frontend/src/v39/map/v39-initial-placement.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',loader:{'.css':'empty'},plugins:[{name:'runtime',setup(b){b.onLoad({filter:/\.js$/},args=>{
+  let code=readFileSync(args.path,'utf8');
+  if(code.includes('import.meta.glob'))code=code.replace(/import\.meta\.glob\([^;]+\);/g,JSON.stringify(args.path.endsWith('game-data-registry.js')?modules:{})+';');
+  if(args.path.endsWith('v39-initial-placement.js'))code+='\nexport {placementCandidates as testCandidates,currentCandidateContext as testContext,placePendingNpcBases as testPlaceNpcs};';
+  return {contents:code,loader:'js',resolveDir:dirname(args.path)};
+});}}]});
+const events=[];
+globalThis.CustomEvent=class{constructor(type,options){this.type=type;this.detail=options.detail;}};
+globalThis.HTMLElement=class{};
+globalThis.requestAnimationFrame=()=>0;globalThis.cancelAnimationFrame=()=>{};
+globalThis.document={getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){},createElement:()=>({style:{},appendChild(){},addEventListener(){},classList:{add(){},remove(){}}}),head:{appendChild(){}}};
+globalThis.window={addEventListener(){},dispatchEvent:event=>events.push(event),setTimeout:()=>0,clearTimeout(){},localStorage:{getItem:()=>null,setItem(){}},isV39TestMode:()=>false};
+const warn=console.warn;let m;try{console.warn=()=>{};m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);}finally{console.warn=warn;}
+const map=(w,h,wrap=false)=>({w,h,worldWrapEnabled:wrap,grid:Array.from({length:h},()=>Array(w).fill('平地')),heightLevelMap:Array.from({length:h},()=>Array(w).fill(0)),specialMap:Array.from({length:h},()=>Array(w).fill(''))});
+const races=['只人','エルフ','ドワーフ','悪魔'].map(race=>({race}));
+const base=(x,y,race='只人')=>({id:'home',settlementId:'home',placed:true,x,y,race});
+const state=(bases=[])=>({activeWorldId:'surface',activePlayerId:'p',players:[{id:'p',race:'只人',factionState:{settlements:bases}}],neutralVillages:[]});
+const large=map(64,64),small=map(16,16);
+assert(m.createV39InitialSpacing(large,state(),{villageCount:2}).gap>m.createV39InitialSpacing(small,state(),{villageCount:8}).gap);
+assert(m.createV39InitialSpacing(large,state(),{villageCount:1}).gap>=m.createV39InitialSpacing(large,state(),{villageCount:30}).gap);
+const ocean=map(64,64);for(let y=8;y<64;y++)ocean.grid[y].fill('海');
+assert(m.createV39InitialSpacing(ocean,state(),{villageCount:8}).gap<m.createV39InitialSpacing(large,state(),{villageCount:8}).gap,'use land area, not bounding rectangle');
+const context=m.createV39InitialSpacing(map(20,20,true),state([base(1,5)]),{villageCount:8});
+context.gap=2;
+assert(!m.inspectV39InitialSpacing({x:19,y:5},'エルフ',context).available,'opposite wrapped edges are neighbours');
+assert(!m.inspectV39InitialSpacing({x:4,y:5},'エルフ',context).available,'territory edges must not touch');
+assert(m.inspectV39InitialSpacing({x:6,y:5},'エルフ',context).available);
+const assigned=[{race:'只人'}];
+for(let i=0;i<3;i++){const selected=m.selectV39InitialRace(races,assigned,{random:()=>0});assert(!assigned.some(p=>p.race===selected.race));assigned.push(selected);}
+const repeated=m.selectV39InitialRace([{race:'只人'},{race:'エルフ'}],[{race:'只人',x:3,y:3},{race:'エルフ',x:20,y:20}],{point:{x:4,y:3},map:large,random:()=>0});
+assert.equal(repeated.race,'エルフ','when every race is used prefer the farther one');
+for(const [w,h,count,wrap] of [[16,16,8,false],[32,32,8,false],[64,64,8,false],[100,100,8,true],[32,32,8,true],[32,33,8,true],[6,6,8,false]]){
+  const data=map(w,h,wrap),source=state([base(Math.min(3,w-2),Math.min(3,h-2))]);
+  const planned=m.planV39InitialVillageSites(source,data,races,count);
+  assert.deepEqual(m.planV39InitialVillageSites(source,data,races,count),planned,'seed-stable layout');
+  const placed=[...m.collectV39InitialSites(source,data),...planned.sites.map(({tile,race})=>({...tile,race:race.race,tiles:m.v39InitialFootprint(data,tile),radius:1}))];
+  for(let i=0;i<placed.length;i++)for(let j=0;j<i;j++){
+    const separation=Math.min(...placed[i].tiles.flatMap(a=>placed[j].tiles.map(b=>m.v39InitialDistance(data,a,b))));
+    assert(separation>=m.V39_INITIAL_SPACING.minimumBorderDistance,`${w}x${h}: territory separation ${separation}`);
+  }
+  assert.equal(planned.placed+planned.omitted,count);
+  if(w===6)assert(planned.omitted>0,'impossible density reduces count instead of overlapping');
+  else assert.equal(planned.placed,count,`${w}x${h} fills requested village count`);
+}
+window.startV39LocalSession(1,{playMode:'single-normal',gameSettings:{npcFactionCount:6}});
+const session=window.getV39GameState();
+const npcs=session.players.filter(p=>p.isPlayer===false);
+assert.equal(npcs.length,6);assert.equal(new Set(npcs.map(p=>p.race)).size,6,'actual NPC creation samples without replacement');
+window.setV39GameState({players:session.players.map(p=>p.isPlayer===false?p:{...p,race:npcs[0].race})});
+window.reconcileV39InitialNpcRaces();
+const reconciled=window.getV39GameState().players;
+assert.equal(new Set(reconciled.map(p=>p.race)).size,7,'human race selection before placement cannot leave avoidable NPC duplicates');
+assert.deepEqual(reconciled.map(p=>p.id),session.players.map(p=>p.id),'reselection preserves player IDs');
+window.__v39FieldRuntime={mapData:map(32,32),settings:{neutralVillageCount:4,islandCustomSettings:{worldWrapEnabled:false}}};
+const source=state([base(4,4)]);
+const population=m.generateV39WorldPopulation(source,window.__v39FieldRuntime.mapData,{neutralVillageCount:4});
+assert.equal(population.neutralVillages.length,4,'actual village factory uses the shared placement plan');
+assert(population.neutralVillages.every(v=>v.defenseUnits.length));
+window.setV39GameState({...source,territoryOwnerByTile:{},territoryStateByTile:{}});
+const selected=m.testCandidates();assert(selected.candidates.length);
+for(const tile of selected.candidates)assert(m.inspectV39InitialSpacing(tile,'只人',selected.spacing).available,'real placement candidate spacing');
+const menu=m.testContext();assert(menu.allowedTiles.length);
+for(const tile of menu.allowedTiles)assert(m.inspectV39InitialSpacing(tile,'只人',menu.spacing).available,'manual placement cannot bypass spacing');
+const startingHuman={...session.players[0],factionState:{...session.players[0].factionState,settlements:[base(4,4)],selectedSettlementId:'home'}};
+window.setV39GameState({activePlayerId:startingHuman.id,players:[startingHuman,...npcs.slice(0,3)],territoryOwnerByTile:{},territoryStateByTile:{}});
+assert(m.testPlaceNpcs());
+const finished=window.getV39GameState();
+assert.equal(finished.players.filter(p=>p.isPlayer===false&&p.factionState.settlements.some(s=>s.placed)).length,3,'real NPC placement fills a viable map');
+const actualSites=m.collectV39InitialSites(finished,window.__v39FieldRuntime.mapData);
+for(let i=0;i<actualSites.length;i++)for(let j=0;j<i;j++)assert(Math.min(...actualSites[i].tiles.flatMap(a=>actualSites[j].tiles.map(b=>m.v39InitialDistance(window.__v39FieldRuntime.mapData,a,b))))>=2);
+const tinyMap=map(6,6);
+window.__v39FieldRuntime={mapData:tinyMap,settings:{neutralVillageCount:0,islandCustomSettings:{worldWrapEnabled:false}}};
+const human={...session.players[0],factionState:{...session.players[0].factionState,settlements:[base(3,3)],selectedSettlementId:'home'}};
+window.setV39GameState({activePlayerId:human.id,players:[human,...npcs.slice(0,2)],territoryOwnerByTile:{},territoryStateByTile:{}});
+assert(m.testPlaceNpcs());
+assert(window.getV39GameState().players.filter(p=>p.isPlayer===false).length<2,'unplaceable NPCs are reduced, not left blocking the start');
+assert(events.some(e=>e.type==='v39:initial-placement-complete'),'a reduced setup still completes initialization');
+console.log('PASS: adaptive land/count spacing, wrapped territory borders, race balancing/separation, dense/tiny maps, actual NPC creation and village generation. No browser.');

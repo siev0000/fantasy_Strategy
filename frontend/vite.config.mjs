@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => {
           ws: true
         },
         "/health": "http://localhost:3000",
+        "/api/local": "http://localhost:3000",
         "/assets": "http://localhost:3000",
         "/config": "http://localhost:3000",
         "/data": "http://localhost:3000"

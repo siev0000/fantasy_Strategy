@@ -128,7 +128,7 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const unsupported=action==="P" ? inspectV39Passive(source) : [];
           const expanded = name === expandedName;
           const detailHtml = `<span class="technique-detail-head"><b>説明</b>${durationLabel ? `<small>${escapeHtml(durationLabel)}</small>` : ""}</span>
-            <span class="technique-detail-description">${description ? escapeHtml(description) : "説明なし"}${unsupported.length ? `<br>未対応: ${escapeHtml(unsupported.join(" / "))}` : ""}</span>`;
+            <span class="technique-detail-description">${description ? escapeHtml(description).replaceAll("\n","<br>") : "説明なし"}${unsupported.length ? `<br>未対応: ${escapeHtml(unsupported.join(" / "))}` : ""}</span>`;
           const attackAttr = interactive && action === "A" ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
           return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" ${interactive ? "data-v39-technique-name" : "data-v39-character-skill"}="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
             <span class="technique-summary">

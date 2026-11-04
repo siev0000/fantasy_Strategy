@@ -13,6 +13,7 @@
 - [文書・メモ運用ルール](DOCUMENTATION_RULES.md) : `DOCUMENTATION_RULES.md`
 - [ファンタジーストラテジーゲーム 概要メモ](MEMO.md) : `MEMO.md`
 - [ドキュメントの入口](README.md) : `README.md`
+- [簡単モード技能併合メモ](SIMPLE_MODE_SKILL_MERGE_MEMO.md) : `SIMPLE_MODE_SKILL_MERGE_MEMO.md`
 - [@game_data スプレッドシート → JSON 変換運用](SPREADSHEET_DATA_WORKFLOW.md) : `SPREADSHEET_DATA_WORKFLOW.md`
 - [ユニット立ち絵生成ルール](UNIT_PORTRAIT_GENERATION_RULES.md) : `UNIT_PORTRAIT_GENERATION_RULES.md`
 - [軽量利用方法(仮).md](%E8%BB%BD%E9%87%8F%E5%88%A9%E7%94%A8%E6%96%B9%E6%B3%95%28%E4%BB%AE%29.md) : `軽量利用方法(仮).md`

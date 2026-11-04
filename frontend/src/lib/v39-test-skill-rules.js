@@ -1,3 +1,5 @@
+import {DAMAGE_TYPE_FIELDS,SKILL_STATE_KEYS,TIMED_EFFECT_FIELDS} from '../constants/unitCommon.js';
+import triggerFixture from '../../../config/v39-skill-trigger-test.json';
 import { getGameDataRows } from "./game-data-registry.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
@@ -19,12 +21,20 @@ export function isV39TestSkillModeEnabled() {
   return storedTestModeEnabled();
 }
 
+const powerFields=new Set([...DAMAGE_TYPE_FIELDS,...SKILL_STATE_KEYS,...TIMED_EFFECT_FIELDS,'呪い','回復','ガード','全威力','体幹','ノックバック']);
+export function describeV39TestSkillData(row){
+  return Object.entries(row||{}).filter(([key,value])=>!['名前','詳細','説明','ルビ','テスト専用'].includes(key)&&value!==null&&value!==undefined&&value!==''&&['string','number','boolean'].includes(typeof value)).map(([key,value])=>{
+    const numeric=typeof value==='number'||typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value));
+    return powerFields.has(key)&&numeric?key+(Number(value)>=0?'+':'')+value:key+':'+value;
+  }).join(' ');
+}
+
 export function getV39TestSkillRows() {
-  return getGameDataRows("テストスキル").filter(row => row?.テスト専用 === true && text(row?.名前)).map(row=>{
+  return [...getGameDataRows("テストスキル"), ...triggerFixture.actions.map(row=>({...row,テスト専用:true})), ...triggerFixture.passives.map(row=>({...row,テスト専用:true}))].filter(row => row?.テスト専用 === true && text(row?.名前)).map(row=>{
     if(!row.参照スキル)return row;
     const source=getGameDataRows('スキル一覧').find(skill=>skill.名前===row.参照スキル);
     return source?{...source,...row}:null;
-  }).filter(Boolean);
+  }).filter(Boolean).map(row=>({...row,...(!row.対象&&triggerFixture.additionalTargets?.[row.名前]?{対象:triggerFixture.additionalTargets[row.名前]}:{})})).map(row=>({...row,詳細:[text(row.詳細),describeV39TestSkillData(row)].filter(Boolean).join("\n") }));
 }
 
 export function getV39UnitTestSkillRows(unit) {

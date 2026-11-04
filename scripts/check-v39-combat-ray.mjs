@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {build} from 'esbuild';
 const moduleUrl=source=>`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 const source=(await build({entryPoints:['frontend/src/lib/v39-combat-ray.js'],bundle:true,write:false,format:'esm',platform:'node'})).outputFiles[0].text;
-const { v39HexRay,traceV39AttackRay,hasV39WallLineOfSight,hasV39SkillEffect }=await import(moduleUrl(source));
+const { v39HexRay,traceV39AttackRay,resolveV39ArcDeadZone,hasV39WallLineOfSight,hasV39SkillEffect }=await import(moduleUrl(source));
 
 const map={w:20,h:20,grid:Array.from({length:20},()=>Array(20).fill("洞窟")),isUnderground:true,defenseStructures:[]};
 const from={id:"actor",x:4,y:8},to={x:10,y:8};
@@ -45,3 +45,18 @@ for (const target of [{x:8,y:4},{x:4,y:13},{x:2,y:3},{x:11,y:13}]) {
 map.worldWrapEnabled=true;
 assert.deepEqual(v39HexRay(map,{x:19,y:8},{x:1,y:8}),[{x:0,y:8},{x:1,y:8}]);
 console.log("Combat ray: interception, penetration, blocking, walls, fields, sight, odd rows, wrap passed");
+
+assert.equal(resolveV39ArcDeadZone({効果:'曲射'},6),2);
+assert.equal(resolveV39ArcDeadZone({効果:'曲射'},8),2);
+assert.equal(resolveV39ArcDeadZone({効果:'曲射'},2),0);
+assert.equal(resolveV39ArcDeadZone({},6),0);
+const arcMap={w:20,h:20,grid:Array.from({length:20},()=>Array(20).fill('洞窟')),isUnderground:true,defenseStructures:[]};
+arcMap.grid[8][5]='岩壁';
+assert.equal(traceV39AttackRay(arcMap,from,to,[],{}).reason,'地形');
+assert.equal(traceV39AttackRay(arcMap,from,to,[],{ignoreFirstTiles:2}).impact.x,10);
+arcMap.grid[8][7]='岩壁';
+assert.equal(traceV39AttackRay(arcMap,from,to,[],{ignoreFirstTiles:2}).impact.x,7,'obstacles after dead zone still block');
+arcMap.grid[8][5]='洞窟';arcMap.grid[8][7]='洞窟';
+assert.equal(traceV39AttackRay(arcMap,from,to,[{id:'near',x:5,y:8,hp:100}],{ignoreFirstTiles:2}).impact.x,10);
+assert.equal(traceV39AttackRay(arcMap,from,to,[{id:'far',x:7,y:8,hp:100}],{ignoreFirstTiles:2}).impact.x,7);
+console.log('PASS: arc fire skips only the first third and keeps later occlusion.');

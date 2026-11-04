@@ -94,6 +94,7 @@ export function createV39DefenseStructure(map, center, row, caster, turn, facing
     id:`defense-${caster.id}-${turn}-${center.x}-${center.y}-${kind}-${facing}`,
     kind, name:String(row?.名前 || kind), ownerId:caster.ownerPlayerId || caster.playerId || "",
     x:center.x, y:center.y, hp, maxHp:hp, height:V39_DEFENSE_BALANCE.wallHeight,
+    allowOutgoingAttacks:kind === '結界' && !String(row?.効果||'').split(/[\s/／,:：]+/).includes('外向攻撃不可'),
     barrierAttached:kind === "壁" && /障壁/u.test(String(row?.効果 || "")),
     edge:edge ? { from:{ ...center }, to:adjacent } : null,
     tiles:kind === "結界" ? resolveV39DefenseFootprint(map, center, row, facing) : [{ ...center }],
@@ -103,6 +104,11 @@ export function createV39DefenseStructure(map, center, row, caster, turn, facing
 
 export function v39WallStepHeight(map, from, to, {ownerId='',isFriendlyOwner=null} = {}) {
   let height = 0;
+  for(const barrier of map?.defenseStructures||[]){
+    if(barrier.kind!=='結界'||barrier.hp<=0)continue;
+    if(ownerId&&barrier.ownerId&&(barrier.ownerId===ownerId||isFriendlyOwner?.(barrier.ownerId)))continue;
+    if(v39DefenseCovers(barrier,from)!==v39DefenseCovers(barrier,to))return Infinity;
+  }
   for (const wall of resolveV39WallStepStructures(map,from,to)) {
     if (ownerId && wall.ownerId && (wall.ownerId===ownerId || isFriendlyOwner?.(wall.ownerId))) continue;
     if (wall.barrierAttached) return Infinity;
