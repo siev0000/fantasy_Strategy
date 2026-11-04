@@ -67,8 +67,8 @@ SHEET_TO_JSON = {
 # Column bounds are zero-based and end-exclusive; each table starts on row 1.
 MERGED_SHEET_TABLES = {
     "効果": ("用語辞書", 0, 2),
-    "説明": ("用語辞書", 3, 5),
-    "範囲": ("用語辞書", 6, 9),
+    "説明": ("用語辞書", 3, 6),
+    "範囲": ("用語辞書", 7, 10),
     "体制": ("国家設定", 0, 25),
     "外交姿勢": ("国家設定", 26, 35),
     "組織": ("国家設定", 36, 40),
