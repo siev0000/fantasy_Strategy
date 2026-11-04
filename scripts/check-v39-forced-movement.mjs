@@ -158,3 +158,18 @@ assert.equal(wallFraction.enemies[0].x,8);assert.ok(wallFraction.enemies[0].hp<1
 const solidWall=m.applyV39ForcedMovement({...world,enemies:[target]},{...map,defenseStructures:[fractionWall]},[req],()=>.5);
 assert.equal(solidWall.enemies[0].x,8,'full impulse also cannot pass through a wall');
 console.log('PASS: defense reduction, rounded distances, fractional unit/wall collisions and no movement in open space.');
+
+const castSkill={名前:'AP支払検証魔法',行動:'A',攻撃手段:'魔法',判定:'魔力',対象:'相手',炎:10,効果:'必中',AP消費:80,射程:60,待機:1};
+live={...world,timeline:{turnNumber:1,phase:'player'},players:[{id:'p',factionState:{units:[{...unit('cast-payer',4,8),ap:100,currentAp:100,techniques:[{name:castSkill.名前,source:castSkill}]}],selectedUnitId:'cast-payer',squads:[],combatRuntime:{}}}],enemies:[unit('cast-target',8,8)],neutralVillages:[],enemyNests:[],settlements:[],groundLootByTile:{}};
+assert.equal(m.startAttack(),true);
+assert.equal(live.players[0].factionState.units[0].ap,20,'casting start consumes AP once');
+assert.equal(live.players[0].factionState.combatRuntime.pendingActionsByUnitId['cast-payer'].apPaid,true);
+live.timeline.turnNumber=2;live.players[0].factionState.units[0].ap=0;live.players[0].factionState.units[0].currentAp=0;
+const release={playerId:'p',unitId:'cast-payer',skillName:castSkill.名前,skillRow:castSkill,releaseCast:true};
+assert.equal(m.performAttack({x:14,y:8},release),false,'invalid release target can be selected again');
+assert.ok(live.players[0].factionState.combatRuntime.pendingActionsByUnitId['cast-payer']);
+assert.equal(m.performAttack({x:8,y:8},release),true,'ready cast releases at AP zero without explicit apPaid option');
+assert.equal(live.players[0].factionState.units[0].ap,0);
+assert.ok(live.enemies[0].hp<1000);assert.equal(live.players[0].factionState.combatRuntime.pendingActionsByUnitId['cast-payer'],undefined);
+assert.equal(m.performAttack({x:8,y:8},release),false,'same paid cast cannot be reused');
+console.log('PASS: casting pays AP once, invalid target retains cast, release costs zero and cannot repeat.');

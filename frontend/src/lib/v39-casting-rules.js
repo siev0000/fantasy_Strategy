@@ -41,3 +41,7 @@ export function reconcileV39Casting(previous,next,reason){
     if(!unit||Number(unit.hp??unit.currentHp)<=0||moved||spent)delete runtime.pendingActionsByEnemyId[id];
   }
 }
+
+export function isV39PaidCastRelease(pending,unitId,skillName,turn){
+  return !!(pending?.aimAfterCast&&pending.apPaid!==false&&String(pending.unitId)===String(unitId)&&String(pending.skillName)===String(skillName)&&describeV39Cast(pending,turn)?.ready);
+}

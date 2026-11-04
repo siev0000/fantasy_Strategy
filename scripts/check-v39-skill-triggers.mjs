@@ -5,6 +5,9 @@ import { dirname,resolve } from 'node:path';
 process.on('uncaughtException',error=>{console.error(String(error.stack||error).replace(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g,'[bundle]').slice(0,1400));process.exit(1);});
 const bundle=await build({stdin:{resolveDir:process.cwd(),contents:`
 export * from './frontend/src/lib/v39-bleeding.js';
+export {captureV39PointerTap} from './frontend/src/lib/v39-pointer-tap-selection.js';
+export {focusV39MapTile} from './frontend/src/v39/map/v39-map-focus.js';
+export {isV39PaidCastRelease} from './frontend/src/lib/v39-casting-rules.js';
 export * from './frontend/src/lib/v39-combat-popup-rules.js';
 export {createV39DefenseStructure,v39WallStepHeight} from './frontend/src/lib/v39-defense-rules.js';
 export {v39RayStructureAtStep} from './frontend/src/lib/v39-combat-ray.js';
@@ -291,3 +294,25 @@ const hurt=structuredClone(popupBefore);hurt.players[0].factionState.units[0].ab
 assert.equal(m.collectV39CombatPopupChanges(popupBefore,hurt).find(row=>row.popupType==='abilityDamage').amount,12);
 assert.equal(m.collectV39CombatPopupChanges(popupBefore,hurt).find(row=>row.popupType==='curse').amount,7);
 console.log('PASS: configurable popup colors/formats, actual ability/curse/heal/state/buff changes, idempotence and world filtering.');
+
+let cameraScroll=0,preRenders=0;
+const tapCamera={preRender(){preRenders++;},getWorldPoint(x,y){return {x:x+cameraScroll,y};}};
+const tap=m.captureV39PointerTap(tapCamera,(x,y)=>({x,y}),(_,x,y)=>({x:Math.floor(x/10),y:Math.floor(y/10)}),{},25,35);
+cameraScroll=100;
+assert.deepEqual(tap.tile,{x:2,y:3});assert.deepEqual(tap.world,{x:25,y:35});assert.equal(preRenders,1);
+assert.notDeepEqual(tapCamera.getWorldPoint(25,35),tap.world,'camera movement must not change the tap tile');
+const inputSource=readFileSync('frontend/src/v39/map/v39-field-runtime-final.js','utf8');
+assert.ok(inputSource.includes('capture:true,signal:inputSignal'));
+assert.ok(inputSource.includes('if(select)selectAt(e.clientX,e.clientY,snapshot)'));
+assert.ok(inputSource.includes('snapshot?snapshot.tile:resolveTileAtWorld'));
+const paidCast={unitId:'u',skillName:'魔法',aimAfterCast:true,apPaid:true,resolvesAtTurn:2};
+assert.equal(m.isV39PaidCastRelease(paidCast,'u','魔法',1),false);
+assert.equal(m.isV39PaidCastRelease(paidCast,'u','魔法',2),true);
+assert.equal(m.isV39PaidCastRelease(paidCast,'u','別の魔法',2),false);
+assert.equal(m.isV39PaidCastRelease({...paidCast,apPaid:false},'u','魔法',2),false);
+let chosen,focusRenders=0;
+window.__v39FieldRuntime={mapData:{w:20,h:20,grid:Array.from({length:20},()=>Array(20).fill('平地'))},game:{scene:{getScenes:()=>[{v39Input:{selectTile(tile){chosen={x:tile.x,y:tile.y};return chosen;}},cameras:{main:{width:100,height:100,zoom:1,centerOn(){},preRender(){focusRenders++;}}}}]}}};
+window.getV39GameState=()=>({activeWorldId:'surface'});
+assert.equal(m.focusV39MapTile({x:2,y:3},{select:true}),true);
+assert.deepEqual(chosen,{x:2,y:3});assert.equal(focusRenders,1);
+console.log('PASS: captured pointer tile stays stable after camera movement, focus matrix refresh and paid-cast validation.');

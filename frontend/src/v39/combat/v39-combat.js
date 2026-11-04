@@ -23,7 +23,7 @@ function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,ach
     [...combatLog,...(achievementInfo.wallEntries||[])],{...achievementInfo,skillRow});
   return {...patch,players:recorded.players,enemies:recorded.enemies,neutralVillages:recorded.neutralVillages};
 }
-import {isV39CastingMagic,describeV39Cast} from '../../lib/v39-casting-rules.js';
+import {isV39CastingMagic,describeV39Cast,isV39PaidCastRelease} from '../../lib/v39-casting-rules.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import {canV39UnitLeaveOrganicCorpse} from '../../lib/v39-corpse-types.js';
 import {v39HazardRecoveryMultiplier} from '../../lib/v39-hazard-zones.js';
@@ -913,7 +913,7 @@ function queueCombatCast(session,attacker,player,state,target=null){
     startedTurn,
     defenseFacing:session.defenseFacing || 0,
     resolvesAtTurn:resolveV39DeadlineTurn(startedTurn, delayTurns),
-    apCost
+    apCost,apPaid:true
   };
   const runtime = player.factionState.combatRuntime || {};
   const pendingActionsByUnitId = { ...(runtime.pendingActionsByUnitId || {}), [text(attacker.id)]:pending };
@@ -1143,6 +1143,12 @@ function performAttack(target, session = attackSession, options = {}) {
   if (!ctx || !state || !player || !attacker || !isV39UnitInWorld(attacker,state.activeWorldId) || number(attacker?.hp, attacker?.currentHp) <= 0) {
     if (options.clearPending && !session?.releaseCast) clearPendingAction(text(session?.playerId), text(session?.unitId), "cast-cancelled");
     return false;
+  }
+  if(session.releaseCast){
+    const pending=player.factionState?.combatRuntime?.pendingActionsByUnitId?.[attacker.id];
+    if(!isV39PaidCastRelease(pending,attacker.id,session.skillName,currentV39TurnNumber(state)))return false;
+    options={...options,apPaid:true,clearPending:true};
+    session={...session,skillRow:pending.skillRow};
   }
   const targetKey = coordKey(target.x, target.y);
   if (!options.isCounter && unitRuntimeState(player.factionState, attacker, session.skillRow).cooldownRemainingTurns > 0) {
@@ -1459,7 +1465,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   if (!isCounter && remainingV39Turns(state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(attacker.id)]?.[text(skillRow?.名前)], currentV39TurnNumber(state)) > 0) return false;
   const range = resolveAttackRange(skillRow, attacker, ctx.data);
   if (!tilesWithin(ctx.data, attacker, range,{ignoreOcclusion:hasV39SkillEffect(skillRow,'曲射')}).has(coordKey(targetUnit.x, targetUnit.y))) return false;
-  const apCost = resolveAttackApCost(skillRow, attacker);
+  const apCost = apPaid?0:resolveAttackApCost(skillRow, attacker);
   if (!apPaid && currentAp(attacker) < apCost) return false;
   const defenseKind = resolveV39DefenseKind(skillRow);
   if (defenseKind || hasV39SkillEffect(skillRow,"遮断")) {

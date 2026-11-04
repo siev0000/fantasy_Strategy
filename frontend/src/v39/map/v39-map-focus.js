@@ -23,6 +23,7 @@ export function focusV39MapTile(tile, {worldId, select=false,notify=true}={}) {
   const clamp=(value,half,size)=>size<=half*2?size/2:Math.max(half,Math.min(size-half,value));
   camera.centerOn(clamp(x*h.width+(y%2?h.oddRowOffsetX:0)+h.width/2,halfW,width),
     clamp(y*h.rowStep+h.height/2,halfH,height));
+  camera.preRender?.();
   runtime.game.v39InvalidateRender?.();
   return true;
 }

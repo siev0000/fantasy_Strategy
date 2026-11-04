@@ -1,3 +1,4 @@
+import {captureV39PointerTap} from '../../lib/v39-pointer-tap-selection.js';
 import Phaser from "phaser";
 import {normalizeV39MapQuality} from '../../lib/v39-map-quality.js';
 import {addV39FieldSymbol} from './v39-field-symbols.js';
@@ -419,7 +420,7 @@ function installInput(scene, data) {
   const disposeRuler = installV39CoordinateRuler(scene, host, data);
   activeFieldInputController = inputController;
   const inputSignal = inputController.signal;
-  const pointers = new Map();
+  const pointers = new Map(),pointerTapSnapshots=new Map();
   const selection = scene.add.graphics().setDepth(20);
   const placementArea = scene.add.graphics().setDepth(19);
   const placementMask = scene.make.graphics({ x:0, y:0, add:false });
@@ -480,9 +481,9 @@ function installInput(scene, data) {
     if(notify)window.dispatchEvent(new CustomEvent("v39:tile-selected", { detail:selected }));
     return selected;
   };
-  const selectAt = (cx, cy) => {
-    const p = clientPoint(cx, cy); const w = camera.getWorldPoint(p.x, p.y);
-    const tile = resolveTileAtWorld(data, w.x, w.y);
+  const selectAt = (cx, cy, snapshot=null) => {
+    const p = clientPoint(cx, cy); const w = snapshot?.world||camera.getWorldPoint(p.x, p.y);
+    const tile = snapshot?snapshot.tile:resolveTileAtWorld(data, w.x, w.y);
     if(tile&&window.handleV39SoulRecoveryTap?.(tile))return null;
     if(tile&&window.handleV39WallConstructionTap?.(tile,w))return null;
     return tile ? selectTile(tile) : null;
@@ -523,6 +524,10 @@ function installInput(scene, data) {
   scene.events.once(Phaser.Scenes.Events.POST_UPDATE, inputReady);
 
   host.addEventListener("wheel", e => { e.preventDefault(); if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false, signal:inputSignal });
+  host.addEventListener('pointerdown',e=>{
+    if(window.isV39MapInputLocked?.()||(e.pointerType==='mouse'&&e.button!==0))return;
+    pointerTapSnapshots.set(e.pointerId,captureV39PointerTap(camera,clientPoint,resolveTileAtWorld,data,e.clientX,e.clientY));
+  },{capture:true,signal:inputSignal});
   host.addEventListener("pointerdown", e => {
     if (window.isV39MapInputLocked?.() === true) return;
     if (e.pointerType==="mouse" && e.button!==0) return;
@@ -538,7 +543,7 @@ function installInput(scene, data) {
     const dx=e.clientX-prev.x,dy=e.clientY-prev.y; if(Math.abs(dx)+Math.abs(dy)<1)return;
     camera.scrollX-=dx/camera.zoom; camera.scrollY-=dy/camera.zoom; clampCamera(scene); dragged=true;
   }, { signal:inputSignal });
-  const finish=e=>{ const touch=e.pointerType!=="mouse", select=!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY); if(touch&&!dragged&&!pointers.size&&!window.isV39SoulRecoverySelecting?.()){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
+  const finish=e=>{ const snapshot=pointerTapSnapshots.get(e.pointerId);pointerTapSnapshots.delete(e.pointerId); const touch=e.pointerType!=="mouse", select=e.type!=="pointercancel"&&!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY,snapshot); if(touch&&!dragged&&!pointers.size&&!window.isV39SoulRecoverySelecting?.()){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
   host.addEventListener("pointerup",finish,{ signal:inputSignal }); host.addEventListener("pointercancel",finish,{ signal:inputSignal });
   host.addEventListener("dblclick",e=>{e.preventDefault();if(window.isV39SoulRecoverySelecting?.())return;if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
   const handleKeyboard = e => {
