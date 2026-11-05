@@ -1,3 +1,4 @@
+import {applyV39RestraintPenalties} from './v39-restraint.js';
 import {abilityDamageTarget} from './v39-ability-damage.js';
 import {hegemonyLightMultiplier} from './v39-hegemony-areas.js';
 import {resolveV39ResistanceReduction} from './v39-resistance-math.js';
@@ -338,7 +339,8 @@ function strongestDamageType(skillRow) {
 
 export function resolveAttackPower(skillRow, attacker, options = {}) {
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, options);
-  const effectiveSkill = adjusted.skillRow;
+  const effectiveSkill = Number(adjusted.skillRow.毒)>0&&!options.damageType?{...adjusted.skillRow,毒:0}:adjusted.skillRow;
+  const poisonOnly=Number(adjusted.skillRow.毒)>0&&resolveSkillBasePower({...adjusted.skillRow,毒:0})<=0;
   const effectiveAttacker = adjusted.attacker;
   const scaled = computeSkillScaledTriplet(effectiveSkill, effectiveAttacker?.status || {});
   let power = Math.max(0, number(scaled?.power, resolveSkillBasePower(effectiveSkill)));
@@ -346,7 +348,7 @@ export function resolveAttackPower(skillRow, attacker, options = {}) {
     && resolveSkillBasePower(effectiveSkill) <= 0
     && resolveSkillBaseState(effectiveSkill) <= 0
     && number(effectiveSkill?.回復) <= 0;
-  if (effectiveSkill?.装備攻撃 !== true && !pureGuardSkill) {
+  if (effectiveSkill?.装備攻撃 !== true && !pureGuardSkill && !poisonOnly) {
     const weapon = skillWeaponRow(effectiveSkill,effectiveAttacker);
     if (weapon) power += Math.max(0, number(computeSkillScaledTriplet(weapon, effectiveAttacker?.status || {})?.power, 0));
   }
@@ -382,11 +384,16 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   if(hasV39CityAuraSources()||attacker?.cityAuraSkillNames?.length||target?.cityAuraSkillNames?.length){
     attacker=applyV39TerrainModifiers(attacker);target=applyV39TerrainModifiers(target);
   }
+  const periodicOnly=!damageType&&(Number(skillRow?.毒)>0||Number(skillRow?.燃焼)>0)&&resolveSkillBasePower({...skillRow,毒:0})<=0;
+  if(!damageType&&Number(skillRow?.毒)>0)skillRow={...skillRow,毒:0};
+  const state=globalThis.window?.getV39GameState?.({includeWorlds:false});
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, { isCounter });
+  adjusted.attacker=applyV39RestraintPenalties(adjusted.attacker,state);
   target=resolveV39PassiveContext(target,passiveActionContext(target,skillRow),{isCounter:false}).unit;
+  target=applyV39RestraintPenalties(target,state);
   const runtime=globalThis.window?.__v39FieldRuntime;
   const areaScale=runtime?.mapData?.hegemonyInterior?hegemonyLightMultiplier(runtime.mapData,attacker,damageType||strongestDamageType(adjusted.skillRow),globalThis.window?.getV39GameState?.({includeWorlds:false})?.activeWorldId):1;
-  const power = abilityDamageTarget(adjusted.skillRow)?0:resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] })*areaScale;
+  const power = abilityDamageTarget(adjusted.skillRow)||periodicOnly?0:resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] },{damageType})*areaScale;
   const magicalJudge = text(adjusted.skillRow?.判定).includes("魔");
   const defenseKey = magicalJudge ? "精神" : "防御";
   const defense = Math.max(0, number(target?.status?.[defenseKey], 0));
@@ -411,7 +418,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   const ranged=['弓','銃'].includes(text(adjusted.skillRow?.攻撃手段))||number(adjusted.skillRow?.射撃)>0;
   const fieldMap=globalThis.window?.__v39FieldRuntime?.mapData;
   const weatherAccuracy=ranged?Math.min(getV39DisasterFieldAt(fieldMap,attacker?.x,attacker?.y).rangedAccuracyMultiplier,getV39DisasterFieldAt(fieldMap,target?.x,target?.y).rangedAccuracyMultiplier):1;
-  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey]))*weatherAccuracy;
+  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey]))*weatherAccuracy*(magicalAttack?(adjusted.attacker.restraintAppliedMultiplier||1):1);
   const evasion = Math.max(1, number(target?.status?.回避, number(target?.status?.速度, 1)));
   const guaranteedHit=hasV39SkillEffect(skillRow,"必中");
   const hitRate = guaranteedHit ? 1 : Math.max(V39_HIT_RATE_MIN, Math.min(V39_HIT_RATE_MAX, (accuracy / evasion) * 0.75));

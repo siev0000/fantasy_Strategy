@@ -21,7 +21,7 @@ export function isV39TestSkillModeEnabled() {
   return storedTestModeEnabled();
 }
 
-const powerFields=new Set([...DAMAGE_TYPE_FIELDS,...SKILL_STATE_KEYS,...TIMED_EFFECT_FIELDS,'呪い','回復','ガード','全威力','体幹','ノックバック']);
+const powerFields=new Set([...DAMAGE_TYPE_FIELDS,...SKILL_STATE_KEYS,...TIMED_EFFECT_FIELDS,'呪い','燃焼','回復','ガード','全威力','体幹','ノックバック']);
 export function describeV39TestSkillData(row){
   return Object.entries(row||{}).filter(([key,value])=>!['名前','詳細','説明','ルビ','テスト専用'].includes(key)&&value!==null&&value!==undefined&&value!==''&&['string','number','boolean'].includes(typeof value)).map(([key,value])=>{
     const numeric=typeof value==='number'||typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value));

@@ -87,3 +87,13 @@
 .squad-detail-pane .v39-char-equipment-row,.squad-detail-pane .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:5px;min-width:0;border:1px solid #31464d;border-radius:5px;background:#17252a;padding:5px}
 .squad-detail-pane .v39-char-equipment-row span,.squad-detail-pane .v39-char-growth-row span{color:#a8b8ba}
 .squad-detail-pane .v39-char-equipment-row b,.squad-detail-pane .v39-char-growth-row b{overflow-wrap:anywhere;text-align:right}
+
+.squad-detail-pane .v39-status-effect-row{padding:2px 3px;align-items:flex-start}
+.squad-detail-pane .v39-status-effect-row>span{flex:0 1 35%;min-width:0}
+.squad-detail-pane .v39-status-effect-row>b{flex:1;min-width:0}
+
+.v39-ability-value{display:inline-flex;flex-direction:column;align-items:flex-end;justify-content:center;line-height:1.05;min-width:0}
+.v39-ability-value>b{font-weight:700}
+.v39-ability-value>.v39-ability-delta{display:block;font-size:max(10px,.75em);line-height:1.05;white-space:nowrap;font-weight:700}
+.v39-ability-delta.is-up{color:var(--v39-ability-increase-color,#68e58a)}
+.v39-ability-delta.is-down{color:var(--v39-ability-decrease-color,#ff6b6b)}

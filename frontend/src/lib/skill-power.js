@@ -30,6 +30,7 @@ export function resolveStatusValue(statusSource, key) {
 export function resolveScaleStatValue(raw, statusSource) {
   const direct = toSafeNumber(raw, null);
   if (direct !== null) return direct;
+  if (normalizeText(raw).startsWith('最大_')) return Math.max(0,...normalizeText(raw).slice(3).split('_').map(key=>resolveStatusValue(statusSource,key)));
   const tokens = parseTokenList(raw);
   if (!tokens.length) return 0;
   for (const token of tokens) {

@@ -2800,3 +2800,5 @@ UI162: 風大.webpを確認（8コマ）。竜巻をエフェクト一覧/分類
 - Added fresh-module/localStorage reload regression with custom name, 2 images, per-image rotations/X/Y, decoration and subsequent JSON snapshot. No browser automation; frontend-only change.
 
 - UI270: エフェクト別の着弾基準点、数値/タップ指定、中央へ戻す操作を追加。回転・縦横倍率後も着弾点を固定。JSON/再読込とNode回帰テストを確認。画面未確認。
+
+- UI310: 拘束をLv×10上限・20/40/70%で命中/回避-10/-25/-50%、自然抵抗max(攻撃,防御)/10へ共通実装。組み付きの隣接/移動制限/リンク解除、状態表示、検証2スキルを追加。専用脱出/維持AP/技制限は保留。Nodeの共通処理・3陣営実攻撃経路とfront buildを検証。画面操作は未確認。

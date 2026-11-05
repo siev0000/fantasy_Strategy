@@ -1,3 +1,6 @@
+import {addV39Restraint,tickV39Restraint,inspectV39Restraint,reconcileV39RestraintLinks} from './v39-restraint.js';
+import {resolveV39CurrentUnitAbilities} from './v39-current-unit-abilities.js';
+import {addV39PeriodicStatus,tickV39PeriodicStatus,recoverV39PeriodicPoison} from './v39-periodic-status.js';
 import {createV39GuardLink} from './v39-unit-guarding.js';
 import {parseV39TurnCount} from './v39-turn-timing.js';
 import {abilityDamageTarget,addAbilityDamage,recoverAbilityDamage} from './v39-ability-damage.js';
@@ -13,6 +16,10 @@ import { resolveV39CorpseLifetimeTurns } from './v39-corpse-lifetime.js';
 const text=value=>String(value??'').trim();
 const hp=unit=>Math.max(0,Number(unit?.hp??unit?.currentHp)||0);
 const alive=unit=>unit && hp(unit)>0 && unit.state!=='死亡';
+export function resolveV39DrainRate(row){
+  const token=text(row?.効果).split(/[\s/／,:：|]+/).find(value=>value==='ドレイン'||/^ドレイン_\d+(?:\.\d+)?$/.test(value));
+  return token==='ドレイン'?1:token?Number(token.slice('ドレイン_'.length))/100:0;
+}
 export const V39_SKILL_TRIGGER_EVENTS=config.events;
 export const V39_SKILL_TRIGGER_TARGETS=config.targets;
 export function resolveV39SkillTriggerTarget(target,event){
@@ -45,8 +52,10 @@ export function resolveV39TriggeredAttack(row,event){
 }
 
 export function formatV39SkillTriggerLog(log){
+  if(log.kind==='periodic-damage')return log.status+'：'+log.damage+'ダメージ';
+  if(log.kind==='periodic-state')return log.status+'：+'+log.amount;
   if(log.kind==='bleeding-damage')return '出血：'+log.damage+'ダメージ';
-  if(log.kind==='ability-damage')return (log.curse?'呪い':'能力ダメージ')+'：'+log.ability+' -'+log.amount;
+  if(log.kind==='ability-damage')return (log.poison?'毒':log.curse?'呪い':'能力ダメージ')+'：'+log.ability+' -'+log.amount;
   if(log.kind==='bleeding')return '出血：+'+log.amount;
   if(log.damage!==undefined)return log.skill+'：反撃威力'+log.power+' / '+log.damage+'ダメージ（'+log.event+'）';
   return log.skill+'：'+log.event+' / 回復'+(log.healing??0);
@@ -117,8 +126,9 @@ function executeEvents(ctx, events, random){
 }
 
 export function applyV39SkillTriggerCombat(before, after, attacker, row, entries, {random=Math.random,supportTargetIds=[]}={}){
+  const effects=text(row.効果).split(/[\s/／,:：|]+/);
   const all=[...(after.enemies||[]),...(after.players||[]).flatMap(p=>p.factionState?.units||[]),...(after.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])];
-  if(!String(row.効果||'').split(/[\s/／,:：]+/).includes('守護') && !abilityDamageTarget(row) && !Number(row.回復) && !String(row.効果||'').includes('呪い回復') && !(Number(row.出血)>0) && !all.some(unit=>unit.bleeding || getV39TriggeredSkills(unit).length))return {state:after,logs:[],events:[]};
+  if(!String(row.効果||'').split(/[\s/／,:：]+/).includes('守護') && !abilityDamageTarget(row) && !Number(row.回復) && !String(row.効果||'').includes('呪い回復') && !String(row.効果||'').includes('毒回復') && !resolveV39DrainRate(row) && !effects.includes('吸血') && !effects.includes('燃焼') && !(Number(row.毒)>0) && !(Number(row.燃焼)>0) && !(Number(row.拘束)>0) && !(Number(row.出血)>0) && !all.some(unit=>unit.bleeding || getV39TriggeredSkills(unit).length))return {state:after,logs:[],events:[]};
   const ctx=context(after),old=context(before).units,events=[];
   const event=(name,ownerId,sourceId,amount=0,cause='攻撃')=>events.push({name,ownerId,sourceId,amount,cause,...(cause==='攻撃'?{attackerId:attacker.id}:{})});
   if(!isV39SupportSkill(row,attacker))event('攻撃',attacker.id,attacker.id);
@@ -127,6 +137,7 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
     const unit=ctx.units.get(id);
     if(alive(unit)&&id!==attacker.id)ctx.units.set(id,{...unit,guardedBy:createV39GuardLink(attacker,row,ctx.turn,parseV39TurnCount(row.効果時間,0))});
   }
+  let drainDamage=0,bloodRecovery=0;
   const seen=new Set();
   for(const entry of entries||[]){
     const id=text(entry.targetId);if(!id || seen.has(id))continue;seen.add(id);
@@ -134,21 +145,47 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
     const hit=entry.hitCount>0 || entry.hitResults?.some(hit=>hit.hit) || Number(entry.total)>0;
     if(!hit){event('回避成功',id,attacker.id);continue;}
     event('攻撃命中',attacker.id,id);event('被弾',id,attacker.id);
-    const lost=Math.max(0,Number(entry.beforeHp)-Number(entry.afterHp));
+    const lost=Math.max(0,Number(entry.beforeHp)-Math.max(0,Number(entry.afterHp)));
+    if(id!==attacker.id)drainDamage+=lost;
     if(lost){event('被ダメージ',id,attacker.id,lost);event('ダメージ付与',attacker.id,id,lost);}
     if(Number(entry.afterHp)<=0){event('撃破',attacker.id,id);continue;}
     const ability=abilityDamageTarget(row);
     if(ability){
-      const curse=Number(row.呪い)>0;
-      const amount=resolveV39HarmfulEffectPower(attacker,target,row,curse?Number(row.呪い):resolveSkillBasePower(row),curse?'呪い耐性':ability+'耐性');
-      target=addAbilityDamage(target,ability,amount,{curse});ctx.units.set(id,target);
-      if(amount)ctx.logs.push({kind:'ability-damage',targetId:id,ability,amount,curse});
+      const curse=Number(row.呪い)>0,poison=!curse&&Number(row.毒)>0;
+      const amount=resolveV39HarmfulEffectPower(attacker,target,row,curse?Number(row.呪い):poison?Number(row.毒):resolveSkillBasePower(row),curse?'呪い耐性':poison?'毒耐性':ability+'耐性');
+      target=addAbilityDamage(target,ability,amount,{curse,poison});ctx.units.set(id,target);
+      if(amount)ctx.logs.push({kind:'ability-damage',targetId:id,ability,amount,curse,poison});
     }
     const statePower=resolveV39StateInfliction(attacker,target,row,'出血');
     if(statePower>0 && alive(target)){
       target=addV39Bleeding(target,statePower,ctx.turn);ctx.units.set(id,target);
       ctx.logs.push({kind:'bleeding',targetId:id,amount:statePower,value:target.bleeding.value});
       event('被出血付与',id,attacker.id,statePower);event('出血付与',attacker.id,id,statePower);
+      if(effects.includes('吸血')&&id!==attacker.id)bloodRecovery+=statePower;
+    }
+    const grapple=effects.includes('組み付き');
+    const otherHold=[...ctx.units.values()].some(unit=>unit.id!==id&&unit.restraint?.grapplerId===attacker.id&&inspectV39Restraint(unit).stage);
+    const occupied=target.restraint?.grapplerId&&target.restraint.grapplerId!==attacker.id;
+    if(Number(row.拘束)>0&&(!grapple||(!otherHold&&!occupied&&getHexDistance(attacker,target)===1))){
+      const source=resolveV39CurrentUnitAbilities(attacker,{state:after});
+      const receiver=resolveV39CurrentUnitAbilities(target,{state:after});
+      const resistance={...receiver,status:{...receiver.status,防御:Math.max(Number(receiver.status?.攻撃)||0,Number(receiver.status?.防御)||0)}};
+      const power=resolveV39StateInfliction(source,resistance,{...row,判定:'最大_攻撃_防御'},'拘束');
+      const prior=inspectV39Restraint(target).value;
+      target=addV39Restraint(target,power,ctx.turn,grapple?attacker.id:null);ctx.units.set(id,target);
+      const info=inspectV39Restraint(target),amount=info.value-prior;
+      if(amount>0){
+        ctx.logs.push({kind:'periodic-state',status:grapple?'組み付き':'拘束',targetId:id,amount});
+        if(info.stage){event('拘束',attacker.id,id,amount);event('被拘束',id,attacker.id,amount);}
+      }
+    }
+    const duration=parseV39TurnCount(row.効果時間,config.periodic.defaultDurationTurns);
+    for(const [status,base,resistance]of [
+      ['毒',!ability?Number(row.毒)||0:0,'毒耐性'],
+      ['燃焼',Number(row.燃焼)||(effects.includes('燃焼')?Number(row.炎)||0:0),'炎耐性']
+    ]){
+      const amount=resolveV39HarmfulEffectPower(attacker,target,row,base,resistance);
+      if(amount>0){target=addV39PeriodicStatus(target,status,amount,duration,ctx.turn);ctx.units.set(id,target);ctx.logs.push({kind:'periodic-state',status,targetId:id,amount});}
     }
   }
   for(const [id,unit] of ctx.units){
@@ -156,33 +193,43 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
     const actualHealing=Number(row.回復)>0?Math.max(0,hp(unit)-hp(previous)):0;
     const targeted=supportTargetIds.includes(id)||actualHealing>0||(id===text(attacker.id)&&text(row.対象)==='自身');
     const healing=targeted?resolveSkillHealing(row,attacker):0;
-    const curseHealing=String(row.効果||'').includes('呪い回復');
+    const curseHealing=String(row.効果||'').includes('呪い回復'),poisonHealing=String(row.効果||'').includes('毒回復');
     if(healing>0){
-      const reduced=curseHealing?recoverAbilityDamage(unit,healing,{curse:true}):reduceV39Bleeding(recoverAbilityDamage(unit,healing),actualHealing);
+      const reduced=poisonHealing?recoverV39PeriodicPoison(recoverAbilityDamage(unit,healing,{poison:true}),healing):curseHealing?recoverAbilityDamage(unit,healing,{curse:true}):reduceV39Bleeding(recoverAbilityDamage(unit,healing),actualHealing);
       ctx.units.set(id,reduced);
       const healed=actualHealing;
       event('被回復',id,attacker.id,healed,'回復');event('回復付与',attacker.id,id,healed,'回復');
       if(unit.bleeding && !reduced.bleeding){event('被状態解除',id,attacker.id,0,'回復');event('状態解除',attacker.id,id,0,'回復');}
     }
   }
+  for(const [eventName,amount]of [['ドレイン',Math.floor(drainDamage*resolveV39DrainRate(row))],['吸血',bloodRecovery]]){
+    const actor=ctx.units.get(text(attacker.id));
+    if(amount<=0||!alive(actor))continue;
+    const healed=ctx.setHp(actor,hp(actor)+amount,row.名前),actual=hp(healed)-hp(actor);
+    ctx.units.set(text(actor.id),reduceV39Bleeding(recoverAbilityDamage(healed,amount),actual));
+    ctx.logs.push({kind:'trigger',event:eventName,skill:row.名前,actorId:actor.id,targetId:actor.id,healing:actual});
+  }
   executeEvents(ctx,events,random);
-  return {state:ctx.finish(),logs:ctx.logs,events};
+  return {state:reconcileV39RestraintLinks(before,ctx.finish()),logs:ctx.logs,events};
 }
 
 export function advanceV39SkillTriggerTurn(state,turn,{random=Math.random}={}){
   const ctx=context({...state,timeline:{...state.timeline,turnNumber:turn}}),events=[];
   let changed=false;
   for(const [id,unit] of ctx.units){
-    if(!alive(unit) || Number(unit.lastSkillTriggerTurn)>=turn || (!unit.bleeding && !getV39TriggeredSkills(unit).some(row=>['ターン開始','ターン終了'].includes(row.発動))))continue;
+    if(!alive(unit) || Number(unit.lastSkillTriggerTurn)>=turn || (!unit.restraint && !unit.bleeding && !unit.periodicDamage?.length && !getV39TriggeredSkills(unit).some(row=>['ターン開始','ターン終了'].includes(row.発動))))continue;
     changed=true;let next={...unit,lastSkillTriggerTurn:turn};
     events.push({name:'ターン終了',ownerId:id,sourceId:id,cause:'ターン'});
+    next=tickV39Restraint(next,turn,resolveV39CurrentUnitAbilities(unit,{state}).status);
     const tick=tickV39Bleeding(next,turn);next=tick.unit;
-    if(tick.damage){next=ctx.setHp(next,hp(next)-tick.damage,'出血');ctx.logs.push({kind:'bleeding-damage',targetId:id,damage:tick.damage,value:next.bleeding?.value||0});}
+    if(tick.damage){const damage=Math.min(hp(next),tick.damage);next=ctx.setHp(next,hp(next)-damage,'出血');ctx.logs.push({kind:'bleeding-damage',targetId:id,damage,value:next.bleeding?.value||0});}
+    const periodic=tickV39PeriodicStatus(next,turn);next=periodic.unit;
+    for(const entry of periodic.entries){if(!alive(next))break;const damage=Math.min(hp(next),entry.damage);next=ctx.setHp(next,hp(next)-damage,entry.kind);if(damage)ctx.logs.push({kind:'periodic-damage',status:entry.kind,targetId:id,damage});}
     ctx.units.set(id,next);
     events.push({name:'ターン開始',ownerId:id,sourceId:id,cause:'ターン'});
   }
   executeEvents(ctx,events,random);
-  return {state:ctx.finish(),logs:ctx.logs,events,changed};
+  return {state:reconcileV39RestraintLinks(state,ctx.finish()),logs:ctx.logs,events,changed};
 }
 
 export function dispatchV39SkillTriggerEvents(state,events,{random=Math.random}={}){

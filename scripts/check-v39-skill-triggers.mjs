@@ -5,6 +5,11 @@ import { dirname,resolve } from 'node:path';
 process.on('uncaughtException',error=>{console.error(String(error.stack||error).replace(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g,'[bundle]').slice(0,1400));process.exit(1);});
 const bundle=await build({stdin:{resolveDir:process.cwd(),contents:`
 export * from './frontend/src/lib/v39-bleeding.js';
+export * from './frontend/src/lib/v39-restraint.js';
+export {resolveScaleStatValue} from './frontend/src/lib/skill-power.js';
+export {resolveV39UnitMovementStepCost} from './frontend/src/lib/v39-terrain-traversal.js';
+export * from './frontend/src/lib/v39-periodic-status.js';
+export {resolveV39CurrentUnitAbilities,resolveV39UnitAbilityDisplay} from './frontend/src/lib/v39-current-unit-abilities.js';
 export {captureV39PointerTap} from './frontend/src/lib/v39-pointer-tap-selection.js';
 export {focusV39MapTile} from './frontend/src/v39/map/v39-map-focus.js';
 export {isV39PaidCastRelease} from './frontend/src/lib/v39-casting-rules.js';
@@ -18,7 +23,7 @@ export {playV39TriggerEffect} from './frontend/src/v39/combat/v39-trigger-presen
 export * from './frontend/src/lib/v39-ability-damage.js';
 export {applyV39ActiveCombatEffects} from './frontend/src/lib/v39-combat-engine.js';
 export {applyV39DerivedCharacterData} from './frontend/src/v39/unit/v39-character-derived-rules.js';
-export {renderV39UnitConditions} from './frontend/src/v39/unit/v39-unit-detail.js';
+export {renderV39UnitConditions,renderV39UnitAbility} from './frontend/src/v39/unit/v39-unit-detail.js';
 export {resolveV39StateInfliction} from './frontend/src/lib/v39-combat-engine.js';
 export * from './frontend/src/lib/v39-skill-triggers.js';
 export * from './frontend/src/v39/dev/v39-skill-trigger-test.js';
@@ -316,3 +321,160 @@ window.getV39GameState=()=>({activeWorldId:'surface'});
 assert.equal(m.focusV39MapTile({x:2,y:3},{select:true}),true);
 assert.deepEqual(chosen,{x:2,y:3});assert.equal(focusRenders,1);
 console.log('PASS: captured pointer tile stays stable after camera movement, focus matrix refresh and paid-cast validation.');
+
+const buffUnit={id:'buff-view',x:2,y:3,hp:100,guard:20,guardExpiresAtTurn:12,
+ shield:{skillName:'防護盾',remaining:0,maximum:50,expiresAtTurn:13},barrier:{skillName:'障壁試験',remaining:30,maximum:40,expiresAtTurn:12},
+ abilityDamage:{速度:10},abilityCurses:{攻撃:7},bleeding:{value:20,remainingTurns:3}};
+window.getV39GameState=()=>({activeWorldId:'surface',timeline:{turnNumber:10},players:[{id:'p',factionState:{units:[buffUnit],combatRuntime:{activeEffectsByUnitId:{'buff-view':[
+ {skillName:'弱い強化',modifiers:{攻撃:20},expiresAtTurn:14},
+ {skillName:'強い強化',modifiers:{攻撃:30},expiresAtTurn:12},
+ {skillName:'短期強化',modifiers:{攻撃:10},expiresAtTurn:11,stackGroup:'oneTurn'},
+ {skillName:'変身試験',modifiers:{防御:10},expiresAtTurn:13,stackGroup:'transformation'},
+ {skillName:'弱体試験',modifiers:{精神:-10},expiresAtTurn:13},
+ {skillName:'期限切れ強化',modifiers:{攻撃:100},expiresAtTurn:9}
+]}}}}]});
+const buffMarkup=m.renderV39UnitConditions(buffUnit),parts=buffMarkup.split('data-v39-detail-section="状態異常・弱体"');
+assert.ok(parts[0].includes('強化・保護'));assert.ok(parts[0].includes('攻撃+20（待機中）'));assert.ok(parts[0].includes('攻撃+30（適用中）'));
+assert.ok(parts[0].includes('残り2T'));assert.ok(parts[0].includes('1ターン強化'));assert.ok(parts[0].includes('変身・別枠'));
+assert.ok(parts[0].includes('防護盾'));assert.ok(parts[0].includes('盾 0/50'));assert.ok(parts[0].includes('障壁 30/40'));
+assert.ok(!buffMarkup.includes('期限切れ強化'));assert.ok(!parts[0].includes('能力ダメージ：速度'));
+assert.ok(parts[1].includes('能力ダメージ：速度'));assert.ok(parts[1].includes('呪い：攻撃'));assert.ok(parts[1].includes('出血'));
+assert.ok(parts[1].includes('弱体試験'));
+console.log('PASS: separate buff/debuff sections, max/waiting status, stacking, shield/barrier values and expiration.');
+
+{
+const currentUnit={id:'current-value',x:1,y:1,hp:100,maxHp:100,movement:30,status:{攻撃:100,防御:50,移動:30},skillLevels:{隠密:10},resistances:{炎耐性:5}};
+const currentState={activeWorldId:'surface',timeline:{turnNumber:1},players:[{id:'p',factionState:{units:[currentUnit],combatRuntime:{activeEffectsByUnitId:{'current-value':[
+ {modifiers:{攻撃:20},expiresAtTurn:4},{modifiers:{攻撃:30,隠密:5,炎耐性:20,移動:10},expiresAtTurn:2},
+ {modifiers:{攻撃:10},expiresAtTurn:2,stackGroup:'oneTurn'}
+]}}}}]};
+window.getV39GameState=()=>currentState;
+const current=m.resolveV39CurrentUnitAbilities(currentUnit,{state:currentState,mapData:null});
+assert.equal(current.status.攻撃,140);assert.equal(current.skillLevels.隠密,15);assert.equal(current.resistances.炎耐性,25);assert.equal(current.status.移動,40);
+const currentMarkup=m.renderV39UnitAbility(currentUnit,{mapData:null,fieldIds:true});
+assert.match(currentMarkup,/id="detailAtk">140</);assert.match(currentMarkup,/id="detailMov">40</);
+assert.match(currentMarkup,/<span>隠密<\/span><span class="v39-ability-value"><b>15<\/b>/);
+assert.ok(currentMarkup.includes('炎耐性 +25'));
+assert.equal(currentUnit.status.攻撃,100);assert.equal(currentUnit.skillLevels.隠密,10);
+currentState.timeline.turnNumber=2;
+assert.equal(m.resolveV39CurrentUnitAbilities(currentUnit,{state:currentState,mapData:null}).status.攻撃,120,'expired strongest buff yields to remaining weak buff');
+console.log('PASS: ability/skill/resistance/movement displays use the same current values as combat without mutating base values.');
+
+}
+
+{
+ const viewUnit={id:'delta-test',x:1,y:1,hp:100,maxHp:100,status:{攻撃:100,速度:30},skillLevels:{隠密:10},resistances:{炎耐性:5},abilityDamage:{速度:20},abilityDamageAppliedDeltas:{status:{速度:-20},skillLevels:{}}};
+ const viewState={activeWorldId:'surface',timeline:{turnNumber:1},players:[{id:'p',factionState:{units:[viewUnit],combatRuntime:{activeEffectsByUnitId:{'delta-test':[{modifiers:{攻撃:30,隠密:5,炎耐性:10},expiresAtTurn:3}]}}}}]};
+ window.getV39GameState=()=>viewState;
+ const display=m.resolveV39UnitAbilityDisplay(viewUnit,{state:viewState,mapData:null});
+ assert.equal(display.deltas.status.攻撃,30);assert.equal(display.deltas.status.速度,-20);
+ assert.equal(display.deltas.skillLevels.隠密,5);assert.equal(display.deltas.resistances.炎耐性,10);
+ const markup=m.renderV39UnitAbility(viewUnit,{mapData:null,fieldIds:true});
+ assert.match(markup,/id="detailAtk">130<\/b><small class="v39-ability-delta is-up"[^>]*>\(\+30\)/);
+ assert.match(markup,/id="detailSpd">30<\/b><small class="v39-ability-delta is-down"[^>]*>\(-20\)/);
+ const permanent={...viewUnit,id:'constant',status:{攻撃:150},skillLevels:{},abilityDamage:{},abilityDamageAppliedDeltas:{status:{},skillLevels:{}}};
+ assert.ok(!m.renderV39UnitAbility(permanent,{mapData:null}).includes('class="v39-ability-delta '),'constant base/passive values have no temporary annotation');
+ const floored=m.applyAbilityDamage({id:'floor',status:{速度:15,APP:-5},skillLevels:{},abilityDamage:{速度:30,APP:10}});
+ const floorDisplay=m.resolveV39UnitAbilityDisplay(floored,{state:{players:[]},mapData:null});
+ assert.equal(floorDisplay.deltas.status.速度,-15);assert.equal(floorDisplay.deltas.status.APP,-10);
+ const canceled={...viewUnit,status:{攻撃:80},abilityDamage:{攻撃:20},abilityDamageAppliedDeltas:{status:{攻撃:-20},skillLevels:{}}};
+ const cancelState={...viewState,players:[{id:'p',factionState:{units:[canceled],combatRuntime:{activeEffectsByUnitId:{'delta-test':[{modifiers:{攻撃:20},expiresAtTurn:3}]}}}}]};
+ assert.equal(m.resolveV39UnitAbilityDisplay(canceled,{state:cancelState,mapData:null}).deltas.status.攻撃,0);
+ console.log('PASS: green/red sub-values, constant passive baseline, zero-floor accuracy, APP negatives and net-zero cancellation.');
+}
+
+{
+ assert.equal(m.resolveV39DrainRate({効果:'ドレイン'}),1);assert.equal(m.resolveV39DrainRate({効果:'ドレイン_10'}),.1);
+ assert.equal(m.resolveV39DrainRate({効果:'ドレイン_不明'}),0);
+ let initial=createState();initial.players[0].factionState.units[0].hp=100;initial.players[0].factionState.units[0].currentHp=100;
+ let drained=act(initial,0,{名前:'ドレイン試験',行動:'A',物理:100,効果:'ドレイン_10'},{random});
+ const lost=fixture.hp-drained.state.players[0].factionState.units[1].hp;
+ assert.equal(drained.state.players[0].factionState.units[0].hp,100+Math.floor(lost*.1));
+ initial.players[0].factionState.units[1].hp=1;initial.players[0].factionState.units[1].currentHp=1;
+ drained=act(initial,0,{名前:'過剰ドレイン試験',行動:'A',物理:100,効果:'ドレイン'},{random});
+ assert.equal(drained.state.players[0].factionState.units[0].hp,101,'overkill does not generate extra healing');
+ const poison=act(createState(),0,{名前:'毒低下',行動:'A',効果:'速度ダメージ',毒:50},{random});
+ const poisoned=poison.state.players[0].factionState.units[1];assert.equal(poisoned.abilityPoison.速度,33);assert.equal(poisoned.hp,fixture.hp);
+ assert.equal(m.recoverAbilityDamage(poisoned,100).abilityPoison.速度,33,'normal healing does not remove poison ability damage');
+ const detox=m.applyV39SkillTriggerCombat(poison.state,poison.state,poison.state.players[0].factionState.units[0],{名前:'毒回復',効果:'毒回復',回復:20},[],{random,supportTargetIds:['trigger-test-b']});
+ assert.equal(detox.state.players[0].factionState.units[1].abilityPoison.速度,13);
+ assert.equal(m.applyAbilityDamage({status:{速度:50},abilityDamage:{速度:5},abilityCurses:{速度:10},abilityPoison:{速度:15}}).status.速度,20);
+ console.log('PASS: percentage drain, actual-HP/overkill cap, independent poison damage, normal-heal exclusion and detox recovery.');
+}
+
+{
+ const source=createState();source.players[0].factionState.units[0].hp=100;source.players[0].factionState.units[0].currentHp=100;
+ source.players[0].factionState.units[1].techniques=[];
+ const absorbed=act(source,0,{名前:'吸血試験',行動:'A',出血:50,効果:'吸血'},{random});
+ const gained=absorbed.state.players[0].factionState.units[1].bleeding.value;
+ assert.equal(absorbed.state.players[0].factionState.units[0].hp,100+gained,'blood absorption heals added bleed value, not HP damage');
+ assert.equal(absorbed.logs.find(log=>log.event==='吸血').healing,gained);
+ let poisoned=act(createState(),0,{名前:'持続毒試験',行動:'A',毒:30,効果時間:3},{random}).state;
+ assert.equal(poisoned.players[0].factionState.units[1].hp,fixture.hp,'poison does not also deal direct HP damage');
+ assert.equal(poisoned.players[0].factionState.units[1].periodicDamage[0].value,20);
+ for(let t=2;t<=4;t++){
+   const result=m.advanceV39SkillTriggerTurn(poisoned,t,{random});poisoned=result.state;
+   assert.equal(result.logs.find(log=>log.kind==='periodic-damage').damage,20);
+   assert.equal(poisoned.players[0].factionState.units[1].hp,fixture.hp-20*(t-1));
+   assert.equal(m.advanceV39SkillTriggerTurn(poisoned,t,{random}).changed,false,'same turn is idempotent');
+ }
+ assert.equal(poisoned.players[0].factionState.units[1].periodicDamage.length,0);
+ const burning=act(createState(),0,{名前:'燃焼試験',行動:'A',燃焼:30,効果:'燃焼',効果時間:2},{random}).state;
+ assert.equal(burning.players[0].factionState.units[1].periodicDamage[0].kind,'燃焼');
+ assert.equal(m.advanceV39SkillTriggerTurn(burning,2,{random}).logs.find(log=>log.kind==='periodic-damage').damage,20);
+ let stacked=m.addV39PeriodicStatus({hp:100},'毒',10,1,1);stacked=m.addV39PeriodicStatus(stacked,'毒',20,3,1);
+ let step=m.tickV39PeriodicStatus(stacked,2);assert.equal(step.entries.reduce((sum,e)=>sum+e.damage,0),30);
+ step=m.tickV39PeriodicStatus(step.unit,3);assert.equal(step.entries.reduce((sum,e)=>sum+e.damage,0),20,'each dose expires independently');
+ assert.equal(m.recoverV39PeriodicPoison(step.unit,20).periodicDamage.length,0);
+ console.log('PASS: blood-value absorption, poison/burn full-value ticks, duration, idempotence, independent doses and detox.');
+}
+
+{
+ const actor={id:'holder',level:10,hp:1000,x:5,y:4,status:{HP:1000,攻撃:90,防御:170,命中:100,速度:100}},victim={...actor,id:'held',x:6,level:20,status:{...actor.status,攻撃:70,防御:110}};
+ const state={players:[{id:'p',factionState:{units:[actor]}}],enemies:[victim],neutralVillages:[],timeline:{turnNumber:1}};
+ assert.equal(m.resolveScaleStatValue('最大_攻撃_防御',actor.status),170);
+ for(const [value,stage,penalty]of [[39,0,0],[40,1,.1],[80,2,.25],[140,3,.5]]){
+   const bound={...victim,restraint:{value}};
+   assert.equal(m.inspectV39Restraint(bound).stage,stage);assert.equal(m.inspectV39Restraint(bound).penalty,penalty);
+ }
+ let bound=m.addV39Restraint(victim,500,1,actor.id);assert.equal(bound.restraint.value,200);
+ let held={...state,enemies:[bound]};
+ assert.equal(m.getV39RestraintPenalty(actor,held),.25);assert.equal(m.getV39RestraintPenalty(bound,held),.5);
+ assert.equal(m.resolveV39UnitMovementStepCost(null,6,4,7,4,bound,held),Infinity);
+ const penalized=m.applyV39RestraintPenalties(bound,held);
+ assert.equal(penalized.status.命中,50);assert.equal(penalized.status.回避,50);assert.equal(penalized.status.速度,100);
+ assert.equal(m.applyV39RestraintPenalties(penalized,held).status.命中,50,'no duplicate penalty');
+ assert.equal(m.resolveV39CurrentUnitAbilities(bound,{state:held,mapData:null}).status.命中,50);
+ const physical=m.computeAttackDamage({attacker:bound,target:actor,skillRow:{物理:10},random:()=>0});
+ globalThis.window.getV39GameState=()=>held;
+ const magic=m.computeAttackDamage({attacker:{...bound,status:{...bound.status,精神:100}},target:actor,skillRow:{魔法:10,攻撃手段:'魔法'},random:()=>0});
+ assert.equal(physical.detail.accuracy,50);assert.equal(magic.detail.accuracy,50);
+ assert.equal(m.tickV39Restraint(bound,1).restraint.value,200);
+ bound=m.tickV39Restraint(bound,2);assert.equal(bound.restraint.value,189);
+ assert.equal(m.tickV39Restraint(bound,2).restraint.value,189);
+ assert.equal(m.tickV39Restraint({...victim,restraint:{value:20}},2,{攻撃:15,防御:0}).restraint.value,18.5);
+ assert.equal(m.resolveV39RestraintRecovery({攻撃:0,防御:0}),1);
+ let after=m.advanceV39SkillTriggerTurn(held,2).state;
+ assert.equal(after.enemies[0].restraint.value,189);
+ assert.equal(m.advanceV39SkillTriggerTurn(after,2).state.enemies[0].restraint.value,189);
+ const mixed=m.addV39Restraint(m.addV39Restraint(victim,50,1),100,1,actor.id);
+ const moving={...held,players:[{...state.players[0],factionState:{units:[{...actor,y:3}]}}],enemies:[mixed]};
+ m.reconcileV39RestraintLinks(held,moving);assert.equal(moving.enemies[0].restraint.value,50);assert.equal(moving.enemies[0].restraint.grapplerId,undefined);
+ assert.equal(mixed.restraint.value,150,'no source mutation');
+ for(const change of [{hp:0},{worldId:'cave'},{x:9}]){
+   const next={...held,players:[{...state.players[0],factionState:{units:[{...actor,...change}]}}]};
+   m.reconcileV39RestraintLinks(held,next);assert.equal(next.enemies[0].restraint,null);
+ }
+ const nearlyFree={...held,enemies:[{...held.enemies[0],restraint:{value:45,grappleValue:45,grapplerId:actor.id,lastResistanceTurn:1}}]};
+ assert.equal(m.advanceV39SkillTriggerTurn(nearlyFree,2).state.enemies[0].restraint,null);
+ const row={名前:'binding',拘束:100,判定:'最大_攻撃_防御',対象:'相手',行動:'A',効果:'組み付き'};
+ const entry={targetId:victim.id,beforeHp:1000,afterHp:1000,total:0,hitCount:1};
+ const result=m.applyV39SkillTriggerCombat(state,state,actor,row,[entry],{random:()=>0});
+ assert.ok(result.state.enemies[0].restraint.value>0);
+ assert.ok(result.state.enemies[0].restraint.value<270,'target higher defense reduces infliction');
+ assert.ok(result.events.some(e=>e.name==='被拘束'));
+ assert.ok(m.collectV39CombatPopupChanges(state,result.state).some(e=>e.popupLabel==='拘束'));
+ assert.match(m.renderV39UnitConditions(result.state.enemies[0]),/拘束/);
+ const missed=m.applyV39SkillTriggerCombat(state,state,actor,row,[{...entry,hitCount:0}],{random:()=>0});assert.equal(missed.state.enemies[0].restraint,undefined);
+ console.log('PASS: restraint level cap/stages, max-stat defense, fractional decay, accuracy/evasion, grapple movement/link release, popup and trigger integration.');
+}

@@ -15,6 +15,12 @@ class SkillTriggerConverterTest(unittest.TestCase):
         self.assertEqual(record["対象"], "攻撃者")
         self.assertEqual(record["判定"], "HP")
 
+    def test_poison_burn_and_curse_values(self):
+        parsed, _, _ = parse_data_field("毒:30 燃焼:20 呪い:50")
+        self.assertEqual(parsed["毒"], 30)
+        self.assertEqual(parsed["燃焼"], 20)
+        self.assertEqual(parsed["呪い"], 50)
+
     def test_trigger_name_has_no_time_suffix(self):
         parsed, _, _ = parse_data_field("発動:ターン開始 効果:回復 回復10")
         self.assertEqual(parsed["発動"], "ターン開始")

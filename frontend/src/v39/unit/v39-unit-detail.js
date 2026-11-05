@@ -1,7 +1,8 @@
+import {inspectV39Restraint,getV39RestraintPenalty,resolveV39RestraintRecovery} from '../../lib/v39-restraint.js';
 import {getHexDistance} from '../../lib/hex-grid.js';
-import {resolveAttackRange} from '../../lib/v39-combat-engine.js';
+import {resolveAttackRange,applyV39ActiveCombatEffects} from '../../lib/v39-combat-engine.js';
 import {describeV39Bleeding} from '../../lib/v39-bleeding.js';
-import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import {resolveV39UnitAbilityDisplay} from '../../lib/v39-current-unit-abilities.js';
 import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 import "./v39-unit-detail.css";
@@ -68,55 +69,85 @@ export function renderV39UnitAchievements(unit){
 }
 
 export function renderV39UnitConditions(unit){
-  const rows=[],bleed=describeV39Bleeding(unit);
-  for(const [bucket,label] of [['abilityDamage','能力ダメージ'],['abilityCurses','呪い']])for(const [key,value] of Object.entries(unit?.[bucket]||{}))if(Number(value)>0)rows.push([label+'：'+key,'-'+value]);
-  if(bleed)rows.push(['出血',bleed.value+' / 次回 '+bleed.damage+'ダメージ / 残り'+bleed.remainingTurns+'T']);
+  const buffs=[],debuffs=[],bleed=describeV39Bleeding(unit);
   const state=globalThis.window?.getV39GameState?.({includeWorlds:false}),turn=Number(state?.timeline?.turnNumber)||1;
-  const player=state?.players?.find(p=>p.factionState?.units?.some(row=>row.id===unit?.id));
-  if(unit?.guardedBy){
+  const remaining=expires=>expires?'残り'+Math.max(0,Number(expires)-turn)+'T':'期限なし';
+  const active=expires=>!expires||Number(expires)>turn;
+  for(const [bucket,label]of [['abilityDamage','能力ダメージ'],['abilityCurses','呪い'],['abilityPoison','毒による低下']])for(const [key,value]of Object.entries(unit?.[bucket]||{}))if(Number(value)>0)debuffs.push([label+'：'+key,'-'+value]);
+  for(const kind of ['毒','燃焼']){
+    const doses=(unit?.periodicDamage||[]).filter(effect=>effect.kind===kind&&effect.remainingTurns>0);
+    if(doses.length)debuffs.push([kind,doses.reduce((sum,e)=>sum+Number(e.value||0),0)+'ダメージ/ターン / 残り'+Math.max(...doses.map(e=>e.remainingTurns))+'T']);
+  }
+  const hold=inspectV39Restraint(unit),holdPenalty=getV39RestraintPenalty(unit,state);
+  if(hold.value)debuffs.push(['拘束',hold.value+' / '+hold.cap+'（段階'+hold.stage+'） / 自然抵抗 '+resolveV39RestraintRecovery(resolveV39UnitAbilityDisplay(unit,{state}).current.status)+'/T']);
+  if(holdPenalty)debuffs.push(['命中・回避','-'+Math.round(holdPenalty*100)+'%'+(unit.restraint?.grapplerId?' / 組み付かれ中':'' )]);
+  if(bleed)debuffs.push(['出血',bleed.value+' / 次回 '+bleed.damage+'ダメージ / 残り'+bleed.remainingTurns+'T']);
+  if(Number(unit?.guard)>0&&active(unit.guardExpiresAtTurn))buffs.push(['ガード',unit.guard+' / '+remaining(unit.guardExpiresAtTurn)]);
+  for(const [key,label]of [['shield','盾'],['barrier','障壁']]){
+    const effect=unit?.[key];
+    if(effect&&(key==='shield'||Number(effect.remaining)>0)&&active(effect.expiresAtTurn))buffs.push([effect.skillName||label,label+' '+effect.remaining+'/'+(effect.maximum??effect.remaining)+' / '+remaining(effect.expiresAtTurn)]);
+  }
+  if(unit?.guardedBy&&active(unit.guardedBy.expiresAtTurn)){
     const link=unit.guardedBy;
     const guardian=[...(state?.players||[]).flatMap(p=>p.factionState?.units||[]),...(state?.enemies||[]),...(state?.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])].find(row=>row.id===link.guardianId);
-    const valid=guardian&&Number(guardian.hp??guardian.currentHp)>0&&(!link.expiresAtTurn||link.expiresAtTurn>turn)
-      &&(guardian.worldId||'surface')===(unit.worldId||'surface')&&getHexDistance(unit,guardian)<=resolveAttackRange({射程:link.range},guardian,globalThis.window?.__v39FieldRuntime?.mapData);
-    rows.push(['守護', (guardian?.name||link.guardianId)+' / '+(valid?'有効':'無効（射程外・死亡・期限切れ）')+(link.expiresAtTurn?' / 残り'+Math.max(0,link.expiresAtTurn-turn)+'T':'')]);
+    const valid=guardian&&Number(guardian.hp??guardian.currentHp)>0&&(guardian.worldId||'surface')===(unit.worldId||'surface')
+      &&getHexDistance(unit,guardian)<=resolveAttackRange({射程:link.range},guardian,globalThis.window?.__v39FieldRuntime?.mapData);
+    buffs.push(['守護',(guardian?.name||link.guardianId)+' / '+(valid?'有効':'無効（射程外・守護者不在）')+' / '+remaining(link.expiresAtTurn)]);
   }
-  const effects=player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[unit?.id]||[];
+  const player=state?.players?.find(p=>p.factionState?.units?.some(row=>row.id===unit?.id));
+  const effects=(player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[unit?.id]||[]).filter(effect=>active(effect.expiresAtTurn));
+  const maximum=applyV39ActiveCombatEffects({status:{},skillLevels:{},resistances:{}},effects.filter(effect=>!['oneTurn','transformation'].includes(effect.stackGroup)));
+  const maxima={...maximum.status,...maximum.skillLevels,...maximum.resistances};
   for(const effect of effects){
-    const remaining=Math.max(0,Number(effect.expiresAtTurn)-turn);
-    if(!remaining)continue;
-    const modifiers=Object.entries(effect.modifiers||{}).map(([name,value])=>name+(Number(value)>0?'+':'')+value).join(' / ');
-    rows.push([effect.skillName||'継続効果',modifiers+' / 残り'+remaining+'T']);
+    const stacked=['oneTurn','transformation'].includes(effect.stackGroup),positive=[],negative=[];
+    for(const [name,value]of Object.entries(effect.modifiers||{})){
+      if(!Number(value))continue;
+      const applied=stacked||Number(value)===Number(maxima[name]);
+      const text=name+(Number(value)>0?'+':'')+value+'（'+(applied?'適用中':'待機中')+'）';
+      (Number(value)>0?positive:negative).push(text);
+    }
+    const suffix=' / '+remaining(effect.expiresAtTurn)+(stacked?' / '+(effect.stackGroup==='oneTurn'?'1ターン強化':'変身・別枠'):'');
+    if(positive.length)buffs.push([effect.skillName||'継続強化',positive.join(' / ')+suffix]);
+    if(negative.length)debuffs.push([effect.skillName||'継続弱体',negative.join(' / ')+suffix]);
   }
-  return renderV39DetailSection('受けている状態',rows.length?rows.map(([name,value])=>'<div class="v39-char-growth-row"><span>'+escapeHtml(name)+'</span><b>'+escapeHtml(value)+'</b></div>').join(''):'<div class="squad-empty">なし</div>');
+  const section=(title,rows)=>renderV39DetailSection(title,rows.length?rows.map(([name,value])=>'<div class="v39-char-growth-row v39-status-effect-row"><span>'+escapeHtml(name)+'</span><b>'+escapeHtml(value)+'</b></div>').join(''):'<div class="squad-empty">なし</div>');
+  return section('強化・保護',buffs)+section('状態異常・弱体',debuffs);
 }
 
 export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
-  const adjusted = applyV39TerrainModifiers(unit, mapData);
+  const {current:adjusted,baseline,deltas}=resolveV39UnitAbilityDisplay(unit,{mapData});
+  const baselineWeather=resolveV39UnitWeatherMovement(baseline,mapData);
   const weatherMovement=resolveV39UnitWeatherMovement(adjusted,mapData);
   const id = value => fieldIds ? ` id="${value}"` : "";
+  const valueHtml=(value,delta=0,fieldId='')=>{
+    const amount=Math.round(Number(delta||0)*10)/10;
+    const annotation=amount?'('+ (amount>0?'+':'')+amount+')':'';
+    return '<span class="v39-ability-value"><b'+(fieldId?id(fieldId):'')+'>'+escapeHtml(value)+'</b>'+(annotation?'<small class="v39-ability-delta '+(amount>0?'is-up':'is-down')+'" aria-label="一時補正 '+escapeHtml(annotation)+'">'+escapeHtml(annotation)+'</small>':'')+'</span>';
+  };
   const stats = STATUS_FIELDS.map(([label, key, fieldId]) => {
     const raw = key==='移動'&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0)?Math.max(1,Math.floor(weatherMovement.movement))
       :key==='飛行'&&weatherMovement.flightReduction>0?Math.round(weatherMovement.flight*10)/10
       :key === "移動"
-      ? unit?.movement ?? unit?.status?.移動 ?? unit?.move ?? unit?.moveRange ?? unit?.移動
+      ? adjusted?.status?.移動 ?? adjusted?.movement ?? unit?.move ?? unit?.moveRange ?? unit?.移動
       : key === "飛行" ? adjusted?.skillLevels?.飛行 ?? adjusted?.status?.飛行 ?? unit?.飛行 ?? 0
       : adjusted?.status?.[key] ?? unit?.[key];
-    const modifier = key === "移動" ? 0 : Number(adjusted?.terrainModifiers?.[key]) || 0;
-    const value = !Number.isFinite(Number(raw)) ? "-"
-      : modifier ? `${Number(raw)} (${modifier > 0 ? "+" : ""}${modifier})` : Number(raw);
+    const value=Number.isFinite(Number(raw))?Number(raw):'-';
+    let delta=key==='飛行'?deltas.skillLevels?.飛行??deltas.status?.飛行:deltas.status?.[key];
+    if(key==='移動'&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0))delta=Number(raw)-Math.max(1,Math.floor(baselineWeather.movement));
+    if(key==='飛行'&&weatherMovement.flightReduction>0)delta=Number(raw)-Math.round(baselineWeather.flight*10)/10;
     const cityBonus=Number(adjusted?.cityAuraDeltas?.status?.[key])||0;
-    return `<div class="detail-stat"${cityBonus?` title="都市常時 ${cityBonus>0?'+':''}${cityBonus}"`:''}><span>${label}</span><b${id(fieldId)}>${escapeHtml(value)}</b></div>`;
+    return `<div class="detail-stat"${cityBonus?` title="都市常時 ${cityBonus>0?'+':''}${cityBonus}"`:''}><span>${label}</span>${valueHtml(value,delta,fieldId)}</div>`;
   }).join("");
   const skills = Object.entries(adjusted?.skillLevels || {})
     .filter(([key, value]) => key !== "飛行" && Number.isFinite(Number(value)) && Number(value) !== 0)
-    .map(([name, value]) => `<div class="proficiency-item"><span>${escapeHtml(name)}</span><b>${escapeHtml(Number(value))}</b></div>`).join("");
+    .map(([name, value]) => `<div class="proficiency-item"><span>${escapeHtml(name)}</span>${valueHtml(Number(value),deltas.skillLevels?.[name])}</div>`).join("");
   const resistances = RESISTANCE_FIELDS.flatMap(key => {
     const value = Number(adjusted?.resistances?.[key]);
     if (!Number.isFinite(value) || value === 0) return [];
     const icon = getResistanceIconSrc(key);
     return [`<button type="button" class="v39-resistance-indicator ${resistanceValueTone(value)}" data-v39-resistance-label="${escapeHtml(key)}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}">
       ${icon ? `<img src="${escapeHtml(icon)}" alt="" aria-hidden="true" class="v39-resistance-icon">` : '<span class="v39-resistance-icon-fallback" aria-hidden="true">?</span>'}
-      <b>${escapeHtml(formatResistanceValue(value))}</b></button>`];
+      ${valueHtml(formatResistanceValue(value),deltas.resistances?.[key])}</button>`];
   }).join("");
   const empty = message => `<div class="squad-empty">${message}</div>`;
   const level=Math.max(1,Math.floor(Number(unit?.level??unit?.lv??unit?.Lv)||1));

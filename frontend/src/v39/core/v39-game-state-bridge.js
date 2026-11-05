@@ -1,3 +1,4 @@
+import {reconcileV39RestraintLinks} from '../../lib/v39-restraint.js';
 import {dispatchV39CombatPopupChanges} from '../../lib/v39-combat-popup-rules.js';
 import {normalizeV39OperationTimeline} from '../../lib/v39-operation-phases.js';
 import {selectV39InitialRace} from '../../lib/v39-initial-spacing.js';
@@ -446,6 +447,7 @@ function setState(patch = {}, options = {}) {
     normalized.victory=evaluateV39Victory(normalized,normalized.timeline.turnNumber,{advanceProgress:false}).victory;
   }
   reconcileV39Casting(state,normalized,options.reason);
+  reconcileV39RestraintLinks(state,normalized);
   applyDeathPurification(state,normalized,Object.keys(patch),options);
   const popupBefore=state;
   state = normalized;
@@ -467,6 +469,7 @@ function patchEnemyTurnState(patch = {}, options = {}) {
   }
   if(next.enemyCombatRuntime?.pendingActionsByEnemyId){next.enemyCombatRuntime={...next.enemyCombatRuntime,pendingActionsByEnemyId:{...next.enemyCombatRuntime.pendingActionsByEnemyId}};}
   reconcileV39Casting(state,next,typeof options==='string'?options:options.reason);
+  reconcileV39RestraintLinks(state,next);
   applyDeathPurification(state,next,Object.keys(patch));
   const popupBefore=state;
   state = next;

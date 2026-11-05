@@ -339,6 +339,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
     squadSupportSkillModifiers:{},
     squadSupportResistanceModifiers:{},
     skillLevels: { ...damaged.skillLevels },
+    abilityDamageAppliedDeltas:damaged.abilityDamageAppliedDeltas,
     resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
     equipment,
     acquiredSkillNames: [...derived.acquiredSkillNames],

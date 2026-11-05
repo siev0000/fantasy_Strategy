@@ -1,3 +1,4 @@
+import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abilities.js';
 import {isV39SelfTargetSkill,resolveV39GuardAssignments} from '../../lib/v39-unit-guarding.js';
 import {playV39TriggerEffect} from './v39-trigger-presentation.js';
 import {applyV39SkillTriggerCombat,advanceV39SkillTriggerTurn,formatV39SkillTriggerLog} from '../../lib/v39-skill-triggers.js';
@@ -63,7 +64,6 @@ import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import {
   computeAttackDamage,
   applyV39GuardToDamage,
-  applyV39ActiveCombatEffects,
   canTriggerMeleeCounter,
   isV39SupportSkill,
   resolveAreaType,
@@ -130,22 +130,7 @@ function activeFaction() {
 }
 
 function terrainAdjusted(unit) {
-  const state = window.getV39GameState?.({ includeWorlds:false });
-  const player = state?.players?.find(row => row?.factionState?.units?.some(item => text(item?.id) === text(unit?.id)));
-  const effects = player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[text(unit?.id)]
-    || state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[text(unit?.id)]
-    || [];
-  const active = applyV39ActiveCombatEffects(unit, effects);
-  const penaltyRate = Math.max(0, Math.min(1, number(active?.starvationPenaltyRate)));
-  const starvationAdjusted = penaltyRate > 0 ? {
-    ...active,
-    status:Object.fromEntries(Object.entries(active?.status || {}).map(([key, value]) => [
-      key,
-      key === "HP" ? value : Math.floor(number(value) * (1 - penaltyRate))
-    ])),
-    skillLevels:Object.fromEntries(Object.entries(active?.skillLevels || {}).map(([key, value]) => [key, Math.floor(number(value) * (1 - penaltyRate))]))
-  } : active;
-  return applyV39TerrainModifiers(starvationAdjusted, window.__v39FieldRuntime?.mapData);
+  return resolveV39CurrentUnitAbilities(unit);
 }
 
 function selectedUnit(faction = activeFaction()) {
@@ -440,6 +425,7 @@ function combatRayUnits(state) {
 }
 
 function buildAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
+  if(hasV39SkillEffect(skillRow,'組み付き')&&getHexDistance(attacker,target)!==1)return new Map();
   const state=window.getV39GameState?.({includeWorlds:false});
   const units=new Map(),turn=currentV39TurnNumber(state);
   const owner=state?.players?.find(player=>player.factionState?.units?.some(unit=>unit.id===attacker.id));
@@ -1938,9 +1924,9 @@ window.addEventListener("v39:tile-selected", (event) => {
       const result=advanceV39SkillTriggerTurn(state,turnNumber);
       if(result.changed)window.setV39GameState({players:result.state.players,enemies:result.state.enemies,neutralVillages:result.state.neutralVillages},{reason:'skill-trigger-turn'});
       for(const log of result.logs){
-        if(log.kind==='bleeding-damage'&&log.damage>0){
+        if(['bleeding-damage','periodic-damage'].includes(log.kind)&&log.damage>0){
           const unit=[...(result.state.players||[]).flatMap(p=>p.factionState?.units||[]),...(result.state.enemies||[]),...(result.state.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])].find(unit=>unit.id===log.targetId);
-          if(unit)window.dispatchEvent(new CustomEvent('v39:unit-effect-feedback',{detail:{defer:true,worldId:unit.worldId||'surface',entries:[{targetId:unit.id,x:unit.x,y:unit.y,popupType:'dot',popupLabel:'出血',amount:log.damage,total:log.damage,beforeHp:Number(unit.hp)+log.damage,afterHp:unit.hp,maxHp:unit.maxHp}]}}));
+          if(unit)window.dispatchEvent(new CustomEvent('v39:unit-effect-feedback',{detail:{defer:true,worldId:unit.worldId||'surface',entries:[{targetId:unit.id,x:unit.x,y:unit.y,popupType:'dot',popupLabel:log.status||'出血',amount:log.damage,total:log.damage,beforeHp:Number(unit.hp)+log.damage,afterHp:unit.hp,maxHp:unit.maxHp}]}}));
         }
         playV39TriggerEffect(log);
         window.appendV39ActivityLog?.([state.activePlayerId],'スキル',formatV39SkillTriggerLog(log),log);

@@ -27,13 +27,15 @@ export function collectV39CombatPopupChanges(before,after){
     if((source.worldId||'surface')!==(unit.worldId||'surface'))continue;
     const push=(popupType,amount,popupLabel='')=>{if(amount>1e-6)entries.push({targetId:id,x:unit.x,y:unit.y,worldId:unit.worldId||'surface',popupType,popupLabel,amount,beforeHp:n(source.hp??source.currentHp),afterHp:n(unit.hp??unit.currentHp),maxHp:n(unit.maxHp),total:0});};
     if(n(source.maxHp)===n(unit.maxHp))push('hpHeal',n(unit.hp??unit.currentHp)-n(source.hp??source.currentHp));
-    for(const [bucket,lossType,healType]of [['abilityDamage','abilityDamage','abilityHeal'],['abilityCurses','curse','curseHeal']]){
+    for(const [bucket,lossType,healType]of [['abilityDamage','abilityDamage','abilityHeal'],['abilityCurses','curse','curseHeal'],['abilityPoison','abilityDamage','abilityHeal']]){
       for(const key of new Set([...Object.keys(source[bucket]||{}),...Object.keys(unit[bucket]||{})])){
         const delta=n(unit[bucket]?.[key])-n(source[bucket]?.[key]);
-        push(delta>0?lossType:healType,Math.abs(delta),key);
+        push(delta>0?lossType:healType,Math.abs(delta),bucket==='abilityPoison'?key+'（毒）':key);
       }
     }
+    push('state',n(unit.restraint?.value)-n(source.restraint?.value),'拘束');
     push('state',n(unit.bleeding?.value)-n(source.bleeding?.value),'出血');
+    for(const kind of ['毒','燃焼']){const value=u=>(u.periodicDamage||[]).filter(effect=>effect.kind===kind).reduce((sum,e)=>sum+n(e.value),0);push('state',value(unit)-value(source),kind);}
     const prior=buffs(previous.effects,n(before.timeline?.turnNumber)),next=buffs(effects,n(after.timeline?.turnNumber));
     for(const key of Object.keys(next))push('buff',n(next[key])-n(prior[key]),key);
   }

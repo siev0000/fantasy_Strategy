@@ -173,3 +173,21 @@ assert.equal(live.players[0].factionState.units[0].ap,0);
 assert.ok(live.enemies[0].hp<1000);assert.equal(live.players[0].factionState.combatRuntime.pendingActionsByUnitId['cast-payer'],undefined);
 assert.equal(m.performAttack({x:8,y:8},release),false,'same paid cast cannot be reused');
 console.log('PASS: casting pays AP once, invalid target retains cast, release costs zero and cannot repeat.');
+
+{
+ const binding={名前:'拘束接続試験',行動:'A',対象:'相手',攻撃手段:'素手',拘束:100,判定:'最大_攻撃_防御',効果:'必中 組み付き',AP消費:10,射程:60};
+ const holder=unit('holder',7,8),held=unit('held',8,8);
+ const reset=(x=7)=>{live={...world,timeline:{turnNumber:1,phase:'player'},players:[{id:'p',factionState:{units:[{...holder,x,position:[x,8]}],squads:[],combatRuntime:{},selectedUnitId:holder.id}}],enemies:[structuredClone(held)],enemyNests:[],settlements:[],groundLootByTile:{}};};
+ reset(5);assert.equal(m.performAttack({x:8,y:8},{playerId:'p',unitId:holder.id,skillName:binding.名前,skillRow:binding}),false,'grapple rejects nonadjacent target');assert.equal(live.players[0].factionState.units[0].ap,80);
+ reset();assert.equal(m.performAttack({x:8,y:8},{playerId:'p',unitId:holder.id,skillName:binding.名前,skillRow:binding}),true);
+ assert.equal(live.enemies[0].restraint.value,100);assert.equal(live.enemies[0].restraint.grapplerId,holder.id);
+ assert.equal(live.enemies[0].hp,1000,'state-only binding does not directly damage HP');
+ assert.equal(live.players[0].factionState.units[0].ap,70);
+ reset();live={...live,players:[{id:'p',factionState:{units:[held],squads:[],combatRuntime:{}}}],enemies:[holder]};
+ assert.equal(m.performEnemyAttack({enemyId:holder.id,targetUnitId:held.id,skillRow:binding,suppressEffect:true}),true);
+ assert.equal(live.players[0].factionState.units[0].restraint.grapplerId,holder.id);
+ reset();live={...live,players:[{id:'p',factionState:{units:[held],squads:[],combatRuntime:{}}}],enemies:[],neutralVillages:[{id:'v',hostilePlayerIds:['p'],defenseUnits:[holder]}]};
+ assert.equal(m.performNeutralVillageGuardAttack({villageId:'v',guardId:holder.id,targetUnitId:held.id,skillRow:binding,suppressEffect:true}),true);
+ assert.equal(live.players[0].factionState.units[0].restraint.grapplerId,holder.id);
+ console.log('PASS: real player/enemy/village grapple attacks share infliction, adjacent validation, no HP fallback and single AP charge.');
+}

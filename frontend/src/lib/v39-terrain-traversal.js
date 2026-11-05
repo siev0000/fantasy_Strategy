@@ -1,3 +1,4 @@
+import {isV39GrappleMovementBlocked} from './v39-restraint.js';
 import { getGameDataRows, normalizeGameDataReference, readGameDataNumber } from "./game-data-registry.js";
 import {v39HazardMovementMultiplier} from './v39-hazard-zones.js';
 import {resolveV39CityRoadAtTile} from './v39-city-development.js';
@@ -107,7 +108,8 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   const toYValue = Math.floor(Number(toY));
   if (![fromXValue, fromYValue, toXValue, toYValue].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
   if (fromXValue === toXValue && fromYValue === toYValue) return 0;
-  const state=movementState || globalThis.window?.getV39EnemyTurnState?.();
+  const state=movementState || globalThis.window?.getV39EnemyTurnState?.() || globalThis.window?.getV39GameState?.({includeWorlds:false});
+  if(isV39GrappleMovementBlocked(unit,state))return Number.POSITIVE_INFINITY;
   if (state && !mapData?.isUnderground && !mapData?.hegemonyInterior && unit?.id) {
     const owner = state.territoryOwnerByTile?.[`${toXValue},${toYValue}`];
     if (owner) {

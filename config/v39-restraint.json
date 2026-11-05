@@ -1,0 +1,11 @@
+{
+  "capPerLevel": 10,
+  "recoveryDivisor": 10,
+  "minimumRecovery": 1,
+  "stages": [
+    {"ratio": 0.2, "penalty": 0.1},
+    {"ratio": 0.4, "penalty": 0.25},
+    {"ratio": 0.7, "penalty": 0.5}
+  ],
+  "grapplerPenaltyMultiplier": 0.5
+}
