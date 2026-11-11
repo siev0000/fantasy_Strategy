@@ -33,7 +33,7 @@ export function selectV39SkillTriggerTestSide(index){
   window.activateV39FooterTab?.('squad');
   window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();
   focusV39MapTile(player.factionState.units[0],{worldId:'surface',select:true,notify:false});
-  window.showV39TurnBanner?.(player.name+'を操作中。3対3。貫通は同じ行の奥を狙い、守護は味方へ使用。操作する兵は部隊一覧で選択。');
+  window.showV39TurnBanner?.(player.name+'を操作中。3対3。貫通は同じ行の奥を狙い、守護は味方へ使用。操作する兵は部隊一覧で選択。3連撃→人族・戦士/天使・司祭、3連出血→天使・騎士で反撃を比較。');
   return true;
 }
 

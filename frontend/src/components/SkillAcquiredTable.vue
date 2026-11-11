@@ -2,7 +2,8 @@
 import { computed, ref } from "vue";
 import { skillData as skillInfoDb } from "../lib/game-data-registry.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
-import { computeSkillScaledTriplet } from "../lib/skill-power.js";
+import { computeSkillScaledTriplet, formatV39SkillCombatValues } from "../lib/skill-power.js";
+import { resolveAttackPower, resolveSkillHealing } from "../lib/v39-combat-engine.js";
 
 const props = defineProps({
   skillNames: { type: Array, default: () => [] },
@@ -44,17 +45,6 @@ function toOptionalNumber(value) {
 
 function joinDisplayParts(parts) {
   return parts.map(nonEmptyText).filter(Boolean).join(" / ");
-}
-
-function operationPowerText(scaled) {
-  const parts = [];
-  const power = toOptionalNumber(scaled?.power);
-  const state = toOptionalNumber(scaled?.state);
-  const guard = toOptionalNumber(scaled?.guard);
-  if (power !== null && power !== 0) parts.push(`威力 ${power}`);
-  if (state !== null && state !== 0) parts.push(`状態 ${state}`);
-  if (guard !== null && guard !== 0) parts.push(`ガード ${guard}`);
-  return parts.length ? parts.join(" / ") : "威力 -";
 }
 
 function operationRangeText(row) {
@@ -137,6 +127,7 @@ const detailRows = computed(() => {
     const familyRaw = toDisplayValue(row?.系統);
     const actionType = resolveActionType(row?.行動);
     const scaled = computeSkillScaledTriplet(row, props.statusSource);
+    const unit={status:props.statusSource};
     const actionShort = actionType === "passive" ? "P" : "A";
     return {
       name,
@@ -150,7 +141,7 @@ const detailRows = computed(() => {
       power: toDisplayValue(scaled.power),
       state: toDisplayValue(scaled.state),
       guard: toDisplayValue(scaled.guard),
-      operationPowerText: operationPowerText(scaled),
+      operationPowerText: formatV39SkillCombatValues({...scaled,power:resolveAttackPower(row,unit),healing:resolveSkillHealing(row,unit)}),
       operationRangeText: operationRangeText(row),
       operationDetailMeta: operationDetailMeta(row, actionShort),
       detail: toDisplayValue(row?.詳細),
@@ -213,7 +204,7 @@ function handleSkillRowKeydown(event, row) {
           </span>
           <b class="operation-technique-name">{{ row.name }}</b>
           <small class="operation-technique-ap">AP {{ row.apCost }}</small>
-          <span class="operation-technique-power">{{ row.operationPowerText }}</span>
+          <span v-if="row.operationPowerText" class="operation-technique-power">{{ row.operationPowerText }}</span>
           <span class="operation-technique-range">{{ row.operationRangeText }}</span>
         </div>
         <div v-if="expandedOperationSkill === row.name" class="operation-technique-detail">

@@ -6,9 +6,12 @@ export function abilityDamageTarget(row){
   return tokens.filter(token=>token.endsWith('ダメージ')).map(token=>token.slice(0,-4)).find(key=>fields.has(key))||null;
 }
 export function addAbilityDamage(unit,key,amount,{curse=false,poison=false}={}){
-  if(!fields.has(key)||!(amount>0))return unit;
+  if((!fields.has(key)&&!(curse&&key==='回復阻害'))||!(amount>0))return unit;
   const bucket=poison?'abilityPoison':curse?'abilityCurses':'abilityDamage';
   return {...unit,[bucket]:{...unit[bucket],[key]:n(unit[bucket]?.[key])+amount}};
+}
+export function reduceV39BlockedHealing(unit, amount){
+  return Math.max(0,n(amount)-n(unit?.abilityCurses?.回復阻害));
 }
 export function recoverAbilityDamage(unit,amount,{curse=false,poison=false}={}){
   if(!(amount>0))return unit;

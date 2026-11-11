@@ -1,4 +1,5 @@
 <script setup>
+import {readV39ReductionField} from "../lib/v39-reduction-keys.js";
 import { computed, ref, watch } from "vue";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, listIconOptions, resolveIconName } from "../lib/icon-library.js";
 import { EQUIPMENT_SLOT_KEYS, RESISTANCE_FIELDS, SKILL_FIELD_DEFS } from "../constants/unitCommon.js";
@@ -112,7 +113,7 @@ function skillValue(unit, field) {
 }
 
 function resistanceValue(unit, key) {
-  const raw = Number(unit?.resistances?.[key]);
+  const raw = Number(readV39ReductionField(unit?.resistances,key));
   if (Number.isFinite(raw)) return Math.round(raw);
   return null;
 }
@@ -163,8 +164,8 @@ function equipmentApText(item) {
 }
 
 function equipmentResistancePairText(item) {
-  const physical = Math.round(toSafeNumber(item?.resistanceBonus?.["物理耐性"], 0));
-  const magic = Math.round(toSafeNumber(item?.resistanceBonus?.["魔法耐性"], 0));
+  const physical = Math.round(toSafeNumber(readV39ReductionField(item?.resistanceBonus,"物理軽減"), 0));
+  const magic = Math.round(toSafeNumber(readV39ReductionField(item?.resistanceBonus,"魔法軽減"), 0));
   if (physical === 0 && magic === 0) return "";
   return `${physical}/${magic}`;
 }
@@ -183,7 +184,7 @@ function equipmentStatPartsText(item) {
   if (criticalPower !== 0) parts.push(`Cr威力 ${criticalPower}`);
   if (attackAp !== 0 || magicAp !== 0) parts.push(`AP ${equipmentApText(item)}`);
   const resistPair = equipmentResistancePairText(item);
-  if (resistPair) parts.push(`物/魔耐 ${resistPair}`);
+  if (resistPair) parts.push(`物/魔軽減 ${resistPair}`);
   return parts.join(" / ");
 }
 
@@ -632,9 +633,9 @@ watch(
             </section>
 
             <section class="char-block">
-              <h4>耐性</h4>
+              <h4>軽減・耐性</h4>
               <resistance-grid v-if="resistanceRows.length" :rows="resistanceRows" variant="light" />
-              <div v-else class="small">耐性データなし</div>
+              <div v-else class="small">軽減・耐性データなし</div>
             </section>
           </div>
         </template>

@@ -63,5 +63,5 @@ export function applyV39RestraintPenalties(unit,state){
   if(multiplier===1&&previous===1)return unit;
   return {...unit,restraintAppliedMultiplier:multiplier,status:{...unit.status,
     命中:n(unit.status?.命中)/previous*multiplier,
-    回避:n(unit.status?.回避??unit.status?.速度)/previous*multiplier}};
+    速度:n(unit.status?.速度)/previous*multiplier}};
 }

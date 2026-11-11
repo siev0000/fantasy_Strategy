@@ -1,14 +1,16 @@
+import {normalizeV39ReductionKey,normalizeV39ReductionFields} from './v39-reduction-keys.js';
 import { COMBAT_STATUS_FIELDS, SKILL_LEVEL_FIELDS, SKILL_FIELD_DEFS, RESISTANCE_FIELDS, DAMAGE_TYPE_FIELDS, SKILL_STATE_KEYS } from "../constants/unitCommon.js";
 import { getGameDataRows } from "./game-data-registry.js";
 import { resolveSkillBasePower } from "./skill-power.js";
 import { resolveV39TerrainNameAt } from "./v39-terrain-location.js";
 import {isV39SquadPassive} from "./v39-squad-passive-context.js";
+import {getV39UnitTestSkillRows} from './v39-test-skill-rules.js';
 
 const text=value=>String(value??"").trim();
 const numeric=value=>value!==null&&value!==""&&value!==undefined&&Number.isFinite(Number(value));
 const aliases={魔防:"精神",移動速度:"移動",
   ...Object.fromEntries(SKILL_FIELD_DEFS.flatMap(field=>(field.aliases||[]).map(alias=>[alias,field.key])))};
-const statusFields=new Set([...COMBAT_STATUS_FIELDS,"回避","移動"]);
+const statusFields=new Set([...COMBAT_STATUS_FIELDS,"移動"]);
 const skillFields=new Set(SKILL_LEVEL_FIELDS),resistanceFields=new Set(RESISTANCE_FIELDS);
 const bodyFields=new Set(getGameDataRows("装備").filter(row=>["肉体","肉体防具"].includes(row.装備箇所)).map(row=>row.装備名));
 const skillNames=new Set(getGameDataRows("スキル一覧").map(row=>row.名前));
@@ -22,6 +24,7 @@ export function getV39PassiveRows(unit) {
     const row=technique.source||technique;
     if (text(row.行動).toUpperCase()==="P") rows.set(text(row.名前||technique.name),row);
   }
+  for(const row of getV39UnitTestSkillRows(unit))if(text(row?.行動).toUpperCase()==='P'&&text(row?.条件)==='変身中')rows.set(text(row.名前),row);
   return [...rows.values()];
 }
 
@@ -40,8 +43,9 @@ export function matchV39PassiveCondition(row,unit,action,{isCounter=false,mapDat
       && !(actual==="武器"&&((method==="弓"&&/弓|ボウ/.test(name))||(method==="銃"&&/銃|砲|ライフル|ピストル/.test(name))))) return {matches:false};
   }
   const system=text(row.条件系統);
-  if (system&&text(action?.系統)!==system&&!(Number(action?.[system])>0)) return {matches:false};
   const condition=text(row.条件);
+  if(condition==='変身中')return {matches:!!text(unit?.activeTransformationSystem)&&(!system||system===text(unit.activeTransformationSystem))};
+  if (system&&text(action?.系統)!==system&&!(Number(action?.[system])>0)) return {matches:false};
   if (!condition) return {matches:true};
   if (terrainNames.has(condition)) {
     const currentTerrain=terrainName ?? resolveV39TerrainNameAt(mapData ?? globalThis.window?.__v39FieldRuntime?.mapData,unit?.x,unit?.y);
@@ -58,9 +62,9 @@ export function matchV39PassiveCondition(row,unit,action,{isCounter=false,mapDat
 
 export function collectV39PassiveBonuses(rows) {
   const result={status:{},skillLevels:{},resistances:{},bodyWeaponValues:{},action:{},power:0,unsupported:[]};
-  for (const row of rows.filter(row=>!text(row.発動))) for (const [raw,value] of Object.entries(row)) {
+  for (const row of rows.filter(row=>!text(row.発動))) for (const [raw,value] of Object.entries(normalizeV39ReductionFields(row))) {
     if (!numeric(value)||["Lv"].includes(raw)) continue;
-    const key=aliases[raw]||raw,n=Number(value);
+    const key=normalizeV39ReductionKey(aliases[raw]||raw),n=Number(value);
     let bucket;
     if (raw==="全威力"||raw==="威力") { result.power+=n; continue; }
     if (statusFields.has(key)) bucket=result.status;
@@ -75,9 +79,20 @@ export function collectV39PassiveBonuses(rows) {
 }
 
 export function addV39PassiveValues(base,bonus) {
-  const result={...base};
+  const result=normalizeV39ReductionFields(base);
   for (const [key,value] of Object.entries(bonus)) if (value) result[key]=(Number(result[key])||0)+value;
   return result;
+}
+
+export function applyV39TransformationPassives(unit){
+  if(!text(unit?.activeTransformationSystem))return unit;
+  const rows=getV39PassiveRows(unit).filter(row=>text(row?.条件)==='変身中'&&matchV39PassiveCondition(row,unit,null).matches);
+  if(!rows.length)return unit;
+  const bonuses=collectV39PassiveBonuses(rows);
+  return {...unit,status:addV39PassiveValues(unit.status,bonuses.status),
+    skillLevels:addV39PassiveValues(unit.skillLevels,bonuses.skillLevels),
+    resistances:addV39PassiveValues(unit.resistances,bonuses.resistances),
+    passiveContextSkillNames:[...(unit.passiveContextSkillNames||[]),...rows.map(row=>row.名前)]};
 }
 
 export function applyV39TerrainPassiveBonuses(unit, terrainName) {
@@ -112,10 +127,18 @@ export function resolveV39PassiveContext(unit,action,options={}) {
     rows.push(row);
     if (!baked.has(row.名前)) statRows.push(row);
   }
+  let timedPhysical=0;
+  for (const effect of unit?.timedWeaponEnhancements||[]) {
+    const row=effect?.skillRow;
+    if (!row || !matchV39PassiveCondition({...row,対象:'自身'},unit,action,options).matches) continue;
+    const scaled=Number(row.物理)*(1+(Number(effect.judgeValue)||0)/100);
+    timedPhysical+=scaled;
+  }
   const stats=collectV39PassiveBonuses(statRows),bonuses=collectV39PassiveBonuses(rows);
+  const boostedAction=applyV39PassiveActionBonuses(action,bonuses);
   return {unit:{...unit,status:addV39PassiveValues(unit?.status,stats.status),
     skillLevels:addV39PassiveValues(unit?.skillLevels,stats.skillLevels),resistances:addV39PassiveValues(unit?.resistances,stats.resistances)},
-    action:applyV39PassiveActionBonuses(action,bonuses),rows,unsupported:[...unsupported,...bonuses.unsupported]};
+    action:timedPhysical?{...boostedAction,__timedWeaponFlatPower:(Number(boostedAction.__timedWeaponFlatPower)||0)+timedPhysical}:boostedAction,rows,unsupported:[...unsupported,...bonuses.unsupported]};
 }
 
 export function inspectV39Passive(row) {

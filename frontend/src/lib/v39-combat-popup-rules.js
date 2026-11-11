@@ -7,6 +7,18 @@ export function resolveV39CombatPopup(type,amount,label=''){
   const value=Number(Math.abs(n(amount)).toFixed(config.style.decimals));
   return {color:rule.color,text:rule.template.replaceAll('{amount}',String(value)).replaceAll('{label}',String(label)),...config.style};
 }
+export function attachV39HitStatusPopups(entries,logs){
+  const byId=new Map(entries.filter(entry=>entry.targetId).map(entry=>[String(entry.targetId),entry]));
+  for(const log of logs){
+    const entry=byId.get(String(log.targetId));
+    if(!entry||!log.hitPopupType||!(log.amount>0))continue;
+    (entry.statusPopups??=[]).push({
+      popupType:log.hitPopupType,popupLabel:log.popupLabel??log.status,amount:log.amount,hitIndex:log.hitIndex
+    });
+    if(log.apLoss>0)entry.statusPopups.push({popupType:'apDamage',popupLabel:log.status,amount:log.apLoss,hitIndex:log.hitIndex});
+    if(log.maxApLoss>0)entry.statusPopups.push({popupType:'maxApDamage',popupLabel:log.status,amount:log.maxApLoss,hitIndex:log.hitIndex});
+  }
+}
 function records(state){
   const list=[];
   for(const p of state?.players||[])for(const unit of p.factionState?.units||[])list.push({unit,effects:p.factionState.combatRuntime?.activeEffectsByUnitId?.[unit.id]||[]});
@@ -18,7 +30,7 @@ function buffs(effects,turn){
   const adjusted=applyV39ActiveCombatEffects({status:{},skillLevels:{},resistances:{}},effects.filter(effect=>!effect.expiresAtTurn||effect.expiresAtTurn>turn));
   return {...adjusted.status,...adjusted.skillLevels,...adjusted.resistances};
 }
-export function collectV39CombatPopupChanges(before,after){
+export function collectV39CombatPopupChanges(before,after,{hitStatusPopups=false}={}){
   if((before.activeWorldId||'surface')!==(after.activeWorldId||'surface'))return [];
   const old=records(before),entries=[];
   for(const [id,{unit,effects}] of records(after)){
@@ -30,12 +42,15 @@ export function collectV39CombatPopupChanges(before,after){
     for(const [bucket,lossType,healType]of [['abilityDamage','abilityDamage','abilityHeal'],['abilityCurses','curse','curseHeal'],['abilityPoison','abilityDamage','abilityHeal']]){
       for(const key of new Set([...Object.keys(source[bucket]||{}),...Object.keys(unit[bucket]||{})])){
         const delta=n(unit[bucket]?.[key])-n(source[bucket]?.[key]);
+        if(hitStatusPopups&&delta>0)continue;
         push(delta>0?lossType:healType,Math.abs(delta),bucket==='abilityPoison'?key+'（毒）':key);
       }
     }
-    push('state',n(unit.restraint?.value)-n(source.restraint?.value),'拘束');
-    push('state',n(unit.bleeding?.value)-n(source.bleeding?.value),'出血');
-    for(const kind of ['毒','燃焼']){const value=u=>(u.periodicDamage||[]).filter(effect=>effect.kind===kind).reduce((sum,e)=>sum+n(e.value),0);push('state',value(unit)-value(source),kind);}
+    if(!hitStatusPopups){
+      push('state',n(unit.restraint?.value)-n(source.restraint?.value),'拘束');
+      push('state',n(unit.bleeding?.value)-n(source.bleeding?.value),'出血');
+      for(const kind of ['毒','燃焼']){const value=u=>(u.periodicDamage||[]).filter(effect=>effect.kind===kind).reduce((sum,e)=>sum+n(e.value),0);push('state',value(unit)-value(source),kind);}
+    }
     const prior=buffs(previous.effects,n(before.timeline?.turnNumber)),next=buffs(effects,n(after.timeline?.turnNumber));
     for(const key of Object.keys(next))push('buff',n(next[key])-n(prior[key]),key);
   }
@@ -45,6 +60,6 @@ export function dispatchV39CombatPopupChanges(before,after,patch,options={}){
   const api=globalThis.window;
   if(!api||options.silent||options.trackUnitDeaths===false||options.reason==='save-loaded'||api.__v39AiSimulationRunning||api.__v39BackgroundWorldTurn||api.__v39SuppressCombatEffects)return;
   if(!['players','enemies','neutralVillages','enemyCombatRuntime'].some(key=>Object.hasOwn(patch,key)))return;
-  const entries=collectV39CombatPopupChanges(before,after);
+  const entries=collectV39CombatPopupChanges(before,after,options);
   if(entries.length)api.dispatchEvent(new CustomEvent('v39:unit-effect-feedback',{detail:{entries,worldId:after.activeWorldId||'surface',defer:before.timeline?.phase==='resolution'||after.timeline?.phase==='resolution'||options.reason==='skill-trigger-turn'}}));
 }

@@ -71,16 +71,18 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
       .footer-tab.footer-text-tab .tab-text{
         display:block!important;order:2!important;font-size:var(--font-body)!important;font-weight:700!important;line-height:1.15!important
       }
-      #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:6px;min-width:0;overflow:visible}
+      #footSquad .v39-squad-toolbar{display:flex;align-items:center;gap:4px;min-width:0;min-height:28px;overflow:visible}
       #footSquad .v39-squad-shortcuts{display:flex;gap:5px;flex:0 0 auto;overflow:visible}
       #v39-cave-party-order[hidden]{display:none}
-      .v39-footer-shortcut{min-height:30px;border:1px solid #4d747d;border-radius:7px;background:#173039;color:#e7f2f0;padding:4px 8px;font:inherit;font-size:var(--font-compact);font-weight:800;white-space:nowrap;cursor:pointer}
+      .v39-footer-shortcut{min-height:28px;border:1px solid #4d747d;border-radius:6px;background:#173039;color:#e7f2f0;padding:3px 7px;font:inherit;font-size:var(--font-compact);font-weight:800;white-space:nowrap;cursor:pointer}
       .v39-footer-shortcut:hover{background:#1d424b;border-color:#77d8e7}
       .v39-footer-shortcut:focus-visible{outline:2px solid #9de4ef;outline-offset:1px}
-      .v39-footer-icon-shortcut{position:relative;width:32px;min-width:32px;height:30px;padding:0;font-size:var(--font-size-17);line-height:1}
+      .v39-footer-icon-shortcut{position:relative;width:28px;min-width:28px;height:28px;padding:0;font-size:var(--font-size-16);line-height:1}
       .v39-footer-icon-shortcut::after{content:attr(data-tooltip);position:absolute;z-index:80;top:calc(100% + 6px);left:0;min-width:max-content;padding:5px 7px;border:1px solid #70bcc8;border-radius:5px;background:#0a171b;color:#efffff;font-size:var(--font-compact);font-weight:800;line-height:1.1;pointer-events:none;opacity:0;transform:translateY(-2px);transition:opacity .12s ease,transform .12s ease}
       .v39-footer-icon-shortcut:hover::after,.v39-footer-icon-shortcut:focus-visible::after,.v39-footer-icon-shortcut:active::after{opacity:1;transform:translateY(0)}
-      #footSquad .squad-selector{flex:1;min-width:0}
+      #footSquad .squad-selector{flex:1;min-width:0;padding:0!important}
+      #footSquad .squad-select-btn{min-width:76px!important;min-height:30px!important;padding:3px 7px!important;gap:5px!important;border-radius:6px!important}
+      #footSquad.mobile-squad-panel{row-gap:4px!important}
       .squad-content-split{
         grid-template-columns:minmax(0,2fr) minmax(0,3fr)!important;
         gap:0!important
@@ -150,8 +152,8 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
       @media(max-width:600px){
         #footSquad .v39-squad-toolbar{gap:4px}
         #footSquad .v39-squad-shortcuts{gap:4px}
-        .v39-footer-shortcut{min-height:30px;padding:4px 6px;font-size:var(--font-size-11)}
-        .v39-footer-icon-shortcut{width:30px;min-width:30px;padding:0;font-size:var(--font-size-16)}
+        .v39-footer-shortcut{min-height:28px;padding:3px 6px;font-size:var(--font-size-11)}
+        .v39-footer-icon-shortcut{width:28px;min-width:28px;padding:0;font-size:var(--font-size-16)}
       }
     `;
     document.head.appendChild(style);

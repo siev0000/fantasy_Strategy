@@ -19,6 +19,7 @@
   { "id": "thread", "group": "attack", "name": "糸", "defaultEffect": "魔法陣", "independent": true },
   { "id": "weapon", "group": "attack", "name": "武器", "defaultEffect": "斬撃", "independent": true },
   { "id": "magic", "group": "attack", "name": "魔法", "defaultEffect": "魔法の矢", "independent": true },
+  { "id": "magic_cast", "group": "support", "name": "魔法詠唱", "defaultEffect": "魔法陣", "independent": true },
   { "id": "sword", "group": "attack", "name": "剣", "defaultEffect": "斬撃", "independent": true },
   { "id": "spear", "group": "attack", "name": "槍", "defaultEffect": "刺突", "independent": true },
   { "id": "bow", "group": "attack", "name": "弓", "defaultEffect": "射撃", "independent": true },

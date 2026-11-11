@@ -7,6 +7,8 @@ import {normalizeV39Cargo,resolveV39CargoLoad,resolveV39UnitCargoCapacity} from 
 import {replaceFactionSettlement} from './settlement-state.js';
 import {FOOD_RESOURCE_KEYS} from './v39-economy-rules.js';
 import {V39_CAVE_MINE_BALANCE} from './v39-gameplay-balance.js';
+import {findV39RouteBlockingRubble} from './v39-rubble-route-choice.js';
+import {clearV39Rubble} from './v39-terrain-destruction.js';
 
 const alive=u=>Number(u?.hp??u?.currentHp)>0&&u.state!=='死亡';
 const world=u=>u?.worldId||'surface';
@@ -52,9 +54,16 @@ export function controlLogisticsRoute(state,playerId,id,action){
   if(!source)return failure(state,'輸送任務がありません');
   let route={...source};
   if(action==='pause')Object.assign(route,{enabled:false,status:'中断中',reason:'手動再開待ち'});
-  else if(action==='resume'||action==='return'){
+  else if(action==='detour'){
+    if(!route.blockedRubble)return failure(state,'瓦礫による停止ではありません');
+    if(!logisticsPath(state,playerId,route).path)return failure(state,'通行可能な迂回路がありません');
+    Object.assign(route,{enabled:true,status:'迂回中',reason:'',blockedRubble:null,clearTarget:null,plannedPath:[]});
+  }else if(action==='clear'){
+    if(!route.blockedRubble)return failure(state,'撤去する瓦礫がありません');
+    Object.assign(route,{enabled:true,status:'撤去中',reason:'',clearTarget:route.blockedRubble,blockedRubble:null,plannedPath:[]});
+  }else if(action==='resume'||action==='return'){
     if(route.memberIds.some(id=>{const u=f.units.find(u=>u.id===id);return !alive(u)||u.transportAssignment&&u.transportAssignment.logisticsRouteId!==route.id||u.tradeAssignment||u.caveDuty;}))return failure(state,'担当部隊の死亡・別任務を確認してください');
-    Object.assign(route,{enabled:true,returning:action==='return'||route.returning,status:action==='return'?'帰還中':'再開',reason:''});
+    Object.assign(route,{enabled:true,returning:action==='return'||route.returning,status:action==='return'?'帰還中':'再開',reason:'',blockedRubble:null,clearTarget:null,plannedPath:[]});
   }else if(action==='remove'){
     if(resolveV39CargoLoad(getV39TransportCargo(f,route.leaderId))>0)return failure(state,'積荷があります。帰還して搬入してから解除してください');
     return {ok:true,state:write(state,playerId,mark({...f,logisticsRoutes:f.logisticsRoutes.filter(r=>r.id!==id)},route,true))};
@@ -83,6 +92,44 @@ function groupFor(f,route){
     squads:[{...original,id:original?.id||'solo',unitIds:route.memberIds,movementLeaderId:route.leaderId},...f.squads.filter(s=>s.id!==original?.id)]},route.leaderId,{followFormation:true});
 }
 function scoped(state,mapWorld){return {...state,...state.explorationWorlds?.[mapWorld]?.spatial,players:state.players};}
+function advanceRubbleClear(state,playerId,f,worlds,route){
+  const target=route.clearTarget,map=worlds[target.worldId]?.map;
+  const stop=reason=>Object.assign(route,{enabled:false,status:'停止',reason});
+  if(!map?.terrainDamage?.rubbleByTile?.[target.key]){route.clearTarget=null;route.status='再開';return {f,worlds};}
+  let worker=f.units.find(unit=>unit.id===route.leaderId);
+  if(!worker||world(worker)!==target.worldId){stop('撤去担当者が瓦礫と別の世界にいます');return {f,worlds};}
+  if(getHexDistance(worker,target)>1){
+    const current=write({...state,explorationWorlds:worlds},playerId,f),group=groupFor(f,route);
+    if(!group.ok){stop(group.reason||'撤去部隊を編成できません');return {f,worlds};}
+    const neighbors=getHexOffsetNeighbors(target.x,target.y).filter(point=>canUnitEnterV39Tile(map,point.x,point.y,worker));
+    const choices=neighbors.map(point=>({point,path:resolveV39AutomaticRoute(scoped(current,target.worldId),map,playerId,group.leader,point,map.worldWrapEnabled===true,route.memberIds)})).filter(choice=>choice.path);
+    choices.sort((a,b)=>a.path.length-b.path.length);
+    if(!choices.length){stop('瓦礫の隣へ移動できません');return {f,worlds};}
+    for(const step of choices[0].path){
+      const currentState=write({...state,explorationWorlds:worlds},playerId,f),g=groupFor(f,route);
+      const occupied=new Set([...scoped(currentState,target.worldId).players.flatMap(player=>player.factionState.units),...(worlds[target.worldId]?.spatial?.enemies||[])]
+        .filter(unit=>alive(unit)&&world(unit)===target.worldId&&!route.memberIds.includes(unit.id)).map(key));
+      const positions=advanceV39CaveFormation(map,g.positions,step,g,occupied);
+      if(!positions){stop('撤去部隊が通過できません');break;}
+      const cost=Math.max(...positions.map(point=>{const unit=g.participants.find(row=>row.id===point.id);return resolveV39UnitMovementStepCost(map,unit.x,unit.y,point.x,point.y,unit);}));
+      if(cost>g.moveAp){route.status='撤去移動のAP待ち';break;}
+      const moved=applyV39SquadMovement(f,g,{x:step.x,y:step.y,positions},cost,scoped(currentState,target.worldId));
+      if(!moved.ok){stop(moved.reason);break;}
+      f=moved.faction;worker=f.units.find(unit=>unit.id===route.leaderId);
+      if(getHexDistance(worker,target)<=1)break;
+    }
+  }
+  if(route.enabled&&getHexDistance(worker,target)<=1){
+    const cleared=clearV39Rubble(map,worker,target);
+    if(cleared.ok){
+      worlds={...worlds,[target.worldId]:{...worlds[target.worldId],map:cleared.map}};
+      f={...f,units:f.units.map(unit=>unit.id===worker.id?{...unit,ap:unit.ap-cleared.apCost,currentAp:unit.ap-cleared.apCost,actionPoint:unit.ap-cleared.apCost}:unit)};
+      if(cleared.hp<=0){route.clearTarget=null;route.status='再開';}
+    }else if(cleared.reason==='APが不足しています')route.status='撤去のAP待ち';
+    else stop(cleared.reason);
+  }
+  return {f,worlds};
+}
 export function logisticsPath(state,playerId,route){
   const leg=logisticsLeg(state,playerId,route),f=faction(state,playerId),unit=f.units.find(u=>u.id===route.leaderId),map=state.explorationWorlds?.[leg?.worldId]?.map;
   if(!leg||!map||!unit)return {leg,path:null};
@@ -100,13 +147,24 @@ export function advanceLogisticsRoutes(state,playerId,turn){
     else if(members.some(u=>world(u)!==world(members[0]))){stop('部隊が別の世界へ分散しています');}
     else if(members.some(u=>u.waitTurnNumber===turn||u.movementHold)){r.status='待機';r.reason='部隊員が待機中です';}
     else{
+      if(r.clearTarget){
+        const cleared=advanceRubbleClear(state,playerId,f,worlds,r);f=cleared.f;worlds=cleared.worlds;
+        if(r.clearTarget||!r.enabled){f=mark({...f,logisticsRoutes:f.logisticsRoutes.map(route=>route.id===r.id?r:route)},r);continue;}
+      }
       for(let stage=0;stage<8;stage++){
         const currentState=write({...state,explorationWorlds:worlds},playerId,f),leg=logisticsLeg(currentState,playerId,r),group=groupFor(f,r);
         if(!leg||!group.ok||group.participantIds?.length!==r.memberIds.length){stop(group.reason||'運搬先・接続・部隊の編制を確認してください');break;}
         const map=worlds[leg.worldId]?.map,scopedState=scoped(currentState,leg.worldId);
+        const knownRubble=(r.plannedPath||[]).find(point=>map?.terrainDamage?.rubbleByTile?.[key(point)]);
+        if(knownRubble){r.blockedRubble={x:knownRubble.x,y:knownRubble.y,key:key(knownRubble),worldId:leg.worldId};stop('瓦礫で経路が塞がれています');break;}
         const path=resolveV39AutomaticRoute(scopedState,map,playerId,group.leader,leg.target,map?.worldWrapEnabled===true,r.memberIds);
-        if(!path){stop('通行可能な経路がありません');break;}
-        let failed=false;
+        if(!path){
+          const blocker=findV39RouteBlockingRubble(map,openMap=>resolveV39AutomaticRoute(scopedState,openMap,playerId,group.leader,leg.target,openMap.worldWrapEnabled===true,r.memberIds));
+          if(blocker){r.blockedRubble={...blocker,worldId:leg.worldId};stop('瓦礫で経路が塞がれています');}
+          else stop('通行可能な経路がありません');
+          break;
+        }
+        let failed=false,traversed=0;
         for(const step of path){
           const g=groupFor(f,r),occupied=new Set([...scopedState.players.flatMap(p=>p.factionState.units),...(scopedState.enemies||[]),...(scopedState.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])]
             .filter(u=>alive(u)&&world(u)===leg.worldId&&!r.memberIds.includes(u.id)).map(key));
@@ -117,7 +175,9 @@ export function advanceLogisticsRoutes(state,playerId,turn){
           const moved=applyV39SquadMovement(f,g,{x:step.x,y:step.y,positions},cost,scopedState);
           if(!moved.ok){stop(moved.reason);failed=true;break;}f=moved.faction;
           if(r.memberIds.some(id=>!alive(f.units.find(u=>u.id===id)))){stop('災害で部隊員が死亡しました');failed=true;break;}
+          traversed++;
         }
+        r.plannedPath=path.slice(traversed).map(point=>({x:point.x,y:point.y}));
         if(failed)break;
         const leader=f.units.find(u=>u.id===r.leaderId);
         if(path.waitingForFriendlyUnitId){r.status='待機';r.reason='味方ユニットの移動待ち';break;}

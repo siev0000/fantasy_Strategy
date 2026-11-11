@@ -4,6 +4,10 @@
 
 Before changing game behavior, read `docs/README.md` and follow its documentation priority.
 
+When changing game behavior or UI presentation, agree on the exact specification and examples with the user before editing. Start implementation after the user confirms the specification.
+
+For new combat-effect test skills, add the test actions to the existing スキル動作確認 units through `config/v39-skill-trigger-test.json` by default.
+
 Before adding, reorganizing, or archiving documentation, read `docs/DOCUMENTATION_RULES.md`. Update an existing subsystem document instead of creating parallel current-spec memos. Regenerate `docs/INDEX.md` with `npm run docs:index` and validate with `npm run check:docs` after moving documents.
 
 When changing spreadsheet-managed game data, read `docs/SPREADSHEET_DATA_WORKFLOW.md` before editing generated JSON. For these datasets, `@game_data` is the editing source and `data/source/export/json` is generated runtime data. Do not preserve legacy JSON-only fields that no longer exist in the spreadsheet.

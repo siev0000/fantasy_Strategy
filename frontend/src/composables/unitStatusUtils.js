@@ -1,3 +1,4 @@
+import {readV39ReductionField} from '../lib/v39-reduction-keys.js';
 import {V39_SIZ_STATUS_BALANCE} from '../lib/v39-gameplay-balance.js';
 
 export function formatStatusCompact(status) {
@@ -86,9 +87,9 @@ export function buildUnitResistances(raceRow, classRowOrRows, options = {}) {
     : (classRowOrRows && typeof classRowOrRows === "object" ? [classRowOrRows] : []);
   const out = {};
   for (const key of fields) {
-    const raceValue = toSafeNumber(raceRow?.[key], 0);
+    const raceValue = toSafeNumber(readV39ReductionField(raceRow,key), 0);
     const classValue = classRows.reduce(
-      (sum, row) => sum + toSafeNumber(row?.[key], 0),
+      (sum, row) => sum + toSafeNumber(readV39ReductionField(row,key), 0),
       0
     );
     out[key] = Math.round(raceValue + classValue);

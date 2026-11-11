@@ -3,7 +3,7 @@ import {build} from 'esbuild';
 import {readFileSync,readdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 process.on('uncaughtException',error=>{console.error(String(error.stack||error.message).replace(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g,'[bundle]').slice(0,1200));process.exit(1);});
-const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-forced-movement.js';export * from './frontend/src/lib/v39-skill-forced-movement.js';export * from './frontend/src/lib/v39-disaster-knockback.js';export * from './frontend/src/lib/hex-grid.js';export {reconcileV39Casting} from './frontend/src/lib/v39-casting-rules.js';export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack} from './frontend/src/v39/combat/v39-combat.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/combat.js"'},plugins:[{name:'registry',setup(builder){builder.onLoad({filter:/[\\/]combat[\\/]v39-combat\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/\binstall\(\);\s*$/,'export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack};'),resolveDir:dirname(args.path),loader:'js'}));builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-forced-movement.js';export * from './frontend/src/lib/v39-skill-forced-movement.js';export * from './frontend/src/lib/v39-disaster-knockback.js';export * from './frontend/src/lib/hex-grid.js';export {reconcileV39Casting} from './frontend/src/lib/v39-casting-rules.js';export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack,runNeutralVillageDefenseTurn} from './frontend/src/v39/combat/v39-combat.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/combat.js"'},plugins:[{name:'registry',setup(builder){builder.onLoad({filter:/[\\/]combat[\\/]v39-combat\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/\binstall\(\);\s*$/,'export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack,runNeutralVillageDefenseTurn};'),resolveDir:dirname(args.path),loader:'js'}));builder.onLoad({filter:/game-data-registry\.js$/},args=>{
   const dir=resolve('data/source/export/json');const modules=Object.fromEntries(readdirSync(dir).filter(n=>n.endsWith('.json')).map(n=>[`../../../data/source/export/json/${n}`,JSON.parse(readFileSync(`${dir}/${n}`,'utf8'))]));
   return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
 });}}]});
@@ -41,7 +41,7 @@ const missed=m.applyV39SkillForcedMovement(world,map,caster,skill,[{targetId:'ta
 const legacy=m.resolveV39SkillForcedMovement({名前:'打ち倒す',ノックバック:20,判定:'攻撃',効果:'打ち倒し'},caster,map);assert.equal(legacy.power,40);
 assert.equal(m.resolveV39SkillForcedMovement({名前:'普通の攻撃',打撃:200},caster,map),null);
 const immune={...target,status:{...target.status,怯み耐性:100}};
-assert.equal(m.applyV39SkillForcedMovement({...world,enemies:[immune]},map,caster,skill,hit).entries.length,0);
+assert.deepEqual(m.applyV39SkillForcedMovement({...world,enemies:[immune]},map,caster,skill,hit).entries,m.applyV39SkillForcedMovement(world,map,caster,skill,hit).entries,'stagger resistance does not affect forced movement');
 const half=m.applyV39SkillForcedMovement(world,map,caster,skill,[{...hit[0],detail:{scale:.5}}],()=>.5);assert.deepEqual(half.enemies[0].position,[9,8],'65 force rounds 1.3 tiles to one');
 const collisionWorld={...world,enemies:[target,unit('blocker',9,8)]};
 const collision=m.applyV39SkillForcedMovement(collisionWorld,map,caster,skill,hit,()=>.5);assert.equal(collision.damageEntries.length,2);assert.ok(collision.damageEntries.every(e=>e.collisionPower===130));
@@ -190,4 +190,134 @@ console.log('PASS: casting pays AP once, invalid target retains cast, release co
  assert.equal(m.performNeutralVillageGuardAttack({villageId:'v',guardId:holder.id,targetUnitId:held.id,skillRow:binding,suppressEffect:true}),true);
  assert.equal(live.players[0].factionState.units[0].restraint.grapplerId,holder.id);
  console.log('PASS: real player/enemy/village grapple attacks share infliction, adjacent validation, no HP fallback and single AP charge.');
+}
+
+{
+ const guard={...unit('base-guard',8,8),techniques:[{source:{名前:'short guard hit',行動:'A',攻撃手段:'素手',対象:'相手',打撃:1,射程:1,AP消費:10}}]};
+ const raider={...unit('raider',10,8),aggressive:true};
+ live={...world,timeline:{turnNumber:50},players:[],enemies:[raider],neutralVillages:[{id:'v',x:8,y:8,defenseUnits:[guard]}]};
+ const result=m.runNeutralVillageDefenseTurn();
+ assert.equal(result.moves,0,'last village defender must not chase away from base');
+ assert.deepEqual(live.neutralVillages[0].defenseUnits[0].position,[8,8]);
+ const displaced={...guard,x:11,position:[11,8]};
+ live={...world,timeline:{turnNumber:51},players:[],enemies:[],neutralVillages:[{id:'v',x:8,y:8,defenseUnits:[displaced]}]};
+ assert.ok(m.runNeutralVillageDefenseTurn().moves>0,'village guard returns from outside home');
+ assert.ok(m.getHexDistance(live.neutralVillages[0].defenseUnits[0],{x:8,y:8})<3,'return respects per-turn movement AP');
+ live.timeline={turnNumber:52};m.runNeutralVillageDefenseTurn();
+ assert.ok(m.getHexDistance(live.neutralVillages[0].defenseUnits[0],{x:8,y:8})<=1);
+ console.log('PASS: real village defense keeps one unit at home and returns a displaced guard.');
+}
+
+{
+ const row={名前:'three-hit blood test',行動:'A',対象:'相手',攻撃手段:'テスト',切断:1,出血:100,攻撃回数:3,効果:'必中',AP消費:10,射程:100};
+ const counter={名前:'single blood reaction',行動:'P',発動:'被出血付与',対象:'発動元',効果:'反撃_出血値_切断',AP消費:5,射程:100};
+ for(const side of ['player','enemy','village']){
+   const attacker=unit('multi-actor',7,8),victim={...unit('multi-victim',8,8),techniques:[{source:counter}]},logs=[];
+   const startSignal=signals.length;
+   window.appendV39ActivityLog=(ids,category,message,detail)=>{if(detail?.kind)logs.push(detail);};
+   live={...world,timeline:{turnNumber:60},players:[{id:'p',factionState:{units:[side==='player'?attacker:victim],squads:[],combatRuntime:{},selectedUnitId:attacker.id}}],enemies:side==='player'?[victim]:side==='enemy'?[attacker]:[],neutralVillages:side==='village'?[{id:'v',x:7,y:8,hostilePlayerIds:['p'],defenseUnits:[attacker]}]:[],enemyNests:[],settlements:[],groundLootByTile:{}};
+   const ok=side==='player'?m.performAttack({x:8,y:8},{playerId:'p',unitId:attacker.id,skillName:row.名前,skillRow:row})
+     :side==='enemy'?m.performEnemyAttack({enemyId:attacker.id,targetUnitId:victim.id,skillRow:row,suppressEffect:true})
+     :m.performNeutralVillageGuardAttack({villageId:'v',guardId:attacker.id,targetUnitId:victim.id,skillRow:row,suppressEffect:true});
+   assert.equal(ok,true,side);
+   const additions=logs.filter(log=>log.kind==='bleeding'),reactions=logs.filter(log=>log.kind==='trigger'&&log.skill===counter.名前);
+   assert.equal(additions.length,3,side+' applies state on all hits');assert.equal(reactions.length,1,side+' counters once');
+   assert.equal(reactions[0].amount,additions.reduce((sum,log)=>sum+log.amount,0),side+' sums actual infliction');
+   const feedback=signals.slice(startSignal).find(event=>event.type==='v39:combat-log'&&event.detail.attackerId===attacker.id);
+   assert.deepEqual(feedback.detail.entries.find(entry=>entry.targetId===victim.id).statusPopups,
+    additions.map((log,hitIndex)=>({popupType:'state',popupLabel:'出血',amount:log.amount,hitIndex})),side+' sends each hit status to combat feedback');
+ }
+ console.log('PASS: real player/enemy/village multi-hit actions inflict per hit and counter once with the actual-value sum.');
+}
+
+{
+ const row={名前:'連鎖試験',行動:'A',対象:'相手',攻撃手段:'テスト',雷:200,効果:'必中/連鎖_4',AP消費:10,射程:100};
+ const random=Math.random;
+ Math.random=()=>0.5;
+ try{
+  for(const side of ['player','enemy','village']){
+   const attacker=unit('chain-actor',7,8);
+   const targets=Array.from({length:6},(_,index)=>unit('chain-'+index,8+index,8));
+   live={...world,timeline:{turnNumber:60},players:[{id:'p',factionState:{units:side==='player'?[attacker]:targets,squads:[],combatRuntime:{},selectedUnitId:attacker.id}}],
+    enemies:side==='player'?targets:side==='enemy'?[attacker]:[],neutralVillages:side==='village'?[{id:'v',x:7,y:8,hostilePlayerIds:['p'],defenseUnits:[attacker]}]:[],enemyNests:[],settlements:[],groundLootByTile:{}};
+   const ok=side==='player'?m.performAttack({x:8,y:8},{playerId:'p',unitId:attacker.id,skillName:row.名前,skillRow:row})
+     :side==='enemy'?m.performEnemyAttack({enemyId:attacker.id,targetUnitId:targets[0].id,skillRow:row,suppressEffect:true})
+     :m.performNeutralVillageGuardAttack({villageId:'v',guardId:attacker.id,targetUnitId:targets[0].id,skillRow:row,suppressEffect:true});
+   assert.equal(ok,true,side);
+   const victims=side==='player'?live.enemies:live.players[0].factionState.units;
+   assert.deepEqual(victims.map(target=>1000-target.hp),[203,68,56,45,34,0],side);
+   const source=side==='player'?live.players[0].factionState.units[0]:side==='enemy'?live.enemies[0]:live.neutralVillages[0].defenseUnits[0];
+   assert.equal(source.ap,70,side+' spends AP once');
+  }
+ }finally{Math.random=random;}
+ console.log('PASS: real player/enemy/village chain attacks follow the four power stages and charge AP once.');
+}
+
+{
+ const row={名前:'呪い即死試験',行動:'A',対象:'相手',攻撃手段:'テスト',効果:'必中/即死',攻撃回数:2,AP消費:10,射程:60};
+ for(const side of ['player','enemy','village']){
+  for(const [curse,spirit,expectedHp] of [[300,0,1000],[301,0,0],[600,100,1000],[602,100,0]]){
+   const attacker=unit('death-source',7,8);
+   const base=unit('death-target',8,8);
+   const target={...base,status:{...base.status,精神:spirit}};
+   const skillRow={...row,呪い:curse};
+   live={...world,timeline:{turnNumber:60},players:[{id:'p',factionState:{units:[side==='player'?attacker:target],squads:[],combatRuntime:{}}}],
+    enemies:side==='player'?[target]:side==='enemy'?[attacker]:[],neutralVillages:side==='village'?[{id:'v',x:7,y:8,hostilePlayerIds:['p'],defenseUnits:[attacker]}]:[],
+    enemyNests:[],settlements:[],groundLootByTile:{}};
+   const ok=side==='player'?m.performAttack(target,{playerId:'p',unitId:attacker.id,skillName:row.名前,skillRow})
+     :side==='enemy'?m.performEnemyAttack({enemyId:attacker.id,targetUnitId:target.id,skillRow,suppressEffect:true})
+     :m.performNeutralVillageGuardAttack({villageId:'v',guardId:attacker.id,targetUnitId:target.id,skillRow,suppressEffect:true});
+   assert.equal(ok,true,side);
+   const victim=side==='player'?live.enemies[0]:live.players[0].factionState.units[0];
+   assert.equal(victim.hp,expectedHp,`${side}: curse ${curse}, spirit ${spirit}`);
+   if(!expectedHp)assert.equal(victim.state,'死亡');
+  }
+ }
+ console.log('PASS: curse instant death uses each hit, mental resistance and a strict 30% threshold on all three battle paths.');
+}
+
+{
+ const row={名前:'力場即死試験',行動:'A',対象:'相手',攻撃手段:'魔法',判定:'魔力',効果:'必中/即死',AP消費:10,射程:60};
+ const random=Math.random;
+ Math.random=()=>0;
+ try{
+  for(const [power,spirit,guard,shield,hits,hp] of [
+   [500,0,0,0,1,700],[502,0,0,0,1,0],[502,0,2,0,1,701],[502,0,0,2,1,701],
+   [502,0,0.6,0,1,0],[502,0,0.8,0,1,700],
+   [1000,100,0,0,1,700],[1004,100,0,0,1,0],[267,0,0,0,2,680]
+  ]){
+   const source=unit('field-source',7,8),base=unit('field-target',8,8);
+   const attacker={...source,status:{...source.status,魔力:0}};
+   const target={...base,guard,shield:shield?{remaining:shield}:null,status:{...base.status,精神:spirit,防御:9999},
+    resistances:{力場耐性:100,魔法軽減:9999,物理軽減:9999}};
+   const skillRow={...row,力場:power,攻撃回数:hits};
+   live={...world,timeline:{turnNumber:60},players:[{id:'p',factionState:{units:[attacker],squads:[],combatRuntime:{}}}],
+    enemies:[target],enemyNests:[],settlements:[],groundLootByTile:{}};
+   assert.equal(m.performAttack(target,{playerId:'p',unitId:attacker.id,skillName:row.名前,skillRow}),true);
+   assert.equal(live.enemies[0].hp,hp,`power ${power}, spirit ${spirit}, guard ${guard}, shield ${shield}`);
+  }
+ }finally{Math.random=random;}
+ console.log('PASS: force-field death ignores resistance, uses spirit and post-guard HP damage, and does not accumulate hits.');
+}
+
+{
+ const row={名前:'状態解除試験',行動:'A',対象:'味方',回復:60,効果:'状態解除',AP消費:10,射程:60};
+ const healer=unit('cleanse-healer',6,8);
+ const target={...unit('cleanse-target',7,8),hp:800,currentHp:800,
+  numericStatuses:{盲目:50,幻覚:60,麻痺:80},abilityCurses:{速度:80},bleeding:{value:70},
+  periodicDamage:[{kind:'毒',value:25,remainingTurns:2},{kind:'毒',value:35,remainingTurns:2},{kind:'燃焼',value:30,remainingTurns:2}],
+  controlStatuses:{凍結:{value:40},睡眠:{value:0,expiresAtTurn:63}}};
+ live={...world,timeline:{turnNumber:60},players:[{id:'p',factionState:{units:[healer,target],squads:[],combatRuntime:{}}}],
+  enemies:[],enemyNests:[],settlements:[],groundLootByTile:{}};
+ assert.equal(m.performAttack(target,{playerId:'p',unitId:healer.id,skillName:row.名前,skillRow:row}),true);
+ const cleansed=live.players[0].factionState.units[1];
+ assert.deepEqual(cleansed.numericStatuses,{幻覚:60,麻痺:80});
+ assert.equal(cleansed.abilityCurses.速度,80);
+ assert.equal(cleansed.bleeding.value,70);
+ assert.deepEqual(cleansed.periodicDamage.map(effect=>effect.kind),['毒','毒']);
+ assert.equal(cleansed.controlStatuses.凍結,undefined);
+ assert.equal(cleansed.controlStatuses.睡眠.expiresAtTurn,63);
+ assert.equal(cleansed.hp,800);
+ assert.equal(live.players[0].factionState.units[0].ap,70);
+ console.log('PASS: real cleanse removes only numeric statuses below its power and does not heal HP.');
 }

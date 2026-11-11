@@ -7,6 +7,8 @@ import {listV39Trades,updateV39Trade,tradeBank,changeTradeBank,tradeMembers,trad
   updateTradeUnits,getTradeCargo,setTradeCargo,tradeCapacity,tradeSpeed,tradeReserveAmount,V39_TRADE_RESOURCES,tradeCourierIndex} from './v39-trade-state.js';
 import {getV39SpecialtyAccess} from './v39-specialty-rules.js';
 import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
+import {findV39RouteBlockingRubble} from './v39-rubble-route-choice.js';
+import {clearV39Rubble} from './v39-terrain-destruction.js';
 const n=value=>Number(value)||0;
 const pointKey=row=>`${row.x},${row.y}`;
 const hasGoods=(bag,goods)=>Object.entries(goods).every(([resource,amount])=>n(bag?.[resource])+0.01>=amount);
@@ -37,6 +39,73 @@ export function resolveV39TradeMovementPath(state,side,contract,map,home){
   for(const goal of goals.slice(0,20)) {path=resolveV39AutomaticRoute(state,map,side.kind==='player'?side.partyId:'',actor,goal,false,side.memberIds);if(path?.length)break;path=null;}
   return path;
 }
+export function findV39TradeBlockingRubble(state,side,contract,map){
+  if(side?.blockedRubble)return side.blockedRubble;
+  if(!side||!map?.terrainDamage?.rubbleByTile)return null;
+  const home=['collecting','returning'].includes(side.stage);
+  return findV39RouteBlockingRubble(map,openMap=>resolveV39TradeMovementPath(state,side,contract,openMap,home));
+}
+export function chooseV39TradeRubbleAction(state,playerId,id,action,map){
+  const source=listV39Trades(state).find(row=>row.id===id);
+  if(!source||state.activePlayerId!==playerId||state.timeline?.phase!=='player'||source.status!=='active')return {ok:false,state,reason:'取引を操作できません'};
+  const index=source.sides.findIndex(side=>side.kind==='player'&&side.partyId===playerId);
+  if(index<0)return {ok:false,state,reason:'この取引の担当者ではありません'};
+  const side=source.sides[index],blocker=findV39TradeBlockingRubble(state,side,source,map);
+  if(!blocker)return {ok:false,state,reason:'瓦礫による経路停止がありません'};
+  if(action==='detour'){
+    if(!resolveV39TradeMovementPath(state,side,source,map,['collecting','returning'].includes(side.stage)))return {ok:false,state,reason:'通行可能な迂回路がありません'};
+    const contract=structuredClone(source);
+    contract.sides[index].blockedRubble=null;
+    contract.sides[index].plannedPath=[];
+    contract.sides[index].reason='迂回中';
+    return {ok:true,state:updateV39Trade(state,contract),message:'迂回路を使用します'};
+  }
+  if(action==='clear'){
+    const contract=structuredClone(source);
+    contract.sides[index].clearTarget=blocker;
+    contract.sides[index].blockedRubble=null;
+    contract.sides[index].plannedPath=[];
+    contract.sides[index].reason='瓦礫を撤去中';
+    return {ok:true,state:updateV39Trade(state,contract),message:'担当部隊が瓦礫を撤去します'};
+  }
+  return {ok:false,state,reason:'操作が不正です'};
+}
+function moveTradePartyToRubble(state,side,map,turn){
+  const target=side.clearTarget;
+  if(!map.terrainDamage?.rubbleByTile?.[target.key]){side.clearTarget=null;return {state,done:true};}
+  let members=tradeMembers(state,side),actor=members.find(unit=>unit.id===side.unitId);
+  if(!actor)return {state,done:false,reason:'撤去担当者がいません'};
+  if(getHexDistance(actor,target)>1){
+    const blocked=occupied(state,side),neighbors=getHexNeighborCoords(map.w,map.h,target.x,target.y,false)
+      .filter(point=>!blocked.has(pointKey(point))&&canUnitEnterV39Tile(map,point.x,point.y,actor));
+    const choices=neighbors.map(point=>({point,path:resolveV39AutomaticRoute(state,map,side.kind==='player'?side.partyId:'',actor,point,false,side.memberIds)})).filter(choice=>choice.path);
+    choices.sort((a,b)=>a.path.length-b.path.length);
+    if(!choices.length)return {state,done:false,reason:'瓦礫の隣へ移動できません'};
+    let formation=members.map(unit=>({id:unit.id,x:unit.x,y:unit.y}));
+    formation.sort((a,b)=>a.id===side.unitId?-1:b.id===side.unitId?1:0);
+    const speed=tradeSpeed(members,resolveV39CargoLoad(getTradeCargo(state,side)),state);
+    if(speed<=0)return {state,done:false,reason:'積載超過で移動できません'};
+    for(const step of choices[0].path){
+      const positions=advanceV39CaveFormation(map,formation,step,{participants:members},blocked);
+      if(!positions)break;
+      const costs=positions.map(position=>{const unit=members.find(row=>row.id===position.id);return Math.ceil(resolveV39UnitMovementStepCost(map,unit.x,unit.y,position.x,position.y,unit,state)/speed);});
+      if(costs.some((cost,index)=>!Number.isFinite(cost)||cost>n(members.find(row=>row.id===positions[index].id).ap)))break;
+      members=members.map(unit=>{const index=positions.findIndex(row=>row.id===unit.id),position=positions[index],ap=Math.max(0,n(unit.ap)-costs[index]);return applyV39DisasterMovementDamage({...unit,ap,currentAp:ap,lastActionTurn:turn},[position],state).unit;});
+      formation=positions;
+      actor=members.find(unit=>unit.id===side.unitId);
+      if(getHexDistance(actor,target)<=1)break;
+    }
+    const byId=new Map(members.map(unit=>[unit.id,unit]));
+    state=updateTradeUnits(state,side,unit=>byId.get(unit.id)||unit);
+  }
+  if(getHexDistance(actor,target)>1)return {state,done:false,reason:'瓦礫へ移動中'};
+  const cleared=clearV39Rubble(map,actor,target);
+  if(!cleared.ok)return {state,done:false,reason:cleared.reason};
+  Object.assign(map,cleared.map);
+  state=updateTradeUnits(state,side,unit=>unit.id===actor.id?{...unit,ap:n(unit.ap)-cleared.apCost,currentAp:n(unit.ap)-cleared.apCost,actionPoint:n(unit.ap)-cleared.apCost}:unit);
+  if(cleared.hp<=0)side.clearTarget=null;
+  return {state,done:cleared.hp<=0,reason:cleared.hp>0?`瓦礫撤去中 残${cleared.hp}`:''};
+}
 function moveParty(state,side,contract,map,home) {
   let members=tradeMembers(state,side);const actor=members.find(row=>row.id===side.unitId);
   const bank=tradeBank(state,side);if(!actor||!bank)return {state,arrived:false,reason:'担当者または出発拠点がありません'};
@@ -45,8 +114,13 @@ function moveParty(state,side,contract,map,home) {
   const done=()=>{const lead=members.find(row=>row.id===side.unitId),cohesive=members.every(unit=>getHexDistance(unit,lead)<=Math.max(1,members.length-1));
     return cohesive&&(home?getHexDistance(lead,bank)<=1:inMeeting(lead,contract)&&(!peerActor||getHexDistance(lead,peerActor)<=1));};
   if(done())return {state,arrived:true};
+  const knownRubble=(side.plannedPath||[]).find(point=>map.terrainDamage?.rubbleByTile?.[pointKey(point)]);
+  if(knownRubble){side.blockedRubble={x:knownRubble.x,y:knownRubble.y,key:pointKey(knownRubble)};return {state,arrived:false,reason:'瓦礫で経路が塞がれています'};}
   const blocked=occupied(state,side),path=resolveV39TradeMovementPath(state,side,contract,map,home);
-  if(!path)return {state,arrived:false,reason:'通行可能な待ち合わせ/帰還経路がありません'};
+  if(!path){
+    side.blockedRubble=findV39TradeBlockingRubble(state,side,contract,map);
+    return {state,arrived:false,reason:side.blockedRubble?'瓦礫で経路が塞がれています':'通行可能な待ち合わせ/帰還経路がありません'};
+  }
   const load=resolveV39CargoLoad(getTradeCargo(state,side)),speed=tradeSpeed(members,load,state);
   if(speed<=0)return {state,arrived:false,reason:'積載超過で移動速度0%です'};
   let formation=members.map(unit=>({id:unit.id,x:unit.x,y:unit.y}));
@@ -61,6 +135,7 @@ function moveParty(state,side,contract,map,home) {
     if(members.some(unit=>!tradeAlive(unit))){const byId=new Map(members.map(unit=>[unit.id,unit]));return {state:updateTradeUnits(state,side,unit=>byId.get(unit.id)||unit),arrived:false,reason:'災害で部隊員が死亡しました',path:[...moved,step]};}
     formation=positions;moved.push({x:step.x,y:step.y});if(done())break;
   }
+  side.plannedPath=path.slice(moved.length).map(point=>({x:point.x,y:point.y}));
   const byId=new Map(members.map(unit=>[unit.id,unit]));
   return {state:updateTradeUnits(state,side,unit=>byId.get(unit.id)||unit),arrived:done(),reason:moved.length?'':'AP不足または通路の空き待ち',path:moved};
 }
@@ -89,6 +164,12 @@ export function advanceV39TradeLogistics(state,playerId,map,turn=tradeTurn(state
       if(npcOnly?side.kind!=='village':side.kind!=='player'||side.partyId!==playerId)continue;
       if(side.lastMoveTurn>=turn)continue;
       side.lastMoveTurn=turn;
+      if(side.blockedRubble&&!side.clearTarget){side.reason='瓦礫で経路が塞がれています';continue;}
+      if(side.clearTarget){
+        const clearing=moveTradePartyToRubble(next,side,map,turn);
+        next=clearing.state;side.reason=clearing.reason||'';
+        if(!clearing.done)continue;
+      }
       const members=tradeMembers(next,side);
       if(members.length!==side.memberIds.length||members.some(unit=>!tradeAlive(unit))) {
         if(contract.status==='cancelling'){side.stage='returned';continue;}

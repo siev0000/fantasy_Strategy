@@ -1,3 +1,6 @@
+import {getV39NpcGarrisonIds,getV39NpcGarrisons,prepareV39NpcGarrisons,isV39GarrisonAtHome} from '../../lib/v39-npc-garrison.js';
+import {getV39ActionBlock,standUpV39Unit} from '../../lib/v39-control-status.js';
+import defenseBalance from '../../../../config/v39-npc-defense.json';
 import npcBalance from '../../../../config/v39-npc-faction-ai.json';
 import {advanceV39NpcCommerce} from '../../lib/v39-npc-commerce.js';
 import {advanceV39NpcGrowth} from '../../lib/v39-npc-growth.js';
@@ -106,16 +109,21 @@ function nextFormationForDirection(group, from, to, mapData) {
 // Move toward an already known objective; surveying is not a movement prerequisite.
 function moveAiExplorer(state, player, mapData, objective = decideAiObjective(state, player, mapData)) {
   if (!mapData?.grid || !number(mapData?.w) || !number(mapData?.h)) return null;
+  const garrisons=getV39NpcGarrisonIds(player),returning=objective.type==='garrison-return';
   const busy=new Set(player.factionState.aiState?.growthPlan?.busyIds||[]);
   const units = (player?.factionState?.units || []).filter(unit => alive(unit) && !unit.tradeAssignment&&!unit.transportAssignment&&!busy.has(unit.id)&&!unit?.surveyTask&&!unit.pendingWorldExit&&(unit.worldId||'surface')===(state.activeWorldId||'surface'));
   const workers=getV39NpcResourceUnitIds(player);
   const occupied = occupiedTileKeys(state);
   for (const unit of units) {
+    if(getV39ActionBlock(unit,state.timeline?.turnNumber,'move'))continue;
+    if(!returning&&garrisons.has(unit.id))continue;
+    if(returning&&isV39GarrisonAtHome(unit,objective))continue;
     if(!objective.actorId&&workers.has(unit.id))continue;
     if (objective.actorId && unit.id !== objective.actorId) continue;
     if (['resource-demand','resource-receive'].includes(objective.type) && getHexDistance(unit, objective) <= 1) continue;
     if (objective.type === 'resource-return' && isV39NpcResourceReturnComplete(player, objective)) continue;
     const group = resolveV39SquadMovementGroup(player.factionState, unitId(unit));
+    if(!returning&&group.participants?.some(member=>garrisons.has(member.id)))continue;
     if(group.participants?.some(member=>player.factionState.combatRuntime?.pendingActionsByUnitId?.[member.id]?.aimAfterCast))continue;
     if (!group.ok || group.moveAp <= 0) continue;
     const start = { x:group.x, y:group.y };
@@ -126,6 +134,7 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
         ? getHexDistance(a, objective) - getHexDistance(b, objective) || a.y - b.y || a.x - b.x
         : a.y - b.y || a.x - b.x);
     for (const target of candidates) {
+      if(returning&&getHexDistance(target,objective)>=getHexDistance(unit,objective))continue;
       const positions = nextFormationForDirection(group, start, target, mapData);
       if (!positions || new Set(positions.map(position => coordKey(position.x, position.y))).size !== positions.length) continue;
       if (positions.some(position => occupied.has(coordKey(position.x, position.y)))) continue;
@@ -170,13 +179,15 @@ function findNpcScoutStep(state, player, mapData) {
   const settings = npcBalance.scouting || npcBalance.resourceScouting;
   const limit = Math.max(1, Math.floor(number(settings?.searchNodeLimit, 512)));
   const checkedGroups = new Set();
+  const garrisons=getV39NpcGarrisonIds(player);
   const workers=getV39NpcResourceUnitIds(player);
   for (const unit of player.factionState.units || []) {
-    if(workers.has(unit.id))continue;
+    if(getV39ActionBlock(unit,state.timeline?.turnNumber,'move'))continue;
+    if(workers.has(unit.id)||garrisons.has(unit.id))continue;
     if (!alive(unit) || unit.tradeAssignment || unit.transportAssignment || player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id) || unit.surveyTask || unit.pendingWorldExit || (unit.worldId || 'surface') !== 'surface') continue;
     const group = resolveV39SquadMovementGroup(player.factionState, unit.id);
     if(group.participants?.some(member=>player.factionState.combatRuntime?.pendingActionsByUnitId?.[member.id]?.aimAfterCast))continue;
-    if (!group.ok || group.moveAp <= 0) continue;
+    if (!group.ok || group.moveAp <= 0 || group.participants.some(member=>garrisons.has(member.id))) continue;
     const groupKey = group.participants.map(member => member.id).sort().join('|');
     if (checkedGroups.has(groupKey)) continue;
     checkedGroups.add(groupKey);
@@ -252,7 +263,7 @@ function startAiUnitCreation(state, player) {
   return result.ok?{state:result.state,command:`訓練開始:${result.queuedUnits[0]?.name || plan.className}`}:null;
 }
 
-// 戦争相手または勝利地点の守護者だけを既存の勢力戦闘処理へ渡す。ダメージ処理・反撃・死亡処理は重複しない。
+// 戦争相手・勝利地点の守護者・拠点へ接近した敵を既存の勢力戦闘処理へ渡す。ダメージ処理・反撃・死亡処理は重複しない。
 function planAiCombat(state, player, objective) {
   const attackers = (player?.factionState?.units || []).filter(unit=>alive(unit)&&(unit.worldId||'surface')===(state.activeWorldId||'surface')&&!unit.pendingWorldExit)
     .sort((left, right) => text(left?.id).localeCompare(text(right?.id), "ja"));
@@ -261,6 +272,7 @@ function planAiCombat(state, player, objective) {
     if(pending?.aimAfterCast&&Number(pending.resolvesAtTurn)>Number(state.timeline.turnNumber))continue;
     const rows = (pending?.aimAfterCast?[pending.skillRow]:resolveAttackRows(attacker))
       .filter(row => !isV39SupportSkill(row, attacker))
+      .filter(row => !getV39ActionBlock(attacker,state.timeline?.turnNumber,'skill',row))
       .filter(row => pending?.aimAfterCast||number(attacker?.ap ?? attacker?.currentAp) >= resolveAttackApCost(row, attacker));
     for (const skillRow of rows) {
       const range = resolveAttackRange(skillRow, attacker, window.__v39FieldRuntime?.mapData);
@@ -271,7 +283,10 @@ function planAiCombat(state, player, objective) {
         ? (state?.enemies || []).filter(enemy => text(enemy?.victoryLandmarkKey) === text(objective?.targetTileKey))
           .map(enemy => ({ ...enemy, targetType:"victory-guard" }))
         : [];
-      const targets = [...foreignTargets, ...guardTargets]
+      const home=getV39NpcGarrisons(player).find(row=>row.unitId===attacker.id);
+      const threats=home?(state.enemies||[]).filter(enemy=>getHexDistance(enemy,home)<=defenseBalance.villageDefenseRadius
+        &&(enemy.aggressive===true||enemy.metadata?.aggressive===true||enemy.aggroTargetUnitId===attacker.id)):[];
+      const targets = [...threats, ...foreignTargets, ...guardTargets]
         .filter(unit=>alive(unit)&&(unit.worldId||'surface')===(state.activeWorldId||'surface'))
         .filter(target => getHexDistance(attacker, target) <= range)
         .sort((left, right) => getHexDistance(attacker, left) - getHexDistance(attacker, right)
@@ -369,6 +384,11 @@ function startAiLandExpansion(state, player, mapData, goals=[],foodBalances=[]) 
 export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__v39FieldRuntime?.mapData) {
   let state = sourceState;
   const turn = Math.max(1, Math.floor(number(turnNumber, state?.timeline?.turnNumber || 1)));
+  if(state.players.some(player=>player.isPlayer===false&&player.factionState.units.some(unit=>unit.knockedDown))){
+    state={...state,players:state.players.map(player=>player.isPlayer!==false?player:{
+      ...player,factionState:{...player.factionState,units:player.factionState.units.map(unit=>standUpV39Unit(unit,turn))}
+    })};
+  }
   const reports = [];
   if(mapData?.hegemonyInterior){
     for(const source of state.players.filter(player=>player.isPlayer===false)){
@@ -387,8 +407,15 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
   for (const playerId of (state?.players || []).filter(player => player?.isPlayer === false).map(player => player.id)) {
     let player = playerFrom(state, playerId);
     if (!player || number(player?.factionState?.aiState?.lastProcessedTurn) >= turn) continue;
-    const commands = [];
+    state=prepareV39NpcGarrisons(state,playerId);player=playerFrom(state,playerId);
+    const commands = getV39NpcGarrisons(player).map(row=>'拠点防衛:'+row.name+' / '+row.unitId);
     const combatActions = [];
+    for(const home of getV39NpcGarrisons(player)){
+      const guard=player.factionState.units.find(unit=>unit.id===home.unitId);
+      if(isV39GarrisonAtHome(guard,home))continue;
+      const moved=moveAiExplorer(state,player,mapData,{...home,type:'garrison-return',actorId:home.unitId,targetName:home.name});
+      if(moved){state=moved.state;player=playerFrom(state,playerId);commands.push('守備隊帰還:'+home.unitId);}
+    }
     const intelligence = refreshV39FactionIntelligence(state, playerId, mapData, turn);
     state = intelligence.state;
     player = playerFrom(state, playerId);

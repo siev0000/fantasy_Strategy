@@ -1,3 +1,4 @@
+import {getV39NpcGarrisonIds} from './v39-npc-garrison.js';
 import balance from '../../../config/v39-npc-faction-ai.json';
 import {getSelectedSettlement} from './settlement-state.js';
 import {getHexDistance} from './hex-grid.js';
@@ -43,7 +44,8 @@ export function advanceV39NpcCommerce(source,playerId,map,turn,development,rando
   const known=getV39KnownTradeResources(state,playerId);
   const resources=V39_TRADE_RESOURCES.filter(row=>known.has(row.name)&&!row.specialty&&!['魂','死体'].includes(row.name));
   const workers=getV39NpcResourceUnitIds(player);
-  const actor=player.factionState.units.find(unit=>n(unit.hp??unit.currentHp)>0&&(unit.worldId||'surface')==='surface'
+  const garrisons=getV39NpcGarrisonIds(player);
+  const actor=player.factionState.units.find(unit=>!garrisons.has(unit.id)&&n(unit.hp??unit.currentHp)>0&&(unit.worldId||'surface')==='surface'
     &&!unit.movementHold&&!unit.surveyTask&&!player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id)&&!workers.has(unit.id)&&n(unit.ap??unit.currentAp)>=20
     &&!getV39SquadMemberRestriction(player.factionState,unit,'surface')&&isV39CargoEmpty(getV39NpcUnitCargo(player,unit)));
   if(!actor)return {state,commands};

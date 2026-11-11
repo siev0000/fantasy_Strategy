@@ -1,5 +1,7 @@
 {
   "villageDefenseRadius":3,
+  "minimumGarrisonUnits":1,
+  "garrisonRadius":1,
   "retreatHpRate":0.3,
   "maximumActions":12,
   "safeRecoveryRate":0.1,

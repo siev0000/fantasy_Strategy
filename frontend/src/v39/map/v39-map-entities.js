@@ -3,6 +3,7 @@ import {isV39VillageHostileToPlayer} from '../../lib/v39-village-hostility.js';
 import {resolveV39WallEdgeSegment,collectV39JoinedWallPairs,resolveV39JoinedWallSegment,resolveV39SmoothedFootprintOutline} from '../../lib/v39-wall-edges.js';
 import {resolveV39SettlementImageScale,resolveV39UnitImageScale} from '../../lib/map-entity-size-rules.js';
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
+import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
 import {addV39FieldSymbol} from './v39-field-symbols.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
@@ -28,6 +29,8 @@ import {getV39UnitWaitTint} from '../../lib/v39-unit-action-rules.js';
 import {v39FieldUnitAngle,v39FieldUnitDepth,v39FieldUnitGroupKey} from '../../lib/v39-unit-field-presentation.js';
 import {getV39TeleportGates} from '../../lib/v39-teleport-rules.js';
 import teleportBalance from '../../../../config/v39-teleport.json';
+import {resolveV39ActiveTransformationArtwork} from '../../lib/v39-transformation-artwork.js';
+import {resolveV39TransformedUnitSiz} from '../../lib/v39-transformation.js';
 
 const STRUCTURE_LAYER_DEPTH = 10;
 const UNIT_LAYER_DEPTH = 12;
@@ -180,6 +183,7 @@ function markerRenderSignature(faction, state) {
     String(state?.activePlayerId || ""),
     JSON.stringify(getV39TeleportGates(state)),
     JSON.stringify(players.map(p=>p.factionState?.combatRuntime?.pendingActionsByUnitId)),
+    JSON.stringify(players.map(p=>p.factionState?.combatRuntime?.activeEffectsByUnitId)),
     JSON.stringify(state.enemyCombatRuntime?.pendingActionsByEnemyId),
     String(state?.timeline?.turnNumber || ""),
     String(state?.activeWorldId || "surface"),
@@ -527,7 +531,7 @@ function unitGroupsByTile(units, worldId) {
     if (x === null || y === null) continue;
     const key = v39FieldUnitGroupKey(unit);
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(unit);
+    groups.get(key).push(visualV39CombatUnit(unit));
   }
   return groups;
 }
@@ -586,7 +590,7 @@ function addUnitOwnerBorder(scene,marker,color){
 }
 
 function addUnitArtwork(scene, marker, unit, diameter) {
-  const artwork = resolveUnitArtwork(unit);
+  const artwork = resolveV39ActiveTransformationArtwork(unit,gameState()) || resolveUnitArtwork(unit);
   if (!artwork || !ensureArtworkTexture(scene, artwork)) return false;
 
   const frameKey = ensureArtworkSheetFrame(scene, artwork);
@@ -595,7 +599,8 @@ function addUnitArtwork(scene, marker, unit, diameter) {
     : scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
   const sourceWidth = Math.max(1, Number(image.width) || 1);
   const sourceHeight = Math.max(1, Number(image.height) || 1);
-  const target = diameter * MAP_ENTITY_SIZE_RULES.unit.imageFill * resolveV39UnitImageScale(unit);
+  const target = diameter * MAP_ENTITY_SIZE_RULES.unit.imageFill
+    * resolveV39UnitImageScale({status:{SIZ:resolveV39TransformedUnitSiz(unit,gameState())}});
   const scale = Math.min(target / sourceWidth, target / sourceHeight);
   image.setScale(scale);
   image.setAngle(v39FieldUnitAngle(unit));
@@ -1063,8 +1068,9 @@ function renderMarkers() {
   drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
   const ground=window.__v39FieldRuntime?.mapData?.terrainDamage||{};
   for(const k of new Set([...Object.keys(ground.cells||{}),...Object.keys(ground.pendingByTile||{}),...Object.keys(ground.rubbleByTile||{})])){
+    if(ground.pendingByTile?.[k]?.hiddenWarning&&!ground.rubbleByTile?.[k]&&!ground.cells?.[k])continue;
     const [x,y]=k.split(',').map(Number);if(!isTestMode()&&!window.isV39TileInCurrentVision?.(x,y))continue;
-    const center=tileCenter(x,y),kind=ground.rubbleByTile?.[k]?'rubble':ground.pendingByTile?.[k]?'warning':'canyon';
+    const center=tileCenter(x,y),kind=ground.rubbleByTile?.[k]?'rubble':ground.pendingByTile?.[k]&&!ground.pendingByTile[k].hiddenWarning?'warning':'canyon';
     addV39FieldSymbol(scene,structureContainer,kind,center.x,center.y,tileMetrics().width*.65,{color:kind==='warning'?0xffb34d:0xc5aa83,name:`v39-ground-${kind}`}).setData('tileKey',k);
   }
   const gateArtwork={src:teleportBalance.gateImage,textureKey:'v39-teleport-gate'};
@@ -1154,6 +1160,7 @@ function install() {
   window.addEventListener("v39:game-state-changed", event => {
     if (event.detail?.reason !== "activity-log") scheduleRefresh();
   });
+  window.addEventListener('v39:combat-visual-hp-released',()=>scheduleRefresh());
   window.addEventListener("v39:initial-placement-complete", () => scheduleRefresh());
   window.addEventListener("v39:unit-selected", () => scheduleRefresh());
   window.addEventListener("v39:display-settings-changed", () => scheduleRefresh());

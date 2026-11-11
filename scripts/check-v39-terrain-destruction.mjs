@@ -18,12 +18,12 @@ try{
   const map={w:8,h:8,grid:Array.from({length:8},()=>Array(8).fill('丘陵')),heightLevelMap:Array.from({length:8},()=>Array(8).fill(3))},area=new Map([['3,3',1]]),unit={x:2,y:3,hp:100,ap:100,status:{攻撃:60}};
   check(damageV39Ground(map,area,200,1).map===map,'threshold');let a=damageV39Ground(map,area,450,1).map;check(a.terrainDamage.cells['3,3'].hp===250,'damage accumulates');
   let b=damageV39Ground(a,area,450,1).map;check(b.heightLevelMap[3][3]===2&&map.heightLevelMap[3][3]===3,'height loss and immutable input');
-  check(damageV39Ground(b,area,999,1).map===b,'height cap');check(!advanceV39GroundCollapses(b,1).impacts.length,'warning delay');
+  check(damageV39Ground(b,area,999,1).map.heightLevelMap[3][3]===1,'repeat height loss');check(!advanceV39GroundCollapses(b,1).impacts.length,'warning delay');
   const enemyWarning=damageV39Ground(map,area,700,1,{timeline:{phase:'enemy'}}).map;check(enemyWarning.terrainDamage.pendingByTile['3,3'].resolvesAtTurn===3,'enemy warning leaves a player action phase');
   let collapse=advanceV39GroundCollapses(b,2);check(collapse.impacts.length===1,'delayed collapse');check(!advanceV39GroundCollapses(collapse.map,2).impacts.length,'no repeat');
-  const chipped=damageV39Ground(collapse.map,area,40,2).map;check(chipped.terrainDamage.rubbleByTile['3,3'].hp===60,'weak physical attacks chip rubble without terrain threshold');check(!damageV39Ground(chipped,area,60,2).map.terrainDamage.rubbleByTile['3,3'],'attacks clear rubble');
+  const chipped=damageV39Ground(collapse.map,area,40,2).map;check(chipped.terrainDamage.rubbleByTile['3,3'].hp===310,'weak physical attacks chip rubble without terrain threshold');check(!damageV39Ground(chipped,area,400,2).map.terrainDamage.rubbleByTile['3,3'],'attacks clear rubble');
   check(!canUnitEnterV39Tile(collapse.map,3,3,unit),'rubble movement');check(traceV39AttackRay(collapse.map,unit,{x:5,y:3},[]).reason==='瓦礫','rubble ray');
-  let clear=clearV39Rubble(collapse.map,unit,{x:3,y:3});check(clear.ok&&clear.hp===40&&clear.apCost===20,'partial removal');clear=clearV39Rubble(clear.map,unit,{x:3,y:3});check(clear.ok&&!clear.map.terrainDamage.rubbleByTile['3,3'],'multiple workers');
+  let clear=clearV39Rubble(collapse.map,{...unit,status:{攻撃:200}},{x:3,y:3});check(clear.ok&&clear.hp===150&&clear.apCost===20,'partial removal');clear=clearV39Rubble(clear.map,{...unit,status:{攻撃:200}},{x:3,y:3});check(clear.ok&&!clear.map.terrainDamage.rubbleByTile['3,3'],'multiple workers');
   const {resolveV39AutomaticRoute}=await import('/src/lib/v39-transport-rules.js');
   const corridor={...collapse.map,grid:map.grid.map((row,y)=>row.map(()=>y===3?'平地':'海'))},hauler={...unit,id:'hauler',worldId:'surface',status:{攻撃:60,移動:100},maxAp:100};
   const state={players:[{id:'p',factionState:{units:[hauler],settlements:[]}}],enemies:[],neutralVillages:[],activeWorldId:'surface',territoryOwnerByTile:{}};
@@ -38,9 +38,7 @@ try{
  await page.locator('[data-squad-detail-tab="action"]').click();
  const attack=page.locator('[data-v39-attack-name="棍棒"]');await attack.click();
  assert(await page.evaluate(()=>window.executeV39AttackAt(3,6)),'normal weapon attack succeeds');
- const partial=await page.evaluate(()=>window.__v39FieldRuntime.mapData.terrainDamage.cells['3,6']);assert(partial.hp<partial.maxHp,'normal weapon damages terrain');
- if(!partial.broken){await page.evaluate(async()=>{await window.advanceV39Turn({skipUnactedFocus:true,presentation:false});});await page.locator('[data-squad-detail-tab="action"]').click();await attack.click();assert(await page.evaluate(()=>window.executeV39AttackAt(3,6)));}
- const terrain=await page.evaluate(()=>window.__v39FieldRuntime.mapData.terrainDamage);assert(terrain.cells['3,6']?.broken,'repeated attacks break terrain');
+ const terrain=await page.evaluate(()=>window.__v39FieldRuntime.mapData.terrainDamage);assert(terrain.cells['3,6']?.collapseCount===1,'normal weapon collapses one height level');
  assert.equal(await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].v39Input.selectTile({x:3,y:6},false,{notify:false}).height),2,'selection reads new height');
  await page.screenshot({path:`${out}/warning-475.png`});
  const before=await page.evaluate(()=>window.getV39ActiveFactionState().units[0].hp);
@@ -52,7 +50,7 @@ try{
  assert.equal(await page.evaluate(()=>window.getV39ActiveFactionState().units[0].ap),ap-20);
  const saved=await page.evaluate(()=>window.exportV39SaveJson(0));
  await page.reload({waitUntil:'networkidle'});await page.evaluate(async save=>{window.closeV39PlayModeSelection();window.importV39SaveJson(save);await window.waitForV39MapRenderSettled();},saved);
- assert(await page.evaluate(()=>window.__v39FieldRuntime.mapData.terrainDamage.cells['3,6'].broken),'fresh reload retains destruction');
+ assert(await page.evaluate(()=>window.__v39FieldRuntime.mapData.terrainDamage.cells['3,6'].collapseCount===1),'fresh reload retains destruction');
  await page.screenshot({path:`${out}/saved-475.png`});
  for(const power of [100,400]){
   await page.evaluate(power=>window.playV39MapEffect({effectName:'打撃3',power,tileX:3,tileY:6,areaTiles:[{x:3,y:6},{x:4,y:6}],allowInFog:true,totalDurationMs:100}),power);

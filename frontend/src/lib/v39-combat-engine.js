@@ -1,18 +1,23 @@
+import {normalizeV39ReductionKey,normalizeV39ReductionFields,readV39UnitResistance} from './v39-reduction-keys.js';
+import {resolveV39PerceptionDamage,V39_ELEMENTAL_CONTROL_RESISTANCES} from './v39-control-status.js';
 import {applyV39RestraintPenalties} from './v39-restraint.js';
 import {abilityDamageTarget} from './v39-ability-damage.js';
 import {hegemonyLightMultiplier} from './v39-hegemony-areas.js';
 import {resolveV39ResistanceReduction} from './v39-resistance-math.js';
 import {hasV39CityAuraSources} from './v39-city-aura.js';
 import {applyV39TerrainModifiers} from './v39-terrain-modifiers.js';
-import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, SKILL_STATE_KEYS, toSafeNumber } from "./skill-power.js";
+import { computeSkillScaledTriplet, resolveSkillBasePower, resolveSkillBaseState, DAMAGE_SUM_KEYS, SKILL_STATE_KEYS, toSafeNumber } from "./skill-power.js";
 import { findGameDataRow } from "./game-data-registry.js";
 import { getV39UnitTestSkillRows } from "./v39-test-skill-rules.js";
 import { resolveV39DefenseKind, resolveV39DefenseReducedPower } from "./v39-defense-rules.js";
 import {resolveV39DamageMultiplier} from './v39-combat-settings.js';
 import { hasV39SkillEffect } from "./v39-combat-ray.js";
+import {resolveV39TransformationSpec} from './v39-transformation.js';
+import {resolveV39TransformedSiz} from './v39-transformation.js';
+import {applyV39SizChangeToDerived} from './v39-siz-status-rules.js';
 import { getV39PassiveRows, matchV39PassiveCondition, resolveV39PassiveContext } from "./v39-passive-rules.js";
 import { resolveV39BodyWeaponAttackRows } from "./v39-body-weapon-rules.js";
-import { DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS, SKILL_LEVEL_FIELDS } from "../constants/unitCommon.js";
+import { DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS, SKILL_LEVEL_FIELDS, RESISTANCE_FIELDS } from "../constants/unitCommon.js";
 import {V39_TERRAIN_DESTRUCTION_RULES} from './v39-terrain-destruction.js';
 import {getV39DisasterFieldAt} from './v39-disaster-dynamics.js';
 import { resolveV39RangeTiles, V39_SQUAD_MOVEMENT_BALANCE, V39_CAVE_BALANCE, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
@@ -203,47 +208,66 @@ export function resolveSkillGuard(skillRow, attacker, options = {}) {
 }
 
 export function resolveSkillTimedModifiers(skillRow) {
+  skillRow=normalizeV39ReductionFields(skillRow);
   return Object.fromEntries(TIMED_EFFECT_FIELDS
     .map(key => [key, number(skillRow?.[key])])
     .filter(([, value]) => value !== 0));
 }
 
+export function isV39TimedWeaponEnhancement(skillRow) {
+  return text(skillRow?.攻撃手段)==='武器' && number(skillRow?.物理)>0
+    && /\d+t/i.test(text(skillRow?.効果時間)) && ['自身','自分','味方'].includes(text(skillRow?.対象));
+}
+
 export function applyV39ActiveCombatEffects(unit, effects) {
   const active = Array.isArray(effects) ? effects : [];
+  unit={...unit,status:normalizeV39ReductionFields(unit?.status),resistances:normalizeV39ReductionFields(unit?.resistances)};
   if (!active.length) return unit;
-  const status = { ...(unit?.status || {}) };
+  let status = { ...(unit?.status || {}) };
   const resistances = { ...(unit?.resistances || {}) };
-  const skillLevels={...unit?.skillLevels},persistent={},stacked={};
-  for(const effect of active)for(const [key,value] of Object.entries(effect?.modifiers||{})){
+  let skillLevels={...unit?.skillLevels};
+  const transformation=active.find(effect=>effect?.stackGroup==='transformation'&&effect?.sizeSpec);
+  if(transformation){
+    const originalSiz=number(unit?.status?.SIZ,number(unit?.SIZ,100));
+    const changed=applyV39SizChangeToDerived(status,skillLevels,originalSiz,resolveV39TransformedSiz(originalSiz,transformation.sizeSpec));
+    status=changed.status;
+    skillLevels=changed.skillLevels;
+  }
+  const persistent={},stacked={};
+  for(const effect of active)for(const [key,value] of Object.entries(normalizeV39ReductionFields(effect?.modifiers))){
     if(effect.stackGroup==='oneTurn'||effect.stackGroup==='transformation')stacked[key]=number(stacked[key])+number(value);
     else persistent[key]=persistent[key]===undefined?number(value):Math.max(persistent[key],number(value));
   }
   for(const key of new Set([...Object.keys(persistent),...Object.keys(stacked)])){
-    const target=key.endsWith('耐性')?resistances:SKILL_LEVEL_FIELDS.includes(key)?skillLevels:status;
+    const target=RESISTANCE_FIELDS.includes(key)?resistances:SKILL_LEVEL_FIELDS.includes(key)?skillLevels:status;
     target[key]=number(target[key])+number(persistent[key])+number(stacked[key]);
   }
   return { ...unit, status, resistances,skillLevels };
 }
 
 export function isV39SupportSkill(skillRow, attacker) {
-  return (hasV39SkillEffect(skillRow,"魂回収") && resolveAttackPower(skillRow,attacker)<=0) || hasV39SkillEffect(skillRow,"アンデッド化") || hasV39SkillEffect(skillRow,"遮断") || hasV39SkillEffect(skillRow,"守護") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
+  return isV39TimedWeaponEnhancement(skillRow) || !!resolveV39TransformationSpec(skillRow) || (hasV39SkillEffect(skillRow,"魂回収") && resolveAttackPower(skillRow,attacker)<=0) || hasV39SkillEffect(skillRow,"アンデッド化") || hasV39SkillEffect(skillRow,"遮断") || hasV39SkillEffect(skillRow,"守護") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
     || resolveSkillHealing(skillRow, attacker) > 0
     || (resolveAttackPower(skillRow, attacker) <= 0
-      && (Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0 || resolveSkillGuard(skillRow, attacker) > 0));
+      && (hasV39SkillEffect(skillRow,'浄化') || Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0 || resolveSkillGuard(skillRow, attacker) > 0));
+}
+
+export function isV39FireSkill(row, unit) {
+  return number(row?.炎)>0 || number(skillWeaponRow(row,unit)?.炎)>0;
 }
 
 export function applyV39GuardToDamage(target, damage) {
-  let remaining = Math.max(0, Math.floor(number(target?.guard)));
+  let remaining = Math.max(0, number(target?.guard));
   const guardBefore = remaining;
-  let shieldRemaining = Math.max(0, Math.floor(number(target?.shield?.remaining)));
+  let shieldRemaining = Math.max(0, number(target?.shield?.remaining));
   const shieldBefore = shieldRemaining;
-  const hitsBeforeGuard = Array.isArray(damage?.hits) ? damage.hits.map(value => Math.max(0, Math.floor(number(value)))) : [];
+  const hitsBeforeGuard = Array.isArray(damage?.hits) ? damage.hits.map(value => Math.max(0,number(value))) : [];
   const hits = hitsBeforeGuard.map(value => {
-    const absorbed = Math.min(remaining, value);
-    remaining -= absorbed;
-    const shieldAbsorbed = Math.min(shieldRemaining, value - absorbed);
+    const shieldAbsorbed = Math.min(shieldRemaining, value);
     shieldRemaining -= shieldAbsorbed;
-    return value - absorbed - shieldAbsorbed;
+    const absorbed = Math.min(remaining, value - shieldAbsorbed);
+    remaining -= absorbed;
+    return Math.round(Math.max(0,value-shieldAbsorbed-absorbed));
   });
   return {
     ...damage,
@@ -328,7 +352,7 @@ export function resolveAreaType(skillRow) {
 function strongestDamageType(skillRow) {
   let selected = "物理";
   let highest = Number.NEGATIVE_INFINITY;
-  for (const key of DAMAGE_TYPE_FIELDS) {
+  for (const key of DAMAGE_SUM_KEYS) {
     const value = toSafeNumber(skillRow?.[key], null);
     if (value === null || value <= highest) continue;
     selected = key;
@@ -342,17 +366,30 @@ export function resolveAttackPower(skillRow, attacker, options = {}) {
   const effectiveSkill = Number(adjusted.skillRow.毒)>0&&!options.damageType?{...adjusted.skillRow,毒:0}:adjusted.skillRow;
   const poisonOnly=Number(adjusted.skillRow.毒)>0&&resolveSkillBasePower({...adjusted.skillRow,毒:0})<=0;
   const effectiveAttacker = adjusted.attacker;
-  const scaled = computeSkillScaledTriplet(effectiveSkill, effectiveAttacker?.status || {});
-  let power = Math.max(0, number(scaled?.power, resolveSkillBasePower(effectiveSkill)));
+  const scaledPower=row=>{
+    const scaled=computeSkillScaledTriplet(row,effectiveAttacker?.status||{});
+    return Math.max(0,options.unrounded?scaled.powerBase*scaled.multiplier:scaled.power);
+  };
+  let power = scaledPower(effectiveSkill);
   const pureGuardSkill = number(effectiveSkill?.ガード) > 0
     && resolveSkillBasePower(effectiveSkill) <= 0
     && resolveSkillBaseState(effectiveSkill) <= 0
     && number(effectiveSkill?.回復) <= 0;
   if (effectiveSkill?.装備攻撃 !== true && !pureGuardSkill && !poisonOnly) {
     const weapon = skillWeaponRow(effectiveSkill,effectiveAttacker);
-    if (weapon) power += Math.max(0, number(computeSkillScaledTriplet(weapon, effectiveAttacker?.status || {})?.power, 0));
+    if (weapon) power += scaledPower(weapon);
   }
-  return Math.round(power);
+  if (!pureGuardSkill && !poisonOnly) power += number(effectiveSkill?.__timedWeaponFlatPower);
+  return options.unrounded?power:Math.round(power);
+}
+
+export function resolveV39SkillStatePower(row,attacker) {
+  const adjusted=applyV39PassiveCombatSkills(attacker,row);
+  const skill=adjusted.skillRow;
+  const judgement=text(skill.判定)||(
+    hasV39SkillEffect(skill,'強化解除')&&(number(skill.魔法)>0||skill.攻撃手段==='魔法')?'魔力':undefined
+  );
+  return Math.max(0,computeSkillScaledTriplet({...skill,判定:judgement},adjusted.attacker?.status).state);
 }
 
 export function resolveV39TerrainAttackPower(skillRow,attacker,options={}){
@@ -367,19 +404,77 @@ export function resolveV39TerrainAttackPower(skillRow,attacker,options={}){
   return Math.round(physicalPower(adjusted.skillRow)+physicalPower(weapon));
 }
 
-// State values use the same defense and resistance math as attacks, without HP damage multipliers.
-export function resolveV39HarmfulEffectPower(attacker,target,row,basePower,resistanceKey){
-  const power=computeSkillScaledTriplet({全威力:basePower,判定:row?.判定,追加威力:row?.追加威力},attacker?.status).power;
-  const defenseKey=text(row?.判定).includes('魔')?'精神':'防御';
-  const resistance=number(target?.status?.[resistanceKey],number(target?.resistances?.[resistanceKey]));
-  const reduced=resolveV39ResistanceReduction(power,number(target?.level,1),resistance,number(attacker?.status?.耐性貫通));
-  return Math.max(0,Math.floor(resolveV39DefenseReducedPower(reduced.reducedPower,number(target?.status?.[defenseKey]))*(1-reduced.resistanceRate)));
+// The effect selects defense; the attack classification selects exactly one resistance.
+export function resolveV39HarmfulEffectDefense(row,effectKey){
+  const magical=text(row?.判定)==='魔力'||text(row?.攻撃手段)==='魔法';
+  return {defenseKey:['精神','精神攻撃','幻覚'].includes(effectKey)?'精神':'防御',
+    resistanceKey:V39_ELEMENTAL_CONTROL_RESISTANCES[effectKey]??(magical?'魔法軽減':'物理軽減')};
 }
-export function resolveV39StateInfliction(attacker,target,row,stateKey){
-  return SKILL_STATE_KEYS.includes(stateKey)?resolveV39HarmfulEffectPower(attacker,target,row,number(row?.[stateKey]),stateKey+'耐性'):0;
+export function resolveV39HarmfulEffectPower(attacker,target,row,basePower,effectKey,options={}){
+  const power=computeSkillScaledTriplet({全威力:basePower,判定:options.judgement??row?.判定,追加威力:row?.追加威力},attacker?.status).power;
+  const {defenseKey,resistanceKey}=resolveV39HarmfulEffectDefense(row,effectKey);
+  const resistance=number(readV39UnitResistance(target,resistanceKey));
+  const reduced=resolveV39ResistanceReduction(power,number(target?.level,1),resistance,number(attacker?.status?.耐性貫通),resistanceKey);
+  const defense=options.defense??number(target?.status?.[defenseKey]);
+  return Math.max(0,Math.floor(resolveV39DefenseReducedPower(reduced.reducedPower,defense)*(1-reduced.resistanceRate)));
 }
 
-export function computeAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '', gameSettings }) {
+export const V39_INSTANT_DEATH_HP_THRESHOLD = 0.30;
+
+export function resolveV39InstantDeath(attacker,target,row,damage,powerScale=1){
+  if(!hasV39SkillEffect(row,'即死'))return null;
+  const forceField=damage.detail?.damageType==='力場';
+  const base=number(row?.呪い)*powerScale;
+  if(base<=0&&!forceField)return null;
+  const curseDamage=base>0
+    ?resolveV39HarmfulEffectPower(attacker,target,row,base,'即死',{defense:number(target?.status?.精神)})
+    :0;
+  let beforeHp=Math.max(0,number(target?.hp??target?.currentHp));
+  for(const [index,hit] of (damage.hitResults||[]).entries()){
+    if(beforeHp<=0)break;
+    if(!hit.hit)continue;
+    const threshold=beforeHp*V39_INSTANT_DEATH_HP_THRESHOLD;
+    if(curseDamage>threshold)return {index,beforeHp,curseDamage};
+    if(forceField&&number(hit.damage)>threshold)return {index,beforeHp,forceFieldDamage:hit.damage};
+    beforeHp=Math.max(0,beforeHp-number(hit.damage));
+  }
+  return null;
+}
+export function resolveV39StaggerDamage(attacker, target, row, random = Math.random) {
+  const adjusted = applyV39PassiveCombatSkills(attacker, row, {target});
+  const basePower = number(adjusted.skillRow.怯み);
+  if (basePower <= 0) return 0;
+  const {multiplier} = computeSkillScaledTriplet({
+    判定:adjusted.skillRow.判定,
+    追加威力:adjusted.skillRow.追加威力
+  }, adjusted.attacker.status);
+  const reduced = resolveV39ResistanceReduction(
+    basePower * multiplier, target.level, readV39UnitResistance(target, '怯み耐性'),
+    adjusted.attacker.status?.耐性貫通, '怯み耐性'
+  );
+  const defense = number(target.status?.防御) + number(target.hp ?? target.currentHp);
+  const effective = reduced.reducedPower * (1 - reduced.resistanceRate);
+  return Math.round(resolveV39DefenseReducedPower(effective * (0.7 + 0.3 * random()), defense));
+}
+
+export function resolvesV39Knockdown(attacker, target, row, random = Math.random) {
+  const adjusted = applyV39PassiveCombatSkills(attacker, row, {target});
+  const power = number(adjusted.skillRow.体幹 ?? adjusted.skillRow.ノックバック);
+  if (power <= 0) return false;
+  const {multiplier} = computeSkillScaledTriplet({
+    判定:adjusted.skillRow.判定, 追加威力:adjusted.skillRow.追加威力
+  }, adjusted.attacker.status);
+  const defense = number(target.status?.防御) + number(target.skillLevels?.軽業);
+  return resolveV39DefenseReducedPower(160 * power / 35 * multiplier * (0.3 + 0.7 * random()), defense) >= 100;
+}
+
+export function resolveV39StateInfliction(attacker,target,row,stateKey,options={}){
+  const key=stateKey==='精神攻撃'?'精神':stateKey;
+  const base=row?.[stateKey]??(key==='精神'?row?.精神攻撃??row?.精神:undefined);
+  return SKILL_STATE_KEYS.includes(key)?resolveV39HarmfulEffectPower(attacker,target,row,number(base),key,options):0;
+}
+
+export function computeAttackDamage({ attacker, target, skillRow, scale = 1, powerScale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '', gameSettings, deferRounding = false }) {
   const damageMultiplier=resolveV39DamageMultiplier(gameSettings);
   if(hasV39CityAuraSources()||attacker?.cityAuraSkillNames?.length||target?.cityAuraSkillNames?.length){
     attacker=applyV39TerrainModifiers(attacker);target=applyV39TerrainModifiers(target);
@@ -392,15 +487,17 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   target=resolveV39PassiveContext(target,passiveActionContext(target,skillRow),{isCounter:false}).unit;
   target=applyV39RestraintPenalties(target,state);
   const runtime=globalThis.window?.__v39FieldRuntime;
-  const areaScale=runtime?.mapData?.hegemonyInterior?hegemonyLightMultiplier(runtime.mapData,attacker,damageType||strongestDamageType(adjusted.skillRow),globalThis.window?.getV39GameState?.({includeWorlds:false})?.activeWorldId):1;
-  const power = abilityDamageTarget(adjusted.skillRow)||periodicOnly?0:resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[] },{damageType})*areaScale;
+  const attackType=[...DAMAGE_SUM_KEYS,'精神'].includes(damageType)?damageType:strongestDamageType(adjusted.skillRow);
+  const forceField=attackType==='力場';
+  const areaScale=runtime?.mapData?.hegemonyInterior?hegemonyLightMultiplier(runtime.mapData,attacker,attackType,globalThis.window?.getV39GameState?.({includeWorlds:false})?.activeWorldId):1;
+  const power = abilityDamageTarget(adjusted.skillRow)||periodicOnly?0:resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[],timedWeaponEnhancements:[] },{damageType,unrounded:true})*areaScale*powerScale;
   const magicalJudge = text(adjusted.skillRow?.判定).includes("魔");
-  const defenseKey = magicalJudge ? "精神" : "防御";
+  const defenseKey = magicalJudge || forceField ? "精神" : "防御";
   const defense = Math.max(0, number(target?.status?.[defenseKey], 0));
-  const resistanceKey = `${[...DAMAGE_TYPE_FIELDS,'精神'].includes(damageType)?damageType:strongestDamageType(adjusted.skillRow)}耐性`;
-  const resistance = Math.max(0, number(target?.status?.[resistanceKey], number(target?.resistances?.[resistanceKey], 0)));
+  const resistanceKey = forceField?'':normalizeV39ReductionKey(`${attackType}耐性`);
+  const resistance = forceField?0:Math.max(0, number(readV39UnitResistance(target,resistanceKey)));
   const resistancePenetration = Math.max(0, number(adjusted.attacker?.status?.耐性貫通, 0));
-  const {effectiveResistance,resistanceRate,targetLevel,levelReduction,reducedPower}=resolveV39ResistanceReduction(power,number(target?.level,target?.status?.Lv||1),resistance,resistancePenetration);
+  const {effectiveResistance,resistanceRate,targetLevel,levelReduction,reducedPower}=resolveV39ResistanceReduction(power,number(target?.level,target?.status?.Lv||1),resistance,resistancePenetration,resistanceKey);
   const attackCount = Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)))
     * Math.max(1,Math.floor(number(adjusted.attacker?.combatProfile?.attackCount,1)));
   const magicalAttack = text(adjusted.skillRow?.攻撃手段) === "魔法" || magicalJudge;
@@ -418,8 +515,8 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
   const ranged=['弓','銃'].includes(text(adjusted.skillRow?.攻撃手段))||number(adjusted.skillRow?.射撃)>0;
   const fieldMap=globalThis.window?.__v39FieldRuntime?.mapData;
   const weatherAccuracy=ranged?Math.min(getV39DisasterFieldAt(fieldMap,attacker?.x,attacker?.y).rangedAccuracyMultiplier,getV39DisasterFieldAt(fieldMap,target?.x,target?.y).rangedAccuracyMultiplier):1;
-  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey]))*weatherAccuracy*(magicalAttack?(adjusted.attacker.restraintAppliedMultiplier||1):1);
-  const evasion = Math.max(1, number(target?.status?.回避, number(target?.status?.速度, 1)));
+  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey])-(magicalAttack?0:resolveV39PerceptionDamage(adjusted.attacker)))*weatherAccuracy*(magicalAttack?(adjusted.attacker.restraintAppliedMultiplier||1):1);
+  const evasion = Math.max(1, number(target?.status?.速度, 1) * (target?.knockedDown ? 0.75 : 1));
   const guaranteedHit=hasV39SkillEffect(skillRow,"必中");
   const hitRate = guaranteedHit ? 1 : Math.max(V39_HIT_RATE_MIN, Math.min(V39_HIT_RATE_MAX, (accuracy / evasion) * 0.75));
   const hits = [];
@@ -438,7 +535,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
     const barrierAbsorbed = Math.min(barrierRemaining, power);
     barrierRemaining -= barrierAbsorbed;
     const hitPower = Math.max(0, power - barrierAbsorbed - levelReduction);
-    const damage = Math.max(0, Math.floor(
+    const rawDamage = Math.max(0,
       resolveV39DefenseReducedPower(hitPower, defense)
       * randomRate
       * (1 - resistanceRate)
@@ -446,7 +543,8 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
       * (friendly ? 0.5 : 1)
       * damageMultiplier
       * (critical?criticalMultiplier:1)
-    ));
+    );
+    const damage = deferRounding?rawDamage:Math.round(rawDamage);
     hits.push(damage);
     hitResults.push({ hit:true, damage, hitRoll, randomRate, barrierAbsorbed,critical });
   }
@@ -459,7 +557,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, fri
     missCount:hitResults.filter(row => !row.hit).length,
     criticalCount:hitResults.filter(row=>row.critical).length,
     detail:{
-      power, defenseKey, defense, resistanceKey, resistance, resistancePenetration, effectiveResistance, resistanceRate, targetLevel,
+      power, damageType:attackType, defenseKey, defense, resistanceKey, resistance, resistancePenetration, effectiveResistance, resistanceRate, targetLevel,
       levelReduction, reducedPower, attackCount, scale, friendly, damageMultiplier, accuracyKey, accuracy, evasion, hitRate,criticalRate,criticalMultiplier,
       appliedPassiveSkillNames:adjusted.appliedPassiveSkillNames,
       passiveDiagnostics:adjusted.passiveDiagnostics,

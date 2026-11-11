@@ -1,4 +1,5 @@
 import { V39_SQUAD_MOVEMENT_BALANCE } from "./v39-gameplay-balance.js";
+import {getV39ActionBlock} from './v39-control-status.js';
 import { getV39SquadUnitIds, normalizeV39SquadLogistics,resolveV39CargoLoad } from "./v39-logistics-state.js";
 import {tradeSpeed} from './v39-trade-state.js';
 import { getHexNeighborCoords } from "./hex-grid.js";
@@ -245,6 +246,10 @@ export function advanceV39CaveFormation(data, formation, destination, group, occ
 
 export function applyV39SquadMovement(faction = {}, group = {}, target = {}, moveApCost = 0, state = null) {
   if (!group?.ok) return { ok:false, faction, reason:group?.reason || "部隊を確定できません。" };
+  const turn=state?.timeline?.turnNumber;
+  if(turn!=null&&group.participants?.some(unit=>getV39ActionBlock(unit,turn,'move'))){
+    return {ok:false,faction,reason:'状態異常で移動できないキャラクターがいます。'};
+  }
   const x = integer(target?.x, -1);
   const y = integer(target?.y, -1);
   const cost = Math.max(0, integer(moveApCost));

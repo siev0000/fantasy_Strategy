@@ -1,7 +1,8 @@
-import { applyV39TerrainModifiers } from "../../lib/v39-terrain-modifiers.js";
+import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abilities.js';
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { getIconSrcByName } from "../../lib/icon-library.js";
-import { resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing } from "../../lib/v39-combat-engine.js";
+import { resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
+import {formatV39SkillCombatValues,resolveSkillBaseState} from '../../lib/skill-power.js';
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
 import { inspectV39Passive } from "../../lib/v39-passive-rules.js";
 import {getV39SummonEntries} from "../../lib/v39-summon-rules.js";
@@ -86,7 +87,7 @@ function techniqueDescription(row, source) {
 export function renderV39UnitSkills(unit, {mapData, expandedName = "", interactive = false} = {}) {
     const teleportPanel=interactive&&renderV39TeleportPanel(unit,mapData);
     if(teleportPanel)return teleportPanel;
-    const adjustedUnit = applyV39TerrainModifiers(unit, mapData);
+    const adjustedUnit = resolveV39CurrentUnitAbilities(unit,{mapData});
     const rows = techniqueEntries(adjustedUnit);
     const weaponAttackRows = resolveAttackRows(adjustedUnit).filter(row => row?.装備攻撃 === true);
     const bodyNames = new Set(weaponAttackRows.filter(row => row.身体武器).map(row => row.名前));
@@ -112,17 +113,15 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const guardValue = action === "A"
             ? resolveSkillGuard(source, adjustedUnit)
             : Math.max(0, num(source?.ガード ?? row?.guard, 0) || 0);
+          const stateValue = action === "A" ? resolveV39SkillStatePower(source,adjustedUnit) : resolveSkillBaseState(source);
           const healingValue = action === "A"
             ? resolveSkillHealing(source, adjustedUnit)
             : Math.max(0, num(source?.回復 ?? row?.healing, 0) || 0);
           const icon = techniqueIconMarkup(source);
           const iconAccent = techniqueAccentClass(powerValue, guardValue, healingValue);
-          const combatValueParts = [
-            Number(powerValue) > 0 ? `威${powerValue}` : "",
-            Number(guardValue) > 0 ? `守${guardValue}` : "",
-            Number(healingValue) > 0 ? `回${healingValue}` : ""
-          ].filter(Boolean);
-          const combatValueText = combatValueParts.join("/");
+          const combatValueText = formatV39SkillCombatValues({
+            power:powerValue,guard:guardValue,state:stateValue,healing:healingValue
+          });
           const durationLabel = techniqueDurationLabel(row, source);
           const description = techniqueDescription(row, source);
           const unsupported=action==="P" ? inspectV39Passive(source) : [];

@@ -87,6 +87,8 @@
 .squad-detail-pane .v39-char-equipment-row,.squad-detail-pane .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:5px;min-width:0;border:1px solid #31464d;border-radius:5px;background:#17252a;padding:5px}
 .squad-detail-pane .v39-char-equipment-row span,.squad-detail-pane .v39-char-growth-row span{color:#a8b8ba}
 .squad-detail-pane .v39-char-equipment-row b,.squad-detail-pane .v39-char-growth-row b{overflow-wrap:anywhere;text-align:right}
+.squad-detail-pane [data-v39-sustain-cancel]{flex:0 0 auto;min-width:48px;min-height:28px;padding:3px 8px;border:1px solid #78b9c5;border-radius:5px;background:#203c45;color:#e9f8f7;font:inherit;font-weight:700;cursor:pointer}
+.squad-detail-pane [data-v39-sustain-cancel]:hover,.squad-detail-pane [data-v39-sustain-cancel]:focus-visible{background:#2c5863;color:#fff;outline:2px solid #7fd4e0;outline-offset:1px}
 
 .squad-detail-pane .v39-status-effect-row{padding:2px 3px;align-items:flex-start}
 .squad-detail-pane .v39-status-effect-row>span{flex:0 1 35%;min-width:0}

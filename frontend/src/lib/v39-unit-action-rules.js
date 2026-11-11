@@ -1,4 +1,5 @@
 import {isV39UnitRecoveryWaiting} from './v39-recovery-wait.js';
+import {resolveV39MaxAp} from './v39-control-status.js';
 
 export function isV39UnitWaiting(unit, turnNumber) {
   return Number(unit?.waitTurnNumber) === Number(turnNumber) || isV39UnitRecoveryWaiting(unit);
@@ -42,5 +43,5 @@ export function isV39UnitUnacted(unit, turnNumber, faction = {}) {
     && !instructor
     && Number(unit?.lastActionTurn || 0) !== Number(turnNumber)
     && Number(unit?.surveyTask?.startedTurn || 0) !== Number(turnNumber)
-    && ap >= Number(unit?.maxAp ?? unit?.maxActionPoint ?? 100);
+    && ap >= resolveV39MaxAp(unit);
 }

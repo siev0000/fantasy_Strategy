@@ -1,4 +1,5 @@
 <script setup>
+import {readV39ReductionField} from "../lib/v39-reduction-keys.js";
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
@@ -434,11 +435,11 @@ function buildEquipmentDetailRows(item) {
     label: "威/守",
     value: `${plainValueText(power)}/${plainValueText(guard)}`
   });
-  const physicalRes = Number(item?.resistanceBonus?.["物理耐性"]);
-  const magicRes = Number(item?.resistanceBonus?.["魔法耐性"]);
+  const physicalRes = Number(readV39ReductionField(item?.resistanceBonus,"物理軽減"));
+  const magicRes = Number(readV39ReductionField(item?.resistanceBonus,"魔法軽減"));
   if (Math.round(physicalRes || 0) !== 0 || Math.round(magicRes || 0) !== 0) {
     rows.push({
-      label: "物/魔耐",
+      label: "物/魔軽減",
       value: `${plainValueText(physicalRes)}/${plainValueText(magicRes)}`
     });
   }
@@ -495,8 +496,8 @@ const craftPreviewItem = computed(() => {
   const attackAp = Math.round(toSafeNumber(row?.攻撃AP, 0));
   const magicAp = Math.round(toSafeNumber(row?.魔法AP, 0));
   const baseResistance = Math.round(toSafeNumber(row?.耐性, 0) * multiplier);
-  const physicalResistance = Math.round(toSafeNumber(row?.["物理耐性"], 0) * multiplier);
-  const magicResistance = Math.round(toSafeNumber(row?.["魔法耐性"], 0) * multiplier);
+  const physicalResistance = Math.round(toSafeNumber(row?.["物理軽減"], 0) * multiplier);
+  const magicResistance = Math.round(toSafeNumber(row?.["魔法軽減"], 0) * multiplier);
   return {
     power,
     guard,
@@ -505,8 +506,8 @@ const craftPreviewItem = computed(() => {
     attackAp,
     magicAp,
     resistanceBonus: {
-      "物理耐性": physicalResistance || baseResistance,
-      "魔法耐性": magicResistance || baseResistance
+      "物理軽減": physicalResistance || baseResistance,
+      "魔法軽減": magicResistance || baseResistance
     }
   };
 });

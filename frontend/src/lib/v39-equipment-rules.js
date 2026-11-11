@@ -1,3 +1,4 @@
+import {readV39ReductionField,normalizeV39ReductionFields} from './v39-reduction-keys.js';
 import { getGameDataRows } from "./game-data-registry.js";
 import { MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./v39-economy-rules.js";
 import { resolveCompletedResearchLevel } from "./research-progress.js";
@@ -114,8 +115,8 @@ export function createV39EquipmentEntry(rowOrName, rarityValue = DEFAULT_V39_EQU
   if (!["武器1", "武器2", "装飾1", "装飾2"].includes(slot) && armorBase > 0) {
     const physical = Math.round(armorBase * Math.max(0, number(consumption?.防具_物理, 1)));
     const magic = Math.round(armorBase * Math.max(0, number(consumption?.防具_魔法)));
-    resistanceBonus.物理耐性 += physical;
-    resistanceBonus.魔法耐性 += magic;
+    resistanceBonus.物理軽減 += physical;
+    resistanceBonus.魔法軽減 += magic;
   }
   return {
     slot,
@@ -148,7 +149,7 @@ export function normalizeV39EquipmentItem(item, index = 0) {
   const normalized = createV39EquipmentEntry(name, item?.quality ?? item?.qualityLabel, item?.slot ?? EQUIPMENT_SLOT_KEYS[index]);
   if (!normalized) return null;
   const resistanceBonus = { ...normalized.resistanceBonus };
-  for (const key of RESISTANCE_FIELDS) resistanceBonus[key] += number(item?.enchantResistanceBonus?.[key]);
+  for (const key of RESISTANCE_FIELDS) resistanceBonus[key] += number(readV39ReductionField(item?.enchantResistanceBonus,key));
   return {
     ...normalized,
     slot:normalized.slot,
@@ -160,7 +161,7 @@ export function normalizeV39EquipmentItem(item, index = 0) {
     resistanceBonus,
     enchantments:Array.isArray(item?.enchantments) ? item.enchantments.map(text).filter(Boolean) : [],
     enchantBonus:item?.enchantBonus && typeof item.enchantBonus === "object" ? { ...item.enchantBonus } : {},
-    enchantResistanceBonus:item?.enchantResistanceBonus && typeof item.enchantResistanceBonus === "object" ? { ...item.enchantResistanceBonus } : {}
+    enchantResistanceBonus:item?.enchantResistanceBonus && typeof item.enchantResistanceBonus === "object" ? normalizeV39ReductionFields(item.enchantResistanceBonus) : {}
   };
 }
 

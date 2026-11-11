@@ -1,4 +1,8 @@
       .squad-detail-pane .technique-list{gap:2px!important}
+      #footSquad [data-squad-detail-panel="action"] .v39-cast-status{
+        position:sticky;top:0;z-index:8;margin-bottom:4px;
+        box-shadow:0 3px 8px rgba(0,0,0,.45)
+      }
       .squad-detail-pane .technique-passive-divider{
         margin:4px 0 1px!important;padding:2px 3px!important;border-top:1px solid #405159!important;
         color:#8fa1a5!important;font-size:var(--font-size-8)!important;font-weight:800!important;line-height:1.2!important

@@ -1,3 +1,4 @@
+import {normalizeV39ReductionFields} from './v39-reduction-keys.js';
 import expeditionDefaults from "../../../config/v39-expedition-defaults.json";
 const rawGameDataModules = import.meta.glob("../../../data/source/export/json/*.json", {
   eager: true,
@@ -146,7 +147,7 @@ for (const [path, data] of Object.entries(rawGameDataModules)) {
   if (tableMap.has(name)) {
     throw new Error(`[ゲームデータ] JSON名が重複しています: ${name}`);
   }
-  tableMap.set(name, data);
+  tableMap.set(name, Array.isArray(data)?data.map(row=>normalizeV39ReductionFields(row)):data);
   sourcePathMap.set(name, path);
 }
 

@@ -72,6 +72,9 @@ async function playEffect(request = {}) {
   pending.captured = true;
   // 別ワールドのターン終了処理を、現在表示中のマップへ誤描画しない。
   if (pending.worldId === visibleWorldId) {
+    if(request.attacker?.id&&request.skillRow)window.dispatchEvent(new CustomEvent('v39:attack-effect-queued',{
+      detail:{key:String(request.attacker.id)+'|'+String(request.skillRow.名前||'')}
+    }));
     deferredEffects.push({
       request:{ ...request },
       playerId:pending.playerId,

@@ -1,0 +1,31 @@
+PASS: bleeding, reactions, passive isolation, real field fixture, normal test skills and A/B control. No browser.
+PASS: ability damage/curse, floors, full-HP recovery, curse recovery, persistent max/stacking and derived idempotence.
+PASS: complete test skill catalog resolves on all six field units.
+PASS: automatic reactions use normal map effects, explicit animation, hit data and suppression/world filtering.
+PASS: test skills use saved effect categories/sequences and existing explicit image names are preserved.
+PASS: 3v3 fixture, adjacent centers, upper/lower/rear placement and piercing/protection skills on all six units.
+PASS: test skill descriptions show actual source data in template notation.
+PASS: self-target defaults and guarding application.
+PASS: barrier direction, friendly/enemy movement, destruction and distinct human/flying-angel teams.
+PASS: barriers allow outgoing attacks by default; explicit prohibition blocks both directions.
+PASS: configurable popup colors/formats, actual ability/curse/heal/state/buff changes, idempotence and world filtering.
+PASS: captured pointer tile stays stable after camera movement, focus matrix refresh and paid-cast validation.
+PASS: separate buff/debuff sections, max/waiting status, stacking, shield/barrier values and expiration.
+PASS: ability/skill/resistance/movement displays use the same current values as combat without mutating base values.
+PASS: green/red sub-values, constant passive baseline, zero-floor accuracy, APP negatives and net-zero cancellation.
+PASS: percentage drain, actual-HP/overkill cap, independent poison damage, normal-heal exclusion and detox recovery.
+PASS: blood-value absorption, poison/burn full-value ticks, duration, idempotence, independent doses and detox.
+PASS: restraint level cap/stages, max-stat defense, fractional decay, accuracy/evasion, grapple movement/link release, popup and trigger integration.
+PASS: per-hit states/events, misses, one action-end counter, actual-value sums, AP once, new-action reset, ordinary per-hit reactions and lethal/overkill handling.
+PASS: actual skill-test fixture exposes 3-hit actions and ordinary/blood/damage-sum counters on the intended units.
+PASS: effect-based defense, mental/spirit exceptions, magic judgment OR magic method, individual resistance exclusion, restraint classification, level reduction and penetration.
+PASS: flat physical/magic/ranged reductions, level scaling/penetration, attribute resistance unchanged, saved-key migration, active/passive buffs and city settings.
+PASS: forced-status magic reduction is fixed only; full rejection requires sufficient fixed value.
+PASS: stagger uses post-hit HP, applies resistance and penetration, and checks the actual AP loss per hit.
+PASS: cumulative control statuses, turn expiry, knockdown protection and stand-up AP.
+PASS: shock AP per turn, freeze AP and natural thaw, fire hit/use and purification.
+PASS: healing block uses resisted curse power and curse recovery lowers it.
+PASS: sanctuary attack lock is limited to its caster and casting phase, with legacy compatibility.
+PASS: numeric status resistance, detection, AP cap/loss, named recovery and timed dispel.
+PASS: chain origins must hit, overlapping spreads hit once and a missed spread does not propagate.
+PASS: skill summary displays power, guard and scaled numeric/legacy status power.

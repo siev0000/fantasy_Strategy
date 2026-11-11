@@ -1,4 +1,40 @@
-export const isV39CastingMagic=row=>String(row?.攻撃手段||'').includes('魔法')||String(row?.判定||'').includes('魔');
+import {hasV39SkillEffect} from './v39-combat-ray.js';
+
+export const V39_CAST_ATTACK_LOCK = '詠唱中攻撃不可';
+export const V39_CAST_MAINTENANCE_AP = 60;
+export const hasCastAttackLock=row=>hasV39SkillEffect(row,V39_CAST_ATTACK_LOCK)
+  || (row?.効果時間==='詠唱'&&hasV39SkillEffect(row,'攻撃不能'));
+export const isV39CastingMagic=row=>String(row?.攻撃手段||'').includes('魔法')||String(row?.判定||'').includes('魔')||hasCastAttackLock(row);
+
+export function isV39CastAttackLocked(state,unitId,turn){
+  const cast=getV39UnitCast(state,unitId);
+  return hasCastAttackLock(cast?.skillRow)&&Number(cast.resolvesAtTurn)>Number(turn);
+}
+
+export function settleV39CastingActions(faction,turn){
+  const runtime=faction.combatRuntime;
+  if(!runtime?.pendingActionsByUnitId)return faction;
+  const pending={...runtime.pendingActionsByUnitId};
+  const units=faction.units.map(unit=>{
+    const cast=pending[unit.id];
+    if(!hasCastAttackLock(cast?.skillRow)||!(Number(cast.resolvesAtTurn)>turn)
+      ||Number(unit.hp??unit.currentHp)<=0)return unit;
+    if(cast.lastMaintenanceTurn===turn)return unit;
+    const ap=Number(unit.ap??unit.currentAp??0);
+    const unpaidStart=cast.apPaid===false?Math.max(0,Number(cast.apCost)||0):0;
+    const cost=V39_CAST_MAINTENANCE_AP+unpaidStart;
+    if(ap<cost){
+      delete pending[unit.id];
+      return {...unit,lastActionTurn:turn};
+    }
+    const remaining=ap-cost;
+    pending[unit.id]={...cast,apPaid:true,lastMaintenanceTurn:turn};
+    return {...unit,ap:remaining,currentAp:remaining,actionPoint:remaining,lastActionTurn:turn};
+  });
+  return units.some((unit,index)=>unit!==faction.units[index])
+    ? {...faction,units,combatRuntime:{...runtime,pendingActionsByUnitId:pending}}
+    : faction;
+}
 export function getV39UnitCast(state,unitId){
   state=state??globalThis.window?.getV39EnemyTurnState?.();
   for(const p of state?.players||[]){const cast=p.factionState?.combatRuntime?.pendingActionsByUnitId?.[unitId];if(cast)return cast;}
@@ -25,7 +61,7 @@ export function reconcileV39Casting(previous,next,reason){
       if(!cast.aimAfterCast)continue;
       if(!cast.origin&&unit){cast={...cast,origin:{x:unit.x,y:unit.y,worldId:unit.worldId||'surface'}};runtime.pendingActionsByUnitId[id]=cast;}
       const moved=unit&&cast.origin&&(unit.x!==cast.origin.x||unit.y!==cast.origin.y||(unit.worldId||'surface')!==cast.origin.worldId);
-      const spent=before&&unit&&Number(unit.ap??unit.currentAp)<Number(before.ap??before.currentAp)&&!['combat-cast-start','save-loaded','turn-start','turn-complete'].includes(reason);
+      const spent=before&&unit&&Number(unit.ap??unit.currentAp)<Number(before.ap??before.currentAp)&&!['combat-cast-start','cast-turn-end','save-loaded','turn-start','turn-complete','sustained-upkeep'].includes(reason);
       const actionChanged=before&&unit&&unit.lastAction!==before.lastAction&&unit.lastAction&&!/待機/.test(unit.lastAction)&&reason!=='save-loaded';
       if(!unit||Number(unit.hp??unit.currentHp)<=0||moved||spent||actionChanged||unit.pendingTeleport)delete runtime.pendingActionsByUnitId[id];
     }

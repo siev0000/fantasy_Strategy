@@ -1,5 +1,6 @@
 import { V39_LOG_PREVIEW_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import {buildV39EnvironmentDamageLogs,mergeV39EnvironmentDamageLogs} from '../../lib/v39-environment-damage-log.js';
+import {resolveV39LogActor,resolveV39LogActorColor,stripV39LogActorPrefix} from '../../lib/v39-log-actor.js';
 
 const CHANNELS = ["notification", "battle", "chat"];
 const LABELS = { notification:"通知", battle:"戦闘", chat:"チャット" };
@@ -14,6 +15,8 @@ let previewSequence = 0;
 let sequence = 0;
 let activeChannel = "notification";
 let collapsed = true;
+let lastRenderedChannel = "";
+let lastRenderedCollapsed = true;
 const unreadIds = new Set();
 const messages = [];
 
@@ -83,14 +86,37 @@ function renderDetails(entry) {
 function renderMessage(entry) {
   const tone = ["info", "success", "warn", "danger", "debug"].includes(entry.tone) ? entry.tone : "info";
   const meta = entry.meta ? `<small>${escapeHtml(entry.meta)}</small>` : "";
-  const turn = entry.turn ? `<span>T${entry.turn}</span>` : "";
+  const savedColor=resolveV39LogActorColor(window.getV39GameState?.({includeWorlds:false}),entry.actorPlayerId,entry.actorColor);
+  const actorColor=/^#[0-9a-f]{6}$/i.test(savedColor||'')?savedColor:'#e5d194';
+  const actor=entry.actorName?`<strong class="v39-side-log-actor" style="color:${actorColor}">${escapeHtml(entry.actorName)}</strong>`:'';
   return `<article class="v39-side-log-entry ${tone}" data-v39-side-log-id="${escapeHtml(entry.id)}">
-    <div class="v39-side-log-entry-head">${turn}<b>${escapeHtml(entry.title || LABELS[entry.channel])}</b></div>
-    <p>${multilineHtml(entry.message)}</p>
+    <div class="v39-side-log-entry-head"><b>${escapeHtml(entry.title || LABELS[entry.channel])}</b>${actor}</div>
+    <p>${multilineHtml(stripV39LogActorPrefix(entry.message,entry.actorName))}</p>
     ${entry.action?.kind==='diplomacy'?`<button type="button" class="v39-side-diplomacy-link" data-v39-side-diplomacy="${escapeHtml(entry.id)}">外交を開く</button>`:''}
     ${renderDetails(entry)}
     ${meta}
   </article>`;
+}
+
+function renderTurnGroups(rows){
+  const groups=new Map();
+  for(const entry of rows){
+    const turn=entry.turn??0;
+    if(!groups.has(turn))groups.set(turn,[]);
+    groups.get(turn).push(entry);
+  }
+  return [...groups].map(([turn,entries])=>`<section class="v39-side-turn-group" data-v39-turn="${turn}">${entries.map(renderMessage).join('')}</section>`).join('');
+}
+
+function updateVisibleTurn(){
+  if(collapsed)return;
+  const list=document.getElementById('v39-side-log-list'),label=document.querySelector('#v39-side-log [data-v39-side-channel-label]');
+  if(!(list instanceof HTMLElement)||!(label instanceof HTMLElement))return;
+  const groups=[...list.querySelectorAll('.v39-side-turn-group')];
+  const visible=groups.find(group=>group.getBoundingClientRect().bottom>list.getBoundingClientRect().top+2)||groups.at(-1);
+  const turn=Number(visible?.dataset.v39Turn);
+  const channel=LABELS[activeChannel];
+  label.textContent=Number.isFinite(turn)&&turn>0?`${channel} T${turn}`:channel;
 }
 
 export function openV39SideLogDiplomacy(entry){
@@ -161,10 +187,18 @@ function render() {
   const rows = messages.filter(entry => entry.channel === activeChannel && canSeeMessage(entry));
   if (!rows.length) {
     list.innerHTML = `<div class="v39-side-log-empty">${activeLabel}はまだありません</div>`;
+    lastRenderedChannel=activeChannel;
+    lastRenderedCollapsed=collapsed;
     return;
   }
-  list.innerHTML = rows.map(renderMessage).join("");
-  list.scrollTop = list.scrollHeight;
+  const sameChannel=lastRenderedChannel===activeChannel;
+  const atBottom=!sameChannel||lastRenderedCollapsed&&!collapsed||list.scrollHeight-list.scrollTop-list.clientHeight<24;
+  const oldScrollTop=list.scrollTop;
+  list.innerHTML = renderTurnGroups(rows);
+  list.scrollTop=atBottom?list.scrollHeight:oldScrollTop;
+  lastRenderedChannel=activeChannel;
+  lastRenderedCollapsed=collapsed;
+  updateVisibleTurn();
 }
 
 export function pushV39SideRailMessage(input, options = {}) {
@@ -172,6 +206,9 @@ export function pushV39SideRailMessage(input, options = {}) {
   const message = text(source.message ?? source.text);
   if (!message) return null;
   const channel = normalizeChannel(source.channel ?? options.channel);
+  const actorId=text(source.actorId??source.unitId??source.attackerId);
+  const state=window.getV39GameState?.({includeWorlds:false})||window.getV39EnemyTurnState?.();
+  const actor=resolveV39LogActor(state,actorId);
   const entry = {
     id:text(source.id) || `side-log:${Date.now()}:${sequence += 1}`,
     channel,
@@ -180,6 +217,7 @@ export function pushV39SideRailMessage(input, options = {}) {
     audiencePlayerId:source.audiencePlayerId,
     action:source.action?.kind==='diplomacy'?{kind:'diplomacy',targetPlayerId:source.action.targetPlayerId}:null,
     title:text(source.title, LABELS[channel]),
+    actorId,actorName:text(actor?.name,source.actorName),actorColor:actor?.color||resolveV39LogActorColor(state,source.actorPlayerId,''),actorPlayerId:actor?.playerId||text(source.actorPlayerId),
     message,
     details:text(source.details ?? options.details),
     collapsible:source.collapsible === true || options.collapsible === true,
@@ -203,6 +241,7 @@ export function showV39SideNotice(message, options = {}) {
   const value = text(message);
   if (!value) return false;
   const entry = {channel:"notification",message:value,title:text(options.title,"通知"),
+    actorId:options.actorId??options.unitId,actorName:options.actorName,actorPlayerId:options.actorPlayerId,
     tone:text(options.tone,"info"),meta:text(options.meta),preview:true,
     durationMs:Math.max(800,Number(options.durationMs) || V39_LOG_PREVIEW_BALANCE.durationMs)};
   if (options.log === false) showChatPreview(entry);
@@ -260,14 +299,16 @@ function installStyles() {
     #v39-side-log.collapsed .v39-side-log-collapse{width:13px;min-width:13px;min-height:24px;height:24px;border-radius:4px;font-size:var(--font-log)}
     #v39-side-log-list{min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px;display:grid;gap:2px;align-content:start;}
     #v39-side-log.collapsed #v39-side-log-list{display:none}
+    .v39-side-turn-group{display:grid;gap:2px;align-content:start}
+    .v39-side-turn-group + .v39-side-turn-group{border-top:1px solid #4c7579;padding-top:3px;margin-top:3px}
     .v39-side-log-entry{border:1px solid rgba(57,75,82,.82);border-left:3px solid #5eb8c6;border-radius:6px;background:rgba(18,31,36,.35);padding:2px;display:grid;gap:2px}
     .v39-side-diplomacy-link{border:1px solid #be9d4b;border-radius:4px;padding:2px 4px;background:#302b19;color:#ffe197;font:inherit;text-align:left;cursor:pointer}
     #v39-side-log:hover,#v39-side-log:focus-within{background:linear-gradient(180deg,rgba(10,20,24,.45),rgba(7,14,17,.35))}
     #v39-side-log:hover .v39-side-log-head,#v39-side-log:focus-within .v39-side-log-head{background:rgba(17,31,36,.50)}
     .v39-side-log-entry.success{border-left-color:#67c887}.v39-side-log-entry.warn{border-left-color:#d6b45f}.v39-side-log-entry.danger{border-left-color:#d87365}.v39-side-log-entry.debug{border-left-color:#9c87d8}
     .v39-side-log-entry-head{display:flex;align-items:center;gap:5px;min-width:0}
-    .v39-side-log-entry-head span{flex:0 0 auto;color:#79d29b;font-size:var(--font-log);font-weight:800}
-    .v39-side-log-entry-head b{min-width:0;white-space:normal;overflow-wrap:anywhere;color:#e5d194;font-size:var(--font-log)}
+    .v39-side-log-entry-head b{flex:0 0 auto;color:#e5d194;font-size:calc(var(--font-log)*.82);font-weight:700}
+    .v39-side-log-actor{min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:var(--font-log);font-weight:800}
     .v39-side-log-entry p{margin:0;color:#e2e9e9;font-size:var(--font-log);line-height:1.35;word-break:break-word}
     .v39-side-log-entry small{color:#93a6aa;font-size:var(--font-log);line-height:1.25}
     .v39-side-log-details-inline{padding-top:3px;border-top:1px solid rgba(78,102,111,.45);color:#b9c8ca!important}
@@ -310,6 +351,7 @@ function install() {
   </div><div id="v39-side-log-list"></div>`;
   playfield.appendChild(rail);
   playfield.classList.add("v39-has-side-log");
+  rail.querySelector('#v39-side-log-list')?.addEventListener('scroll',updateVisibleTurn,{passive:true});
 
   // 戦闘イベントもチャットと同じ右側の枠へ。別々の絶対配置では重なってしまう。
   const previewHost = document.createElement("div");
@@ -386,7 +428,7 @@ window.addEventListener("v39:combat-log", event => {
   const detail = event.detail;
   const entries = (detail.entries || []).filter(entry => text(entry.targetName) && Number.isFinite(entry.total));
   const message = entries.length
-    ? [`${text(detail.attackerName, detail.summary.split("：")[0])} / ${text(detail.skillName)}`,
+    ? [text(detail.skillName),
       ...entries.map(entry => {
         const hits = (entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss");
         const result = hits.length && hits.every(hit => hit === "Miss") ? "Miss" : `${entry.total}ダメージ`;
@@ -394,7 +436,7 @@ window.addEventListener("v39:combat-log", event => {
       })].join("\n")
     : detail.summary;
   const map = window.__v39FieldRuntime?.mapData;
-  pushV39SideRailMessage({channel:"battle",title:map?.isUnderground ? `洞窟 ${map.caveFloor}階` : "戦闘",message,details:entries.length ? detail.summary : "",collapsible:true,combatVisibility:combatVisibility(detail)});
+  pushV39SideRailMessage({channel:"battle",title:map?.isUnderground ? `洞窟 ${map.caveFloor}階` : "戦闘",actorId:detail.attackerId,actorName:detail.attackerName,message,details:entries.length ? detail.summary : "",collapsible:true,combatVisibility:combatVisibility(detail)});
 });
 
 let logViewKey = "";

@@ -58,6 +58,11 @@ let previewPlaying = false;
 let loopRequested = false;
 let sleepPending = false;
 let previewFrameIndex = 0;
+let previewSpeedPercent = 100;
+export function setV39EffectPreviewSpeed(percent){
+  previewSpeedPercent=Math.max(25,Math.min(400,Number(percent)||100));
+  if(previewPanelVisible())schedulePanelPreview(0);
+}
 let previewBounds = null;
 let editorActions = {};
 let closeHandler = null;
@@ -590,7 +595,7 @@ function playPanelPreview() {
       colorStrengthPercent:descriptor.colorStrengthPercent,
       renderStyle:"soft",
       showPreviousFrameGhost:true,
-      totalDurationMs:1500,
+      totalDurationMs:Math.round(1500*100/previewSpeedPercent),
       sequenceGapMs:10,
       depth:10,
       displayName:"v39-effect-settings-preview",

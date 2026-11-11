@@ -55,36 +55,53 @@ try {
       if(map.wallMap?.[y])map.wallMap[y][x]=null;
     }
     const corpse={id:'magic-body',race:'オーガ',className:'ウォーリアー',level:25,prerequisiteClassLevels:{ファイター:10},
-      promotionGrowthStart:{level:25,raceLevels:8,classLevels:7},x:8,y:7,state:'死亡',hp:0,currentHp:0,equipment:[]};
-    window.updateV39ActiveFactionState({units:[caster],squads:[{id:'solo',unitIds:[caster.id]}],selectedUnitId:caster.id,combatRuntime:{}});
-    window.setV39GameState({enemies:[corpse],enemySquads:[],neutralVillages:[],worldEnvironment:{}},{reason:'inheritance-test'});
+      promotionGrowthStart:{level:25,raceLevels:8,classLevels:7},x:8,y:8,state:'死亡',hp:0,currentHp:0,equipment:[]};
+    const enemyCorpse={...corpse,id:'enemy-body',x:8,y:7};
+    const livingAlly={...corpse,id:'living-ally',x:9,y:7,state:'生存',hp:100,currentHp:100,maxHp:100,ap:40,currentAp:40};
+    const livingEnemy={...livingAlly,id:'living-enemy',x:9,y:8};
+    window.updateV39ActiveFactionState({units:[caster,corpse,livingAlly],squads:[{id:'solo',unitIds:[caster.id]}],selectedUnitId:caster.id,combatRuntime:{}});
+    window.setV39GameState({enemies:[enemyCorpse,livingEnemy],enemySquads:[],neutralVillages:[],worldEnvironment:{}},{reason:'inheritance-test'});
     window.activateV39FooterTab('squad');window.refreshV39SquadDerivedUI();document.querySelector('[data-squad-detail-tab="action"]')?.click();
     await window.waitForV39MapRenderSettled();
   });
   await page.locator('#detailTechniqueList [data-v39-attack-name="TEST_死者の呼び声"]').click();
-  const before=await page.evaluate(()=>{
-    const s=window.getV39GameState({includeWorlds:false}),f=window.getV39ActiveFactionState(),ap=f.units[0].ap;
-    window.setV39GameState({enemies:s.enemies.map(u=>({...u,race:'ヒューマン',className:'ファイター',level:1,prerequisiteClassLevels:{},promotionGrowthStart:null}))},{reason:'level-one-corpse'});
-    window.executeV39AttackAt(8,7);
-    const after=window.getV39ActiveFactionState();
-    window.setV39GameState({enemies:s.enemies},{reason:'restore-test-corpse'});
-    return {ap,after:after.units[0].ap,pending:Object.keys(after.combatRuntime.pendingActionsByUnitId || {}).length};
-  });
-  assert.equal(before.ap,before.after);assert.equal(before.pending,0,'invalid conversion must not start a cast');
   await page.evaluate(()=>{
-    window.executeV39AttackAt(8,7);window.executeV39AttackAt(8,7);
     const s=window.getV39GameState({includeWorlds:false});
     window.setV39GameState({timeline:{...s.timeline,turnNumber:s.timeline.turnNumber+1}},{reason:'test-cast-resolution'});
     window.dispatchEvent(new CustomEvent('v39:turn-advanced',{detail:{turnNumber:s.timeline.turnNumber+1}}));
   });
+  await page.locator('[data-v39-cast-release]').click();
+  const calls=await page.evaluate(()=>[window.executeV39AttackAt(8,7),window.executeV39AttackAt(8,7)]);
+  assert.equal(calls.includes(true),true,'enemy corpse can be selected for the skill');
   const magic=await page.evaluate(()=>({f:window.getV39ActiveFactionState(),state:window.getV39GameState({includeWorlds:false})}));
-  assert.equal(magic.state.enemies.some(u=>u.id==='magic-body'),false,'corpse consumed only on conversion');
-  const raised=magic.f.units.find(u=>u.undeadOrigin?.unitId==='magic-body');
+  assert.equal(magic.f.units.some(u=>u.id==='magic-body'),true,'unselected allied corpse remains');
+  assert.equal(magic.state.enemies.some(u=>u.id==='enemy-body'),false,'enemy corpse can be converted');
+  assert.equal(magic.f.units.some(u=>u.id==='living-ally'),true,'unselected living ally remains');
+  assert.equal(magic.state.enemies.some(u=>u.id==='living-enemy'),true,'living enemy remains untouched');
+  const livingCheck=await page.evaluate(async()=>{
+    const {selectV39SkillUndeadTargets:select,convertV39CorpsesInDeathFog:convert}=await import('/src/lib/v39-corpse-undead-rules.js');
+    const {createV39EventEnemy:createEnemy}=await import('/src/v39/ai/v39-enemy-spawn.js');
+    const state=window.getV39GameState({includeWorlds:false}),area=new Map([['8,8',1],['9,7',1],['9,8',1]]);
+    const targets=select(state,state.activePlayerId,state.activeWorldId,area);
+    const patch=convert(state,window.__v39FieldRuntime.mapData,state.timeline.turnNumber,{createEnemy,random:()=>0,...targets});
+    return {corpses:[...targets.corpseIds],living:[...targets.livingUnitIds],
+      spawned:patch.spawned.map(row=>({source:row.origin.corpseId,level:row.enemy.level,ap:row.enemy.ap,hp:row.enemy.hp,maxHp:row.enemy.maxHp})),
+      enemyAlive:patch.enemies.some(unit=>unit.id==='living-enemy'),
+      originalAllyGone:!patch.players.some(player=>player.factionState?.units?.some(unit=>unit.id==='living-ally'))};
+  });
+  assert.deepEqual(livingCheck.corpses,['magic-body']);
+  assert.deepEqual(livingCheck.living,['living-ally']);
+  assert.equal(livingCheck.spawned.some(row=>row.source==='living-ally'&&row.level===22&&row.ap===40),true,'living ally converts immediately with corpse inheritance and keeps AP');
+  assert.equal(livingCheck.spawned.find(row=>row.source==='living-ally').hp,livingCheck.spawned.find(row=>row.source==='living-ally').maxHp,'new undead starts at full HP');
+  assert.equal(livingCheck.spawned.some(row=>row.source==='magic-body'),true,'allied corpse can also convert');
+  assert.equal(livingCheck.enemyAlive,true,'living enemy is excluded');
+  assert.equal(livingCheck.originalAllyGone,true,'living source unit is replaced');
+  const raised=magic.f.units.find(u=>u.undeadOrigin?.unitId==='enemy-body');
   assert(raised,'native death-call creates friendly undead');assert.equal(raised.level,22);assert.equal(raised.equipment.length,0);
   assert.equal(magic.f.combatRuntime.cooldownsByUnitId['expedition-test-king']['TEST_死者の呼び声'],magic.state.timeline.turnNumber+1);
   const saved=await page.evaluate(()=>{
     window.importV39SaveJson(window.exportV39SaveJson());
-    return window.getV39ActiveFactionState().units.find(u=>u.undeadOrigin?.unitId==='magic-body');
+    return window.getV39ActiveFactionState().units.find(u=>u.undeadOrigin?.unitId==='enemy-body');
   });
   assert.equal(saved.level,22);assert.equal(saved.derivedCharacter.raceLevels,4);
   assert.deepEqual(saved.derivedCharacter.prerequisiteClassLevels,{ファイター:5,ウォーリアー:3});
@@ -97,6 +114,25 @@ try {
   const frame=await page.evaluate(id=>{const image=window.getV39MapEntityMarker(id).list.find(child=>child.type==='Image');return {x:image.frame.cutX,y:image.frame.cutY};},saved.id);
   assert.equal(frame.y,256);assert.equal(frame.x,saved.className==='ゾンビ'?0:128,'field renders original ogre species');
   await page.screenshot({path:'output/web-game/undead-inheritance/magic.png'});
+  await page.evaluate(()=>{
+    const faction=window.getV39ActiveFactionState(),state=window.getV39GameState({includeWorlds:false});
+    window.updateV39ActiveFactionState({units:faction.units.map(unit=>unit.id==='living-ally'?{...unit,x:8,y:7}:unit)});
+    window.setV39GameState({timeline:{...state.timeline,turnNumber:state.timeline.turnNumber+1}},{reason:'living-conversion-ready'});
+    window.dispatchEvent(new CustomEvent('v39:turn-advanced',{detail:{turnNumber:state.timeline.turnNumber+1}}));
+  });
+  await page.locator('#detailTechniqueList [data-v39-attack-name="TEST_死者の呼び声"]').click();
+  await page.evaluate(()=>{
+    const state=window.getV39GameState({includeWorlds:false});
+    window.setV39GameState({timeline:{...state.timeline,turnNumber:state.timeline.turnNumber+1}},{reason:'living-conversion-cast'});
+    window.dispatchEvent(new CustomEvent('v39:turn-advanced',{detail:{turnNumber:state.timeline.turnNumber+1}}));
+  });
+  await page.locator('[data-v39-cast-release]').click();
+  const liveResult=await page.evaluate(()=>({accepted:window.executeV39AttackAt(8,7),state:window.getV39GameState({includeWorlds:false})}));
+  assert.equal(liveResult.accepted,true,'living allied target accepts undead conversion');
+  const liveFaction=liveResult.state.players.find(player=>player.id===liveResult.state.activePlayerId).factionState;
+  assert.equal(liveFaction.units.some(unit=>unit.id==='living-ally'),false,'living source is removed');
+  assert.equal(liveFaction.units.some(unit=>unit.undeadOrigin?.unitId==='living-ally'),true,'living ally becomes an undead unit');
+  assert.equal(liveResult.state.enemies.some(unit=>unit.id==='living-enemy'),true,'living enemy remains alive');
   await page.setViewportSize({width:390,height:844});
   await page.waitForTimeout(300);
   await page.screenshot({path:'output/web-game/undead-inheritance/magic-mobile.png'});

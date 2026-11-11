@@ -21,7 +21,8 @@ export function isV39TestSkillModeEnabled() {
   return storedTestModeEnabled();
 }
 
-const powerFields=new Set([...DAMAGE_TYPE_FIELDS,...SKILL_STATE_KEYS,...TIMED_EFFECT_FIELDS,'呪い','燃焼','回復','ガード','全威力','体幹','ノックバック']);
+const powerFields=new Set([...DAMAGE_TYPE_FIELDS,...SKILL_STATE_KEYS,...TIMED_EFFECT_FIELDS,
+  '力場','精神攻撃','呪い','燃焼','回復','ガード','全威力','体幹','ノックバック']);
 export function describeV39TestSkillData(row){
   return Object.entries(row||{}).filter(([key,value])=>!['名前','詳細','説明','ルビ','テスト専用'].includes(key)&&value!==null&&value!==undefined&&value!==''&&['string','number','boolean'].includes(typeof value)).map(([key,value])=>{
     const numeric=typeof value==='number'||typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value));
@@ -40,6 +41,12 @@ export function getV39TestSkillRows() {
 export function getV39UnitTestSkillRows(unit) {
   if (!isV39TestSkillModeEnabled()) return [];
   const names = new Set((Array.isArray(unit?.testSkillNames) ? unit.testSkillNames : []).map(text).filter(Boolean));
+  // The skill-test field stores names when it starts. Include newly added fixture
+  // actions for an already running or loaded skill-test unit as well.
+  if (unit?.testOnly === true && /^trigger-test-(?:a|b)(?:\d+)?$/.test(text(unit.id))) {
+    for (const row of triggerFixture.actions) names.add(text(row?.名前));
+    if(text(unit.id)==='trigger-test-a')for(const name of triggerFixture.units[0]?.passiveSkillNames||[])names.add(text(name));
+  }
   if (!names.size) return [];
   return getV39TestSkillRows().filter(row => names.has(text(row?.名前)));
 }
@@ -60,5 +67,5 @@ export function getV39UnitTestTechniques(unit) {
 }
 
 export function isV39TestInstantDeathSkill(skillRow) {
-  return skillRow?.テスト専用 === true && text(skillRow?.効果) === "即死";
+  return skillRow?.テスト専用 === true && text(skillRow?.効果) === "即死" && !(Number(skillRow?.呪い)>0||Number(skillRow?.力場)>0);
 }

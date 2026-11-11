@@ -1,6 +1,7 @@
 import {applyV39RestraintPenalties} from './v39-restraint.js';
 import {applyV39ActiveCombatEffects} from './v39-combat-engine.js';
 import {applyV39TerrainModifiers} from './v39-terrain-modifiers.js';
+import {applyV39TransformationPassives} from './v39-passive-rules.js';
 const n=value=>Number(value)||0;
 // Shared by combat and ability displays; never writes the stored base values.
 export function resolveV39CurrentUnitAbilities(unit,options={}){
@@ -13,10 +14,14 @@ export function resolveV39CurrentUnitAbilities(unit,options={}){
   const effects=player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit.id]||state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[unit.id]||[];
   const turn=n(state?.timeline?.turnNumber);
   const active=applyV39ActiveCombatEffects(unit,temporaryEffects?effects.filter(effect=>!effect.expiresAtTurn||effect.expiresAtTurn>turn):[]);
-  const penalty=Math.max(0,Math.min(1,n(active.starvationPenaltyRate)));
-  const current=penalty>0?{...active,
-    status:Object.fromEntries(Object.entries(active.status||{}).map(([key,value])=>[key,key==='HP'?value:Math.floor(n(value)*(1-penalty))])),
-    skillLevels:Object.fromEntries(Object.entries(active.skillLevels||{}).map(([key,value])=>[key,Math.floor(n(value)*(1-penalty))]))}:active;
+  const transformation=temporaryEffects?effects.find(effect=>effect?.stackGroup==='transformation'&&Number(effect?.expiresAtTurn)>turn):null;
+  active.activeTransformationSystem=transformation?.system||'';
+  active.timedWeaponEnhancements=temporaryEffects?effects.filter(effect=>effect?.skillRow&&(!effect.expiresAtTurn||effect.expiresAtTurn>turn)):[];
+  const transformed=temporaryEffects?applyV39TransformationPassives(active):active;
+  const penalty=Math.max(0,Math.min(1,n(transformed.starvationPenaltyRate)));
+  const current=penalty>0?{...transformed,
+    status:Object.fromEntries(Object.entries(transformed.status||{}).map(([key,value])=>[key,key==='HP'?value:Math.floor(n(value)*(1-penalty))])),
+    skillLevels:Object.fromEntries(Object.entries(transformed.skillLevels||{}).map(([key,value])=>[key,Math.floor(n(value)*(1-penalty))]))}:transformed;
   const environmental=applyV39TerrainModifiers(current,mapData);
   return temporaryEffects?applyV39RestraintPenalties(environmental,state):environmental;
 }

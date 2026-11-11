@@ -1,6 +1,7 @@
 import {configureLogisticsRoute,controlLogisticsRoute,advanceLogisticsRoutes,logisticsEndpoints,logisticsGroups,V39_LOGISTICS_RESOURCES} from '../../lib/v39-logistics-routes.js';
 import {getV39TransportCargo,configureV39TransportRoute,setV39UnitTransportAssignment} from '../../lib/v39-transport-rules.js';
-import {tradeBank,getTradeCargo} from '../../lib/v39-trade-state.js';
+import {tradeBank,getTradeCargo,stopV39Trade} from '../../lib/v39-trade-state.js';
+import {findV39TradeBlockingRubble,chooseV39TradeRubbleAction} from '../../lib/v39-trade-logistics.js';
 import {resolveV39LogisticsConnection} from '../../lib/v39-logistics-connections.js';
 
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
@@ -36,7 +37,9 @@ function rows(s){
   for(const {contract:c,side,unit:u,ownerPlayerId,foreign} of getV39VisibleTradeLogistics(s,s.activePlayerId)){
     const owner=s.players.find(p=>p.id===ownerPlayerId);
     result.push({id:`trade:${c.id}${foreign?`:${ownerPlayerId}`:''}`,kind:'trade',contract:c,side,unit:u,ownerPlayerId,foreign,
-      name:`${owner?.label||ownerPlayerId} / ${c.method==='mail'?'郵送':'貿易'} / ${u.name}`,memberIds:side.memberIds,status:side.stage||c.status,reason:side.reason||c.reason,enabled:u.tradeAssignment.automatic,from:tradeBank(s,side)?.name||'拠点',to:tradeBank(s,c.sides.find(peer=>peer.partyId!==side.partyId||peer.kind!==side.kind))?.name||'相手拠点',cargo:getTradeCargo(s,side).resourcesByType});
+      name:`${owner?.label||ownerPlayerId} / ${c.method==='mail'?'郵送':'貿易'} / ${u.name}`,memberIds:side.memberIds,status:side.stage||c.status,reason:side.reason||c.reason,enabled:u.tradeAssignment.automatic,
+      blockedRubble:!foreign&&c.status==='active'&&(side.blockedRubble||/経路|瓦礫/.test(side.reason||''))?findV39TradeBlockingRubble(s,side,c,s.explorationWorlds?.surface?.map):null,
+      from:tradeBank(s,side)?.name||'拠点',to:tradeBank(s,c.sides.find(peer=>peer.partyId!==side.partyId||peer.kind!==side.kind))?.name||'相手拠点',cargo:getTradeCargo(s,side).resourcesByType});
   }
   return result;
 }
@@ -117,7 +120,12 @@ function render(){
   const positionVisible=row?.unit&&(!row.foreign||window.isV39TestMode?.()||window.isV39TileInCurrentVision?.(row.unit.x,row.unit.y)&&window.isV39EntityDetected?.(row.unit));
   const locationControls=row?.unit&&!row.foreign?`<div class="logistics-controls"><button data-logistics-world="unit">担当部隊を表示</button>${(row.unit.worldId||'surface')!=='surface'&&(s.activeWorldId||'surface')!=='surface'?'<button data-logistics-world="surface">地上経路を表示</button>':''}</div>${mapRoute(s,row)?.projected?'<p class="logistics-hint">地上の洞窟入口と搬送先拠点を結ぶ物資の流れです。</p>':''}`:'';
   updateV39RetainedMarkup(panel,`<header><b>物流</b><select data-logistics-filter aria-label="物流の絞り込み">${[['all','すべて'],['active','稼働中'],['paused','中断・完了']].map(([id,name])=>`<option value="${id}"${id===filter?' selected':''}>${name}</option>`).join('')}</select><button data-logistics-new>運搬を設定</button>${testView}</header>
-    <div class="logistics-panes"><div class="logistics-list">${visible.map(r=>`<button data-logistics-select="${esc(r.id)}" aria-pressed="${r.id===selected}"><b>${esc(r.name)}</b><small>${esc(r.from)} → ${esc(r.to)}</small><span>${esc(statusText(r.status))}</span><small>${esc(goods(r.cargo))}</small></button>`).join('')||'<p>輸送任務がありません。</p>'}</div><div class="logistics-detail">${row?`<h3>${esc(row.name)}</h3><p>${esc(row.from)} → ${esc(row.to)}</p><p>${esc(statusText(row.status))}${row.reason?` / ${esc(row.reason)}`:''}</p><p>積荷：${esc(goods(row.cargo))}</p>${row.kind==='route'?`<p>${esc(row.resource)} × ${row.amount} / ${row.repeat?'自動往復':'片道'} / ${row.memberIds.length}体</p><div class="logistics-controls"><button data-logistics-control="${row.enabled?'pause':'resume'}">${row.enabled?'中断':'再開'}</button><button data-logistics-control="return">帰還</button><button data-logistics-control="remove">任務解除</button></div>`:row.kind==='legacy'?'<p>既存のユニット任務</p><button data-logistics-legacy>中断・再開</button><button data-logistics-legacy-remove>任務解除</button>':'<button data-logistics-trade>取引画面を開く</button>'}${locationControls}<p class="logistics-hint">地図は拠点間の物資の流れを表示（実際の歩行経路ではありません）。矢印＝物資の方向、×＝停止、Ⅱ＝待機。</p>${row.unit?`<p>現在地：${(row.unit.worldId||'surface')==='surface'?'地上':'洞窟'} ${positionVisible?`(${row.unit.x},${row.unit.y})`:'索敵外'}</p><details><summary>担当 ${row.memberIds.length}体</summary>${row.memberIds.map(id=>`<p>${esc(rowFaction?.units.find(u=>u.id===id)?.name||'不在')}</p>`).join('')}</details>`:''}`:'<p>任務を選ぶと物資と経路を確認できます。</p>'}</div></div><output>${esc(message)}</output>`,{preserveInput:true});
+    <div class="logistics-panes"><div class="logistics-list">${visible.map(r=>`<button data-logistics-select="${esc(r.id)}" aria-pressed="${r.id===selected}"><b>${esc(r.name)}</b><small>${esc(r.from)} → ${esc(r.to)}</small><span>${esc(statusText(r.status))}</span><small>${esc(goods(r.cargo))}</small></button>`).join('')||'<p>輸送任務がありません。</p>'}</div><div class="logistics-detail">${row?`<h3>${esc(row.name)}</h3><p>${esc(row.from)} → ${esc(row.to)}</p><p>${esc(statusText(row.status))}${row.reason?` / ${esc(row.reason)}`:''}</p><p>積荷：${esc(goods(row.cargo))}</p>${row.kind==='route'?`<p>${esc(row.resource)} × ${row.amount} / ${row.repeat?'自動往復':'片道'} / ${row.memberIds.length}体</p>${row.blockedRubble?`<p>瓦礫で輸送停止：${esc(row.blockedRubble.key)}</p><div class="logistics-controls"><button data-logistics-control="detour">迂回</button><button data-logistics-control="clear">担当部隊で撤去</button><button data-logistics-control="return">輸送中止・帰還</button></div>`:''}<div class="logistics-controls"><button data-logistics-control="${row.enabled?'pause':'resume'}">${row.enabled?'中断':'再開'}</button><button data-logistics-control="return">帰還</button><button data-logistics-control="remove">任務解除</button></div>`:row.kind==='legacy'?'<p>既存のユニット任務</p><button data-logistics-legacy>中断・再開</button><button data-logistics-legacy-remove>任務解除</button>':'<button data-logistics-trade>取引画面を開く</button>'}${locationControls}<p class="logistics-hint">地図は拠点間の物資の流れを表示（実際の歩行経路ではありません）。矢印＝物資の方向、×＝停止、Ⅱ＝待機。</p>${row.unit?`<p>現在地：${(row.unit.worldId||'surface')==='surface'?'地上':'洞窟'} ${positionVisible?`(${row.unit.x},${row.unit.y})`:'索敵外'}</p><details><summary>担当 ${row.memberIds.length}体</summary>${row.memberIds.map(id=>`<p>${esc(rowFaction?.units.find(u=>u.id===id)?.name||'不在')}</p>`).join('')}</details>`:''}`:'<p>任務を選ぶと物資と経路を確認できます。</p>'}</div></div><output>${esc(message)}</output>`,{preserveInput:true});
+  panel.querySelector('[data-logistics-trade-decisions]')?.remove();
+  if(row?.kind==='trade'&&!row.foreign&&row.blockedRubble){
+    const detail=panel.querySelector('.logistics-detail');
+    detail?.insertAdjacentHTML('beforeend',`<div data-logistics-trade-decisions><p>瓦礫で取引便が停止：${esc(row.blockedRubble.key)}</p><div class="logistics-controls"><button data-logistics-trade-choice="detour">迂回</button><button data-logistics-trade-choice="clear">担当部隊で撤去</button><button data-logistics-trade-choice="cancel">災害による取引中止（友好度−5）</button></div></div>`);
+  }
   drawRoutes(s,visible);
 }
 function closeModal(){document.getElementById('v39-logistics-dialog')?.remove();if(modal?.lock!==undefined)window.endV39MapInputLock?.(modal.lock);modal=null;}
@@ -156,6 +164,15 @@ document.addEventListener('click',async event=>{
   }
   const control=el.closest('[data-logistics-control]');
   if(control&&row){const result=controlLogisticsRoute(s,s.activePlayerId,row.id,control.dataset.logisticsControl);message=result.ok?'任務を更新しました':result.reason;if(result.ok)window.setV39GameState({players:result.state.players},{reason:'logistics-route-control'});render();}
+  const tradeChoice=el.closest('[data-logistics-trade-choice]');
+  if(tradeChoice&&row?.kind==='trade'&&!row.foreign&&row.blockedRubble){
+    const choice=tradeChoice.dataset.logisticsTradeChoice;
+    const result=choice==='cancel'?stopV39Trade(s,s.activePlayerId,row.contract.id,true,{reason:'disaster'})
+      :chooseV39TradeRubbleAction(s,s.activePlayerId,row.contract.id,choice,s.explorationWorlds?.surface?.map);
+    message=result.ok?result.message:result.reason;
+    if(result.ok)window.setV39GameState(result.state,{reason:'logistics-trade-rubble-choice'});
+    render();return;
+  }
   if(el.closest('[data-logistics-trade]'))window.openV39TradeModal?.('','contracts');
   if(el.closest('[data-logistics-legacy-remove]')&&row){
     const u=row.unit,result=u.caveDuty?window.assignV39MineDuty?.(u.id,'none'):setV39UnitTransportAssignment(s,s.activePlayerId,u.transportAssignment.originSettlementId,u.id,false);

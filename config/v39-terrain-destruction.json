@@ -1,4 +1,13 @@
 {
+  "caveEntrance": {"maxHp":500,"rubbleDurability":350},
+  "landslide": {
+    "baseVolumeByTerrain": {"丘陵":350,"山岳":700,"岩場":700},
+    "maxFlowTiles":3,
+    "volumeShare":[0.5,0.3,0.2],
+    "referenceVolume":350,
+    "powerPerHeightDifference":40,
+    "powerPerBaseVolume":20
+  },
   "effect": {
     "referencePower":100,
     "powerPerScale":200,

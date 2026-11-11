@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import {getV39ActionBlock} from '../../lib/v39-control-status.js';
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
 import { showV39Feedback } from "../ui/v39-feedback.js";
 import { getHexDistance, getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
@@ -375,6 +376,10 @@ function startMove() {
   }
   if(state.timeline.phase!==V39_TURN_PHASE.PLAYER)return false;
   const moveGroup = resolveV39SquadMovementGroup(faction, unitId(unit), { followFormation:true });
+  if (moveGroup.participants?.some(member => getV39ActionBlock(member, state.timeline.turnNumber, 'move'))) {
+    showToast("状態異常で移動できないキャラクターがいます");
+    return false;
+  }
   if (moveGroup.participants?.some(member => isV39UnitWaiting(member, state.timeline?.turnNumber))) {
     showToast("部隊にこのターン待機済みのキャラクターがいます");
     return false;
@@ -520,6 +525,11 @@ async function applyMovement() {
   }
 
   const currentGroup = resolveV39SquadMovementGroup(faction, session.unitId, { followFormation:true });
+  const turn=window.getV39GameState({includeWorlds:false}).timeline.turnNumber;
+  if(currentGroup.participants?.some(member=>getV39ActionBlock(member,turn,'move'))){
+    clearMoveMode();
+    return;
+  }
   if (!currentGroup.ok) {
     showToast(currentGroup.reason || "移動部隊を再取得できませんでした");
     clearMoveMode();

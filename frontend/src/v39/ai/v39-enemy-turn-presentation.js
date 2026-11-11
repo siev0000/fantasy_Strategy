@@ -1,4 +1,5 @@
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import {holdV39CombatVisualHp,releaseV39CombatVisualHp} from '../../lib/v39-combat-visual-state.js';
 import { isAliveEnemyAiUnit } from "../../lib/v39-enemy-ai-planner.js";
 import { V39_ENEMY_TURN_PRESENTATION_CONFIG } from "../../lib/v39-enemy-ai-config.js";
 import { V39_MOVEMENT_PRESENTATION_BALANCE } from "../../lib/v39-gameplay-balance.js";
@@ -172,16 +173,32 @@ async function playAttack(event) {
   if (!target) return false;
   const zoomChanged = await applyAttackFrame(event);
   await delay(Math.max(0, number(V39_ENEMY_TURN_PRESENTATION_CONFIG.preAttackPauseMs, 500)));
+  const logs=Array.isArray(event.combatLogs)?event.combatLogs:[];
+  const entries=logs.flatMap(log=>log.entries||[]);
+  const present=phase=>logs.forEach((detail,index)=>{
+    if(phase==='start'&&index>0)return;
+    window.dispatchEvent(new CustomEvent('v39:combat-presentation',{detail:{...detail,presentationPhase:phase}}));
+  });
+  holdV39CombatVisualHp(entries);
+  let started=false,late=false;
+  const showLate=()=>{if(late)return;late=true;present('late');};
+  try{
   await window.playV39MapEffect?.({
     effectName:event.effectName || "斬撃",
-    skillRow:event.skillRow, attacker:event.attacker,hitEntries:(event.combatLogs || []).flatMap(log=>log.entries || []),
+    skillRow:event.skillRow, attacker:event.attacker,hitEntries:entries,
     attackerTile:event.from,
     tileX:target.x,
     tileY:target.y,
-    splash:Math.max(0, number(event.skillRow?.炸裂))
+    splash:Math.max(0, number(event.skillRow?.炸裂)),
+    onFrame:()=>{
+      if(started)return;
+      started=true;present('start');
+    },
+    onImpactLate:showLate
   });
-  for (const detail of Array.isArray(event.combatLogs) ? event.combatLogs : []) {
-    window.dispatchEvent(new CustomEvent("v39:combat-presentation", { detail }));
+  }finally{
+    if(!started)present('start');
+    showLate();present('end');releaseV39CombatVisualHp(entries);
   }
   return zoomChanged;
 }

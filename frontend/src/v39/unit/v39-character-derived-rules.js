@@ -1,3 +1,4 @@
+import {normalizeV39ReductionFields} from '../../lib/v39-reduction-keys.js';
 import {applyAbilityDamage} from '../../lib/v39-ability-damage.js';
 import { classData as classDb, skillData as skillDb, testClassData as testClassDb, testSkillData as testSkillDb } from "../../lib/game-data-registry.js";
 import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
@@ -340,7 +341,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
     squadSupportResistanceModifiers:{},
     skillLevels: { ...damaged.skillLevels },
     abilityDamageAppliedDeltas:damaged.abilityDamageAppliedDeltas,
-    resistances: { ...resistances, ...(unit?.resistanceOverrides || {}) },
+    resistances: { ...resistances, ...normalizeV39ReductionFields(unit?.resistanceOverrides) },
     equipment,
     acquiredSkillNames: [...derived.acquiredSkillNames],
     passiveBaseSkillNames:[...derived.passiveBaseSkillNames],

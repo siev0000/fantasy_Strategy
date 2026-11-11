@@ -1,8 +1,10 @@
 import {inspectV39Restraint,getV39RestraintPenalty,resolveV39RestraintRecovery} from '../../lib/v39-restraint.js';
+import {V39_NUMERIC_STATUSES,readV39NumericStatus,resolveV39FatigueApLoss} from '../../lib/v39-control-status.js';
 import {getHexDistance} from '../../lib/hex-grid.js';
 import {resolveAttackRange,applyV39ActiveCombatEffects} from '../../lib/v39-combat-engine.js';
 import {describeV39Bleeding} from '../../lib/v39-bleeding.js';
 import {resolveV39UnitAbilityDisplay} from '../../lib/v39-current-unit-abilities.js';
+import {v39SustainCost} from '../../lib/v39-sustained-effects.js';
 import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 import "./v39-unit-detail.css";
@@ -73,6 +75,22 @@ export function renderV39UnitConditions(unit){
   const state=globalThis.window?.getV39GameState?.({includeWorlds:false}),turn=Number(state?.timeline?.turnNumber)||1;
   const remaining=expires=>expires?'残り'+Math.max(0,Number(expires)-turn)+'T':'期限なし';
   const active=expires=>!expires||Number(expires)>turn;
+  if(unit?.knockedDown)debuffs.push(['転倒','起き上がり 20AP / 回避 -25%']);
+  if(unit?.staggeredTurn===turn&&Number(unit.ap??unit.currentAp)<=0)debuffs.push(['怯み','AP 0']);
+  for(const kind of V39_NUMERIC_STATUSES){
+    const value=readV39NumericStatus(unit,kind);
+    if(!value)continue;
+    const detail=kind==='疲労'?`最大AP -${resolveV39FatigueApLoss(unit)}`:kind==='麻痺'?`AP -${value}`:`感知・命中 -${value}`;
+    debuffs.push([kind,`${value} / ${detail}`]);
+  }
+  for(const [kind,effect] of Object.entries(unit?.controlStatuses||{})){
+    if(kind==='凍結'){
+      debuffs.push([kind,`凍結値 ${effect.value} / 自然減少 10/T`]);
+      continue;
+    }
+    const turns=Math.max(0,Number(effect.expiresAtTurn)-turn);
+    if(turns||effect.value)debuffs.push([kind,`${turns?`残り${turns}T / `:''}蓄積 ${effect.value}/100`]);
+  }
   for(const [bucket,label]of [['abilityDamage','能力ダメージ'],['abilityCurses','呪い'],['abilityPoison','毒による低下']])for(const [key,value]of Object.entries(unit?.[bucket]||{}))if(Number(value)>0)debuffs.push([label+'：'+key,'-'+value]);
   for(const kind of ['毒','燃焼']){
     const doses=(unit?.periodicDamage||[]).filter(effect=>effect.kind===kind&&effect.remainingTurns>0);
@@ -100,13 +118,18 @@ export function renderV39UnitConditions(unit){
   const maxima={...maximum.status,...maximum.skillLevels,...maximum.resistances};
   for(const effect of effects){
     const stacked=['oneTurn','transformation'].includes(effect.stackGroup),positive=[],negative=[];
+    const durationLabel=effect.sustained?'持続':remaining(effect.expiresAtTurn);
+    if(effect.skillRow?.攻撃手段==='武器'&&Number(effect.skillRow?.物理)>0){
+      const amount=Number(effect.skillRow.物理)*(1+(Number(effect.judgeValue)||0)/100);
+      buffs.push([effect.skillName||'武器強化','武器攻撃時 物理+'+(Math.round(amount*10)/10)+' / '+durationLabel]);
+    }
     for(const [name,value]of Object.entries(effect.modifiers||{})){
       if(!Number(value))continue;
       const applied=stacked||Number(value)===Number(maxima[name]);
       const text=name+(Number(value)>0?'+':'')+value+'（'+(applied?'適用中':'待機中')+'）';
       (Number(value)>0?positive:negative).push(text);
     }
-    const suffix=' / '+remaining(effect.expiresAtTurn)+(stacked?' / '+(effect.stackGroup==='oneTurn'?'1ターン強化':'変身・別枠'):'');
+    const suffix=' / '+durationLabel+(stacked?' / '+(effect.stackGroup==='oneTurn'?'1ターン強化':'変身・別枠'):'');
     if(positive.length)buffs.push([effect.skillName||'継続強化',positive.join(' / ')+suffix]);
     if(negative.length)debuffs.push([effect.skillName||'継続弱体',negative.join(' / ')+suffix]);
   }
@@ -153,9 +176,16 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
   const level=Math.max(1,Math.floor(Number(unit?.level??unit?.lv??unit?.Lv)||1));
   const identity=unit?`<div class="v39-unit-lineage v39-unit-lineage-pair"><span>種族：${escapeHtml(unit.race||'-')}</span><span>クラス：${escapeHtml(unit.className||'-')}</span></div>`:'';
   const aura=adjusted?.cityAuraSkillNames?.length?`<div class="v39-unit-lineage">都市常時：${escapeHtml(adjusted.cityAuraSkillNames.join(' / '))}</div>`:'';
-  return renderV39DetailSection(unit?`ステータス Lv${level}`:'ステータス', `${identity}${aura}<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`)
+  const state=globalThis.window?.getV39GameState?.({includeWorlds:false});
+  const owner=state?.players?.find(player=>player.factionState?.units?.some(row=>row.id===unit?.id));
+  const sustained=(owner?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||[]).filter(effect=>effect.sustained);
+  const ongoing=sustained.length?renderV39DetailSection('持続中',sustained.map(effect=>{
+    const cost=v39SustainCost(effect.skillRow);
+    return `<div class="v39-char-growth-row"><span>${escapeHtml(effect.skillName)}</span><b>毎ターン AP${cost.ap} / HP${cost.hp}</b><button type="button" data-v39-sustain-cancel="${escapeHtml(effect.skillName)}" data-v39-sustain-unit="${escapeHtml(unit.id)}">解除</button></div>`;
+  }).join('')):'';
+  return ongoing+renderV39DetailSection(unit?`ステータス Lv${level}`:'ステータス', `${identity}${aura}<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`)
     + renderV39DetailSection("技能", `<div class="proficiency-grid"${id("detailProficiencyList")}>${skills || empty("技能データなし")}</div>`)
-    + renderV39DetailSection("耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("耐性データなし")}</div>`)
+    + renderV39DetailSection("軽減・耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("軽減・耐性データなし")}</div>`)
     + renderV39UnitConditions(unit);
 }
 

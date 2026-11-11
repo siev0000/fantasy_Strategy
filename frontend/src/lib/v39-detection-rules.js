@@ -6,6 +6,7 @@ import { V39_CAVE_BALANCE, V39_ATTACK_STEALTH_RECOVERY_TURNS } from "./v39-gamep
 import { applyV39TerrainModifiers } from "./v39-terrain-modifiers.js";
 import { resolveV39FogPenalty, isV39FogVisionAllowed } from "./v39-fog-rules.js";
 import {resolveV39DetectionScoutBonus} from './v39-detection-settings.js';
+import {resolveV39PerceptionDamage} from './v39-control-status.js';
 
 export const V39_SCOUT_DISTANCE_DECAY_PER_TILE = 50;
 // ユニットは最低1マスを見通す。地上は索敵75、地下は設定値37.5ごとに1マス広げる。
@@ -24,13 +25,14 @@ function roundTo1(value) {
 
 export function resolveDetectionScoutValue(unit, mapData = globalThis.window?.__v39FieldRuntime?.mapData) {
   unit=applyV39TerrainModifiers(unit,mapData);
-  return Math.max(
-    0,
+  const base = Math.max(
     roundTo1(resolveUnitScoutValue(unit)),
+    roundTo1(number(unit?.skillLevels?.感知 ?? unit?.status?.感知)),
     roundTo1(number(unit?.status?.索敵)),
     roundTo1(number(unit?.索敵)),
     roundTo1(number(unit?.scoutRange))
   );
+  return Math.max(0,base-resolveV39PerceptionDamage(unit));
 }
 
 export function resolveV39UnitVisionRange(unit, mapData = null) {

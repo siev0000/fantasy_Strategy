@@ -1,4 +1,5 @@
 import disasterRows from '../../../data/source/export/json/災害.json';
+import terrainConfig from '../../../config/v39-terrain-destruction.json';
 
 const text=value=>String(value??'').trim();
 const list=value=>text(value).split(/[、,，|/]/u).map(text).filter(Boolean);
@@ -20,13 +21,20 @@ export function resolveV39TerrainDisasterRules(rows){
       special.collapse={id:row.ID,delayTurns:Math.floor(numeric(row,'発生猶予ターン',1)),power:numeric(row,'ダメージ威力'),element:text(row.ダメージ属性)};
     }
   }
+  const landslide=rows.find(row=>row.ID==='災害:土砂崩れ'&&enabled(row.有効));
   return {
     enabled:Object.keys(terrainRulesByName).length>0||!!special.rubble,
     terrainRulesByName,...special,
     durabilityByTerrain:Object.fromEntries(Object.entries(terrainRulesByName).map(([name,rule])=>[name,rule.maxHp])),
     eligibleDamageTypes:[...new Set([...Object.values(terrainRulesByName),special.rubble].filter(Boolean).flatMap(rule=>rule.eligibleDamageTypes))],
     rubbleDurability:special.rubble?.maxHp??0,clearApCost:special.rubble?.clearApCost??0,
-    collapseDelayTurns:special.collapse?.delayTurns??0,collapsePower:special.collapse?.power??0
+    collapseDelayTurns:special.collapse?.delayTurns??0,collapsePower:special.collapse?.power??0,
+    landslide:landslide?{
+      basePower:numeric(landslide,'ダメージ威力')??0,
+      element:text(landslide.ダメージ属性)||'打撃',
+      ...terrainConfig.landslide
+    }:null,
+    caveEntrance:terrainConfig.caveEntrance
   };
 }
 

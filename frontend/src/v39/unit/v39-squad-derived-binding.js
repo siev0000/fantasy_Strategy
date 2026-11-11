@@ -1,4 +1,6 @@
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
+import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
+import {resolveV39MaxAp} from '../../lib/v39-control-status.js';
 import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { resolveV39BaseMoveApCost, resolveV39MovementMultiplier } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
@@ -57,13 +59,14 @@ function unitPosition(unit) {
 }
 
 function hpValues(unit) {
+  unit=visualV39CombatUnit(unit);
   const max = Math.max(0, num(unit?.maxHp ?? unit?.status?.HP, 0));
   const current = Math.max(0, num(unit?.hp ?? unit?.currentHp, max));
   return { current, max };
 }
 
 function apValues(unit) {
-  const max = Math.max(0, num(unit?.maxAp ?? unit?.apMax ?? unit?.status?.AP, 0));
+  const max = resolveV39MaxAp(unit,num(unit?.maxAp ?? unit?.apMax ?? unit?.status?.AP,0));
   const current = Math.max(0, num(unit?.ap ?? unit?.currentAp, max));
   return { current, max };
 }
@@ -500,6 +503,7 @@ function install() {
   }, true);
 
   window.addEventListener("v39:game-state-changed", scheduleRender);
+  window.addEventListener('v39:combat-visual-hp-released',scheduleRender);
   window.addEventListener("v39:unit-selected", scheduleRender);
   window.refreshV39SquadDerivedUI = render;
   window.openV39ActionDetail = name => {

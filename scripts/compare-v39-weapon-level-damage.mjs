@@ -31,10 +31,10 @@ try {
    if(status){attack=status.攻撃;defense=status.防御;}
    const targetHp=status?.HP ?? settings.targetHp,targetLevel=growing?level:settings.targetLevel;
    const attacker=unit('experiment-attacker',level,{...status,攻撃:attack});
-   const target=unit('experiment-target',targetLevel,{...status,防御:defense,物理耐性:resistance});
+   const target=unit('experiment-target',targetLevel,{...status,防御:defense,物理軽減:resistance});
    const armor=armorDefinitions[armorName];
    target.equipment=armor.items;
-   target.status.物理耐性+=armor.resistance.物理耐性 || 0;
+   target.status.物理軽減+=armor.resistance.物理軽減 || 0;
    for(const item of armor.items)for(const [key,value] of Object.entries(item.statusBonus || {}))if(Object.hasOwn(target.status,key))target.status[key]+=value;
    attacker.hp=attacker.maxHp=targetHp;target.hp=target.maxHp=targetHp;
    const qualityWeapon=weaponQuality?createV39EquipmentEntry({装備名:'Experimental weapon',装備箇所:'武器',威力:settings.weaponPower,攻撃AP:25},weaponQuality,'武器1'):null;
@@ -62,7 +62,7 @@ try {
  assert(report.fixedWeaponByLevel.every(row=>row.middle===report.fixedWeaponByLevel[0].middle),'unmodified weapon has no independent attacker-level bonus with fixed stats');
  assert.equal(report.proposedWeaponByLevel.find(row=>row.level===35).weaponMultiplier,2);
  for(const row of report.growthProposedWeapon){assert.equal(row.hp,8*(row.level+5));assert.equal(row.attack,9*(row.level+5));assert.equal(row.defense,8*(row.level+5));assert.equal(row.targetLevel,row.level);}
- for(const row of report.armorComparison){assert(row.middle<=report.growthProposedWeapon.find(r=>r.level===row.level).middle);assert.equal(row.resistance,report.armorDefinitions[row.armor].resistance.物理耐性);}
+ for(const row of report.armorComparison){assert(row.middle<=report.growthProposedWeapon.find(r=>r.level===row.level).middle);assert.equal(row.resistance,report.armorDefinitions[row.armor].resistance.物理軽減);}
  for(const table of Object.values(report).filter(Array.isArray))for(const row of table){
   assert.equal(row.passiveCount,0);assert.equal(row.attackCount,1);assert(row.min<=row.middle&&row.middle<=row.max);
  }
@@ -77,7 +77,7 @@ const markdown=['# Weapon-level damage experiment','',`Settings: ${JSON.stringif
  `Real engine damage multiplier: ${report.damageMultiplier}. One hit, physical, no passive/terrain/army/critical/barrier/friendly-fire bonus.`,
  'Damage is conditional on a hit. Mid uses random factor 0.45 (not a sampled mean); miss chance is excluded. Nominal hit rate: 75%.',
  'Growth comparisons use equal attacker/target levels, HP included. Race/class reference values: 75, except attack/magic power 90. Shared growth helper: round(reference/10) * (5 + level). No class passives, equipment stats or class evolution. Human class-only allocation is used; equal race/class reference rows give the same totals for alternating allocation.',
- `Armor comparison uses real equipment creation/resistance aggregation: ${Object.entries(report.armorDefinitions).map(([name,armor])=>`${name}: ${armor.items.map(i=>i.name).join('+')||'none'} (${armor.quality}), physical resistance ${armor.resistance.物理耐性}`).join('; ')}. Armor status bonuses are included only in the armor comparison. No shield or guard absorption.`,
+ `Armor comparison uses real equipment creation/resistance aggregation: ${Object.entries(report.armorDefinitions).map(([name,armor])=>`${name}: ${armor.items.map(i=>i.name).join('+')||'none'} (${armor.quality}), physical resistance ${armor.resistance.物理軽減}`).join('; ')}. Armor status bonuses are included only in the armor comparison. No shield or guard absorption.`,
  'Only control sections keep target level 35 and HP300. Fixed resistance reduction is target level / 10 * resistance.',
  'Proposed multiplier only changes the synthetic weapon input. Production combat code/config/data are unchanged. Weapon power is rounded by the real engine after stat scaling.','',
  ...sections.flatMap(([title,rows])=>[`## ${title}`,'',table(rows),''])].join('\n');

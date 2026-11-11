@@ -1,3 +1,4 @@
+import {selectV39BaseGarrisons,isV39GarrisonAtHome} from '../../lib/v39-npc-garrison.js';
 import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abilities.js';
 import {isV39SelfTargetSkill,resolveV39GuardAssignments} from '../../lib/v39-unit-guarding.js';
 import {playV39TriggerEffect} from './v39-trigger-presentation.js';
@@ -7,11 +8,23 @@ import {recordV39CombatAchievements} from '../../lib/v39-unit-achievements.js';
 import {applyV39SkillForcedMovement} from '../../lib/v39-skill-forced-movement.js';
 import {collectV39JoinedWallPairs,resolveV39JoinedWallDamageScales,resolveV39SmoothedFootprintOutline} from '../../lib/v39-wall-edges.js';
 
+import {applyV39ControlTurnAp,getV39ActionBlock,resolveV39MaxAp,standUpV39Unit,V39_STAND_UP_AP_COST} from '../../lib/v39-control-status.js';
+import {reduceV39BlockedHealing} from '../../lib/v39-ability-damage.js';
+import {resolveV39ChainDepth,runV39ChainAttacks} from '../../lib/v39-chain-attacks.js';
+import {attachV39HitStatusPopups} from '../../lib/v39-combat-popup-rules.js';
+import {resolveV39TransformationSpec,replaceV39TransformationEffect,resolveV39TransformationMaxHp,scaleV39TransformationHp} from '../../lib/v39-transformation.js';
+import {isV39SustainedSkill,isV39SustainedTornado,moveV39SustainedTornado,v39TornadoTiles} from '../../lib/v39-sustained-effects.js';
+import {applyV39ForcedMovement} from '../../lib/v39-forced-movement.js';
+import {resolveV39SkillForcedMovement} from '../../lib/v39-skill-forced-movement.js';
+
 function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,achievementInfo={}){
+  const chainDepth=achievementInfo.support?0:resolveV39ChainDepth(skillRow);
+  if(chainDepth)patch=applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,chainDepth);
   const result=applyV39SkillForcedMovement({...state,...patch},map,attacker,skillRow,combatLog);
-  for(const entry of result.damageEntries)combatLog.push({...entry,targetId:entry.unitId,targetName:entry.name,hitCount:1,hitResults:[{hit:true,damage:entry.damage}],friendly:false});
+  for(const entry of result.damageEntries)combatLog.push({...entry,targetId:entry.unitId,targetName:entry.name,hitCount:1,hitResults:[{hit:true,damage:entry.damage}],friendly:false,forcedMovementCollision:true});
   for(const entry of result.entries)window.appendV39ActivityLog?.([state.activePlayerId],'戦闘',`${entry.name}: ${entry.source}で${entry.distance}マス移動 (${entry.to.x},${entry.to.y})`,entry);
   const triggered=applyV39SkillTriggerCombat(state,{...state,...patch,players:result.players,enemies:result.enemies,neutralVillages:result.neutralVillages},attacker,skillRow,combatLog,{supportTargetIds:achievementInfo.supportTargetIds||[]});
+  attachV39HitStatusPopups(combatLog,triggered.logs);
   for(const entry of combatLog)if(entry.guardProtectedIds?.length)window.appendV39ActivityLog?.([state.activePlayerId],'戦闘',entry.targetName+'が守護で攻撃を肩代わり', {targetId:entry.targetId,protectedIds:entry.guardProtectedIds});
   for(const log of triggered.logs){
     if(log.entry)queueMicrotask(()=>playV39TriggerEffect(log));
@@ -22,9 +35,10 @@ function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,ach
   }
   const recorded=recordV39CombatAchievements(state,triggered.state,attacker,
     [...combatLog,...(achievementInfo.wallEntries||[])],{...achievementInfo,skillRow});
-  return {...patch,players:recorded.players,enemies:recorded.enemies,neutralVillages:recorded.neutralVillages};
+  return {...patch,players:recorded.players,enemies:recorded.enemies,neutralVillages:recorded.neutralVillages,
+    ...(recorded.enemyCombatRuntime!== (patch.enemyCombatRuntime??state.enemyCombatRuntime)?{enemyCombatRuntime:recorded.enemyCombatRuntime}:{})};
 }
-import {isV39CastingMagic,describeV39Cast,isV39PaidCastRelease} from '../../lib/v39-casting-rules.js';
+import {isV39CastingMagic,describeV39Cast,isV39PaidCastRelease,isV39CastAttackLocked,hasCastAttackLock,V39_CAST_ATTACK_LOCK,V39_CAST_MAINTENANCE_AP} from '../../lib/v39-casting-rules.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import {canV39UnitLeaveOrganicCorpse} from '../../lib/v39-corpse-types.js';
 import {v39HazardRecoveryMultiplier} from '../../lib/v39-hazard-zones.js';
@@ -32,7 +46,7 @@ import {resolveV39CorpseLifetimeTurns} from '../../lib/v39-corpse-lifetime.js';
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
 import {applyV39AttackGroundDamage} from '../world/v39-terrain-destruction.js';
 import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
-import {convertV39CorpsesInDeathFog} from '../../lib/v39-corpse-undead-rules.js';
+import {convertV39CorpsesInDeathFog,selectV39SkillUndeadTargets} from '../../lib/v39-corpse-undead-rules.js';
 import {inspectV39SoulCollection,collectV39Soul} from '../../lib/v39-soul-storage.js';
 import {resolveVillageIncidentCasualties} from '../../lib/v39-village-incidents.js';
 import villageIncidentTest from '../../../../config/v39-village-incident-test.json';
@@ -41,6 +55,7 @@ import {resolveV39UnitMovementStepCost} from '../../lib/v39-terrain-traversal.js
 import {markV39AbandonedVillage} from '../../lib/v39-abandoned-villages.js';
 
 function commitVillageCombatState(patch, options) {
+  options={...options,hitStatusPopups:true};
   const state=window.getV39GameState({includeWorlds:false});
   if(patch.neutralVillages){
     const villages=patch.neutralVillages.map(village=>markV39AbandonedVillage(village,state.timeline.turnNumber));
@@ -66,6 +81,7 @@ import {
   applyV39GuardToDamage,
   canTriggerMeleeCounter,
   isV39SupportSkill,
+  isV39TimedWeaponEnhancement,
   resolveAreaType,
   resolveAttackApCost,
   resolveAttackPower,
@@ -74,6 +90,7 @@ import {
   resolveActionSkillRows,
   resolveAttackRows,
   resolveCounterAttackRow,
+  resolveV39InstantDeath,
   resolveSkillHealing,
   resolveSkillGuard,
   resolveSkillTimedModifiers,
@@ -143,7 +160,8 @@ function currentAp(unit) {
 }
 
 function guardStatePatch(unit, damage, grantedGuard = 0, turnNumber = currentV39TurnNumber()) {
-  const remaining = Math.max(0, integer(damage?.guardRemaining, integer(unit?.guard, 0)));
+  if (unit.knockedDown) return {guard:0,guardExpiresAtTurn:0,...v39DefenseDamagePatch(unit,damage)};
+  const remaining = Math.max(0, number(damage?.guardRemaining, number(unit?.guard, 0)));
   const granted = Math.max(0, integer(grantedGuard, 0));
   const guard = remaining + granted;
   const patch = guard > 0
@@ -152,11 +170,11 @@ function guardStatePatch(unit, damage, grantedGuard = 0, turnNumber = currentV39
   return { ...patch, ...v39DefenseDamagePatch(unit, damage) };
 }
 
-function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, friendly = false, isCounter = false }) {
+function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, powerScale = 1, friendly = false, isCounter = false }) {
   if(Array.isArray(scale)){
     let current=target,merged=null;
     for(const hit of scale){
-      const damage=resolveAppliedAttackDamage({attacker,target:current,skillRow,scale:hit.scale,friendly,isCounter});
+      const damage=resolveAppliedAttackDamage({attacker,target:current,skillRow,scale:hit.scale,powerScale,friendly,isCounter});
       const protectedIds=hit.protectedId?[hit.protectedId]:[];
       if(!merged)merged={...damage,guardProtectedIds:protectedIds};
       else merged={...damage,total:merged.total+damage.total,hits:[...merged.hits,...damage.hits],hitResults:[...merged.hitResults,...damage.hitResults],
@@ -175,15 +193,29 @@ function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, fri
     && !v39DefenseCovers(structure, attacker));
   const personalBarrier = Math.max(0, number(target?.barrier?.remaining));
   const fieldValue = fields.reduce((sum, field) => sum + field.hp, 0);
+  const adjustedAttacker=terrainAdjusted(attacker);
+  const adjustedTarget=terrainAdjusted(fieldValue ? { ...target, barrier:{ remaining:personalBarrier + fieldValue } } : target);
   const baseDamage = computeAttackDamage({
-    attacker:terrainAdjusted(attacker),
-    target:terrainAdjusted(fieldValue ? { ...target, barrier:{ remaining:personalBarrier + fieldValue } } : target),
+    attacker:adjustedAttacker,
+    target:adjustedTarget,
     skillRow,
     scale,
+    powerScale,
+    deferRounding:true,
     friendly,
     isCounter
   });
   if (!isV39TestInstantDeathSkill(skillRow)) {
+    const death=(Number(skillRow?.呪い)>0||baseDamage.detail.damageType==='力場')&&hasV39SkillEffect(skillRow,'即死')
+      ?resolveV39InstantDeath(adjustedAttacker,adjustedTarget,skillRow,applyV39GuardToDamage(target,baseDamage),powerScale)
+      :null;
+    if(death){
+      baseDamage.hits=baseDamage.hits.slice(0,death.index+1);
+      baseDamage.hitResults=baseDamage.hitResults.slice(0,death.index+1);
+      baseDamage.barrierAbsorbed=baseDamage.hitResults.reduce((sum,hit)=>sum+number(hit.barrierAbsorbed),0);
+      baseDamage.missCount=baseDamage.hitResults.filter(hit=>!hit.hit).length;
+      baseDamage.criticalCount=baseDamage.hitResults.filter(hit=>hit.critical).length;
+    }
     const personalConsumed = Math.min(personalBarrier,baseDamage.barrierAbsorbed);
     let consumed = Math.max(0, baseDamage.barrierAbsorbed - personalConsumed);
     baseDamage.fieldBarrierAbsorbed = consumed;
@@ -194,7 +226,15 @@ function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, fri
     }
     baseDamage.barrierRemaining = personalBarrier - personalConsumed;
     baseDamage.barrierAbsorbed = personalConsumed;
-    return applyV39GuardToDamage(target, baseDamage);
+    const damage=applyV39GuardToDamage(target,baseDamage);
+    if(death){
+      const hit=damage.hitResults[death.index];
+      damage.total+=death.beforeHp-hit.damage;
+      damage.hits[death.index]=death.beforeHp;
+      const source=death.curseDamage!=null?{curseDamage:death.curseDamage}:{forceFieldDamage:death.forceFieldDamage};
+      damage.hitResults[death.index]={...hit,damage:death.beforeHp,instantDeath:true,...source};
+    }
+    return damage;
   }
 
   const hp = Math.max(0, Math.floor(number(target?.hp, target?.currentHp)));
@@ -254,7 +294,7 @@ function damagePlacedWalls(map, area, attacker, row, log) {
     if (!scale) continue;
     const rollKey=pairById.get(wall.id)||wall.id;
     let damage = rolls.get(rollKey)||computeAttackDamage({ attacker:terrainAdjusted(attacker),
-      target:{ level:1, status:{ 防御:0, 精神:0, 回避:1 } }, skillRow:row, scale });
+      target:{ level:1, status:{ 防御:0, 精神:0, 速度:1 } }, skillRow:row, scale });
     rolls.set(rollKey,damage);
     if (wall.kind==="結界") {
       const power=Math.floor(resolveAttackPower(row,terrainAdjusted(attacker))*scale);
@@ -305,13 +345,85 @@ function applyDirectDamage(unit, damage, skillRow, { directTarget = false } = {}
   };
 }
 
+function applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,depth){
+  const current={...state,...patch};
+  const player=current.players.find(row=>row.factionState.units.some(unit=>unit.id===attacker.id));
+  const village=current.neutralVillages.find(row=>row.defenseUnits?.some(unit=>unit.id===attacker.id));
+  const targets=[
+    ...current.enemies.filter(unit=>unit.id!==attacker.id&&(!attacker.nestId||unit.nestId!==attacker.nestId)),
+    ...current.players.filter(row=>player
+      ?row.id!==player.id&&window.canV39AttackFaction?.(player.id,row.id)===true
+      :!village||isV39VillageHostileToPlayer(village,row.id)).flatMap(row=>row.factionState.units),
+    ...neutralVillageGuards(current).filter(unit=>!village&&(!player||isV39VillageHostileToPlayer(
+      current.neutralVillages.find(row=>row.id===unit.neutralVillageId),player.id)))
+  ].filter(unit=>isV39UnitInWorld(unit,state.activeWorldId));
+  const byId=new Map(targets.map(unit=>[text(unit.id),unit]));
+  const updates=new Map();
+  const entriesById=new Map(combatLog.filter(entry=>entry.targetId).map(entry=>[text(entry.targetId),entry]));
+  const newHits=[];
+  let expPool=0;
+  const turn=currentV39TurnNumber(state);
+  const chainAttacker={...attacker,combatProfile:{...attacker.combatProfile,attackCount:1}};
+  runV39ChainAttacks({depth,entries:combatLog,targets,
+    canSpread(origin,target){
+      if(!getHexNeighborCoords(map.w,map.h,origin.x,origin.y,map.worldWrapEnabled)
+        .some(point=>point.x===target.x&&point.y===target.y))return false;
+      return !traceV39AttackRay(map,origin,target,targets,{turn,ignoreUnits:true}).reason;
+    },
+    strike(id,scale,stage,followUp){
+      const target=updates.get(id)||byId.get(id);
+      const beforeHp=number(target?.hp,target?.currentHp);
+      if(beforeHp<=0)return false;
+      const row={...skillRow,攻撃回数:1,効果:followUp?`${skillRow.効果}/必中`:skillRow.効果};
+      const damage=resolveAppliedAttackDamage({attacker:chainAttacker,target,skillRow:row,powerScale:scale});
+      const afterHp=Math.max(0,beforeHp-damage.total);
+      let next={...applyDirectDamage(target,damage,row),lastCombatTurn:turn};
+      if(player){
+        const reward=resolveV39DamageExpReward(target,beforeHp,afterHp);
+        expPool+=reward.rawExp;
+        next={...next,expRewardedHpDamage:reward.nextRewardedHpDamage};
+      }
+      updates.set(id,next);
+      const hits=damage.hitResults.map(hit=>({...hit,chainStage:stage}));
+      const hitCount=hits.filter(hit=>hit.hit).length;
+      const entry=entriesById.get(id);
+      if(entry){
+        entry.hitCount=entry.hitResults.filter(hit=>hit.hit).length+hitCount;
+        entry.afterHp=afterHp;
+        entry.total+=damage.total;
+        entry.missCount+=damage.missCount;
+        entry.criticalCount=(entry.criticalCount||0)+damage.criticalCount;
+        entry.hits.push(...damage.hits);
+        entry.hitResults.push(...hits);
+      }else{
+        combatLog.push({...damage,hitCount,hitResults:hits,targetId:id,targetName:target.name,x:target.x,y:target.y,
+          beforeHp,afterHp,maxHp:target.maxHp,friendly:false,chainStage:stage});
+      }
+      newHits.push({x:target.x,y:target.y,beforeHp,afterHp,total:damage.total});
+      logDamage(attacker,target,row,damage);
+      return hitCount>0;
+    }
+  });
+  if(!updates.size)return patch;
+  const update=unit=>updates.get(text(unit.id))||unit;
+  const players=current.players.map(row=>{
+    const factionState={...row.factionState,units:row.factionState.units.map(update)};
+    if(row.id!==player?.id||!expPool)return {...row,factionState};
+    const experience=distributeV39CombatExperience(factionState,text(attacker.id),expPool);
+    for(const detail of experience.levelUps)queueMicrotask(()=>window.dispatchEvent(new CustomEvent('v39:unit-level-up',{detail})));
+    return {...row,factionState:experience.factionState};
+  });
+  applyV39DeathBlade(map,attacker,newHits);
+  return {...patch,players,enemies:current.enemies.map(update),neutralVillages:replaceNeutralVillageGuards(current,update)};
+}
+
 function castDurationTurns(skillRow) {
   const configured = parseV39TurnCount(skillRow?.待機, 0);
   return isV39CastingMagic(skillRow) ? Math.max(DEFAULT_MAGIC_CAST_TURNS, configured) : configured;
 }
 
 const cooldownDurationTurns = resolveV39SkillCooldownTurns;
-const effectDurationTurns = skillRow => parseV39TurnCount(skillRow?.効果時間, 0);
+const effectDurationTurns = skillRow => isV39SustainedSkill(skillRow) ? 2 : parseV39TurnCount(skillRow?.効果時間, 0);
 
 function unitRuntimeState(faction, unit, skillRow = null, turnNumber = currentV39TurnNumber()) {
   const unitKey = text(unit?.id);
@@ -379,7 +491,7 @@ function directionLine(data, from, target, length,ignoreOcclusion=false) {
 }
 
 function buildUnblockedAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
-  if (["壁", "結界"].includes(resolveV39DefenseKind(skillRow))) return new Map(
+  if (["壁", "結界"].includes(resolveV39DefenseKind(skillRow)) || isV39SustainedTornado(skillRow)) return new Map(
     resolveV39DefenseFootprint(data, target, skillRow, facing).map(tile => [coordKey(tile.x, tile.y), 1]));
   const arc=hasV39SkillEffect(skillRow,'曲射');
   const type = resolveAreaType(skillRow);
@@ -540,6 +652,29 @@ function drawAttackArea(areaScale) {
       areaGraphics.lineBetween(a.x,a.y,b.x,b.y).fillCircle(a.x,a.y,1).fillCircle(b.x,b.y,1);
     }
   }
+  if(isV39SustainedTornado(attackSession?.skillRow)
+    && String(attackSession.skillRow.効果).includes('毎ターン移動_1')
+    && attackSession.previewTarget){
+    let area={center:{x:attackSession.previewTarget.x,y:attackSession.previewTarget.y},facing:attackSession.defenseFacing||0,moving:true};
+    const path=[area.center];
+    for(let turn=0;turn<3;turn++){
+      const next=moveV39SustainedTornado(ctx.data,area);
+      if(next===area)break;
+      path.push(next.center);area=next;
+    }
+    const color=0x70edff,outline=0x102d38;
+    areaGraphics.setData('tornadoMovePreview',path.map(point=>({...point})));
+    for(let index=1;index<path.length;index++){
+      const a=tileCenter(path[index-1].x,path[index-1].y),b=tileCenter(path[index].x,path[index].y);
+      areaGraphics.lineStyle(7,outline,.95).lineBetween(a.x,a.y,b.x,b.y);
+      areaGraphics.lineStyle(4,color,1).lineBetween(a.x,a.y,b.x,b.y);
+      const angle=Math.atan2(b.y-a.y,b.x-a.x),x=(a.x+b.x)/2,y=(a.y+b.y)/2;
+      const dx=Math.cos(angle)*7,dy=Math.sin(angle)*7,px=-Math.sin(angle)*5,py=Math.cos(angle)*5;
+      areaGraphics.fillStyle(color,1).fillTriangle(x+dx,y+dy,x-dx+px,y-dy+py,x-dx-px,y-dy-py);
+      areaGraphics.lineStyle(2,outline,1).strokeTriangle(x+dx,y+dy,x-dx+px,y-dy+py,x-dx-px,y-dy-py);
+      areaGraphics.fillStyle(color,1).fillCircle(b.x,b.y,3);
+    }
+  }
 }
 
 function previewAttackArea(target) {
@@ -600,8 +735,8 @@ function setBanner(message = "") {
   banner.classList.toggle("show", !!message);
 }
 
-function showToast(message) {
-  showV39Feedback(message);
+function showToast(message, options = {}) {
+  showV39Feedback(message, options);
 }
 
 function cancelAttack(reason = "attack-cancelled") {
@@ -635,6 +770,10 @@ function resolveRevivalTarget(player, target, revivalSpec) {
   return { ok:true, unit, levelBefore, levelAfter };
 }
 
+function isAttackBlockedByCast(state,unit,row) {
+  return isV39CastAttackLocked(state,unit.id,currentV39TurnNumber(state))&&!isV39SupportSkill(row,unit);
+}
+
 function unavailableAttackReason(skillName) {
   const faction = activeFaction();
   const unit = selectedUnit(faction);
@@ -642,6 +781,9 @@ function unavailableAttackReason(skillName) {
   if (!unit || !row) return "攻撃するキャラクターと技を選択してください";
   if (isV39UnitWaiting(unit, currentV39TurnNumber())) return "このターンは待機済みです";
   if (text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) return "死亡したキャラクターは攻撃できません";
+  const block = getV39ActionBlock(unit,currentV39TurnNumber(),'skill',row);
+  if (block) return block + "\u4e2d";
+  if(isAttackBlockedByCast(window.getV39GameState({includeWorlds:false}),unit,row))return V39_CAST_ATTACK_LOCK;
   const timing = unitRuntimeState(faction, unit, row);
   const releasing=timing.pending?.aimAfterCast&&timing.pending.skillName===skillName&&describeV39Cast(timing.pending,currentV39TurnNumber()).ready;
   if (!releasing&&currentAp(unit) < resolveAttackApCost(row, unit)) return "APが不足しています";
@@ -661,8 +803,28 @@ function renderActionPanel() {
   const faction = activeFaction();
   const unit = selectedUnit(faction);
   const turnNumber = currentV39TurnNumber();
+  const castAttackLocked=unit&&isV39CastAttackLocked(window.getV39GameState({includeWorlds:false}),unit.id,turnNumber);
   const list = document.getElementById("detailTechniqueList");
   if (!(list instanceof HTMLElement)) return;
+  list.querySelector('[data-v39-stand-up]')?.remove();
+  if (unit?.knockedDown) {
+    const button=document.createElement('button');
+    button.type='button';
+    button.dataset.v39StandUp='';
+    button.textContent=`起き上がり（${V39_STAND_UP_AP_COST} AP）`;
+    button.disabled=standUpV39Unit(unit,turnNumber)===unit||isV39UnitWaiting(unit,turnNumber);
+    button.addEventListener('click',()=>{
+      const state=window.getV39GameState({includeWorlds:false});
+      const currentTurn=currentV39TurnNumber(state);
+      const players=state.players.map(player=>player.id!==state.activePlayerId?player:{
+        ...player,factionState:{...player.factionState,units:player.factionState.units.map(member=>
+          member.id===unit.id&&!isV39UnitWaiting(member,currentTurn)?standUpV39Unit(member,currentTurn):member)}
+      });
+      window.setV39GameState({players},{reason:'combat-stand-up'});
+      scheduleActionPanel();
+    });
+    list.prepend(button);
+  }
 
   const rows = resolveAttackRows(unit);
   const rowByName = new Map(rows.map(row => [text(row?.名前), row]).filter(([name]) => !!name));
@@ -681,6 +843,8 @@ function renderActionPanel() {
     const timing = unitRuntimeState(faction, unit, row, turnNumber);
     const releasing=timing.pending?.aimAfterCast&&timing.pending.skillName===name&&describeV39Cast(timing.pending,turnNumber).ready;
     const disabled = !row
+      || (castAttackLocked&&!isV39SupportSkill(row,unit))
+      || !!getV39ActionBlock(unit,turnNumber,'skill',row)
       || isV39UnitWaiting(unit, turnNumber)
       || (!releasing&&currentAp(unit) < resolveAttackApCost(row, unit))
       || text(unit?.state) === "死亡"
@@ -728,6 +892,10 @@ function startAttack() {
     showToast("このターンは待機済みです");
     return false;
   }
+  if(isAttackBlockedByCast(state,unit,skillRow)){
+    showToast(V39_CAST_ATTACK_LOCK);
+    return false;
+  }
   const timing = unitRuntimeState(faction, unit, skillRow);
   const releaseCast=timing.pending?.aimAfterCast&&timing.pending.skillName===text(skillRow.名前)&&describeV39Cast(timing.pending,currentV39TurnNumber()).ready;
   if(releaseCast)skillRow=timing.pending.skillRow;
@@ -762,18 +930,19 @@ function startAttack() {
   }
   rangeGraphics = drawTiles(rangeTiles, 0xf3d84a, 0.20, RANGE_DEPTH, rangeGraphics);
   setBanner(`${text(skillRow.名前)}：黄色が射程、対象位置を選択`);
-  if (resolveV39DefenseKind(skillRow) && ["辺", "三角形"].includes(skillRow.範囲)) {
+  if ((resolveV39DefenseKind(skillRow) || isV39SustainedTornado(skillRow)) && ["辺", "三角形"].includes(skillRow.範囲)) {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.v39DefenseFacing = "true";
     const directions = ["左上","右上","右","右下","左下","左"];
-    button.textContent = `回転：${directions[0]}`;
+    const movingTornado=isV39SustainedTornado(skillRow)&&String(skillRow.効果).includes('毎ターン移動_1');
+    button.textContent = movingTornado?`範囲・移動方向：${directions[0]}`:`回転：${directions[0]}`;
     button.onclick = event => {
       event.stopPropagation();
       if (!attackSession) return;
       attackSession.defenseFacing = ((attackSession.defenseFacing || 0) + 1) % 6;
       attackSession.confirmedTarget = null;
-      button.textContent = `回転：${directions[attackSession.defenseFacing]}`;
+      button.textContent = movingTornado?`範囲・移動方向：${directions[attackSession.defenseFacing]}`:`回転：${directions[attackSession.defenseFacing]}`;
       if (attackSession.previewTarget) previewAttackArea(attackSession.previewTarget);
     };
     document.getElementById("modeBanner")?.append(button);
@@ -859,7 +1028,7 @@ function executeAttack(target) {
   }
   const ctx = activeRuntime();
   const area = buildAreaScaleMap(ctx.data, attacker, target, session.skillRow, session.defenseFacing || 0);
-  if(hasV39SkillEffect(session.skillRow,'アンデッド化')&&!prepareUndeadConversion(state,ctx,area)?.spawned.length) {
+  if(hasV39SkillEffect(session.skillRow,'アンデッド化')&&!prepareUndeadConversion(state,ctx,area,player.id)?.spawned.length) {
     showToast('変換できる死体または配置可能な空きマスがありません');
     return false;
   }
@@ -878,6 +1047,8 @@ function executeAttack(target) {
 }
 
 function queueCombatCast(session,attacker,player,state,target=null){
+  if(isAttackBlockedByCast(state,attacker,session.skillRow))return false;
+  if(getV39ActionBlock(attacker,currentV39TurnNumber(state),'skill',session.skillRow))return false;
   const timing=unitRuntimeState(player.factionState,attacker,session.skillRow);
   if(timing.cooldownRemainingTurns>0||timing.pending&&!timing.pending.aimAfterCast||isV39UnitWaiting(attacker,currentV39TurnNumber(state))||number(attacker.hp??attacker.currentHp)<=0)return false;
   const delayTurns=castDurationTurns(session.skillRow);
@@ -888,6 +1059,7 @@ function queueCombatCast(session,attacker,player,state,target=null){
     return false;
   }
   const startedTurn = currentV39TurnNumber(state);
+  const maintenanceNotice=hasCastAttackLock(session.skillRow)?` / 維持AP-${V39_CAST_MAINTENANCE_AP}/T`:'';
   const pending = {
     playerId:player.id,
     unitId:text(attacker.id),
@@ -918,7 +1090,7 @@ function queueCombatCast(session,attacker,player,state,target=null){
   window.setV39GameState({ players }, { reason:"combat-cast-start" });
   window.dispatchEvent(new CustomEvent("v39:cast-started", { detail:pending }));
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
-    detail:{ summary:`${text(attacker.name)}：${pending.skillName} 詠唱開始 ${delayTurns}ターン / AP-${apCost}`, attackerId:text(attacker.id), skillName:pending.skillName, apCost, target:pending.target, entries:[],castStarted:true }
+    detail:{ summary:`${text(attacker.name)}：${pending.skillName} 詠唱開始 ${delayTurns}ターン / AP-${apCost}${maintenanceNotice}`, attackerId:text(attacker.id), skillName:pending.skillName, apCost, target:pending.target, entries:[],castStarted:true }
   }));
   showToast(`${pending.skillName}：詠唱${delayTurns}ターン。完了後に攻撃位置を指定`);
   cancelAttack("cast-started");
@@ -982,18 +1154,17 @@ function performRevival(target, session, options, state, player, attacker, reviv
     detail:{ summary, attackerId:text(attacker.id), skillName:text(session.skillRow?.名前), apCost, target, entries:[] }
   }));
   if (options.clearPending) window.dispatchEvent(new CustomEvent("v39:cast-ended", { detail:{ playerId:player.id, unitId:text(attacker.id), reason:"resolved" } }));
-  showToast(summary);
+  showToast(summary,{actorId:attacker.id,actorName:attacker.name,actorPlayerId:player.id});
   cancelAttack("revival-complete");
   renderActionPanel();
   return true;
 }
 
-function prepareUndeadConversion(state,ctx,area) {
-  const bodies=[...state.players.flatMap(row=>row.factionState?.units || []),...(state.enemies || []),
-    ...(state.neutralVillages || []).flatMap(row=>row.defenseUnits || [])]
-    .filter(unit=>isV39UnitInWorld(unit,state.activeWorldId)&&number(unit.hp,unit.currentHp)<=0&&area.has(coordKey(unit.x,unit.y)));
+function prepareUndeadConversion(state,ctx,area,playerId) {
+  const {corpseIds,livingUnitIds}=selectV39SkillUndeadTargets(state,playerId,state.activeWorldId,area);
+  if(!corpseIds.size&&!livingUnitIds.size)return null;
   return convertV39CorpsesInDeathFog(state,ctx.data,currentV39TurnNumber(state),{
-    createEnemy:createV39EventEnemy,corpseIds:new Set(bodies.map(unit=>unit.id))});
+    createEnemy:createV39EventEnemy,corpseIds,livingUnitIds});
 }
 
 function performSoulCollection(target,session,options,state,player,attacker,apCost){
@@ -1019,11 +1190,11 @@ function performSoulCollection(target,session,options,state,player,attacker,apCo
   const summary=`${attacker.name}：魂回収 / ${result.soul.name} Lv${result.soul.level} → 魂の保管庫 / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent('v39:combat-log',{detail:{summary,attackerId:attacker.id,skillName:session.skillRow.名前,apCost,target,entries:[]}}));
   if(options.clearPending)window.dispatchEvent(new CustomEvent('v39:cast-ended',{detail:{playerId:player.id,unitId:attacker.id,reason:'resolved'}}));
-  showToast(summary);cancelAttack('soul-collected');renderActionPanel();return true;
+  showToast(summary,{actorId:attacker.id,actorName:attacker.name,actorPlayerId:player.id});cancelAttack('soul-collected');renderActionPanel();return true;
 }
 
 function performUndeadConversion(target,session,options,state,player,attacker,apCost,ctx,area) {
-  const patch=prepareUndeadConversion(state,ctx,area);
+  const patch=prepareUndeadConversion(state,ctx,area,player.id);
   if(!patch?.spawned.length) {
     showToast('変換できる死体または配置可能な空きマスがありません');
     if(options.clearPending && !session?.releaseCast)clearPendingAction(player.id,text(attacker.id),'cast-target-invalid');
@@ -1055,7 +1226,7 @@ function performUndeadConversion(target,session,options,state,player,attacker,ap
   const summary=`${attacker.name}：${session.skillRow.名前} / ${created.map(unit=>`${unit.name} Lv${unit.level}`).join('、')} / AP-${apCost}`;
   window.dispatchEvent(new CustomEvent('v39:combat-log',{detail:{summary,attackerId:attacker.id,skillName:session.skillRow.名前,apCost,target,entries:[]}}));
   if(options.clearPending)window.dispatchEvent(new CustomEvent('v39:cast-ended',{detail:{playerId:player.id,unitId:attacker.id,reason:'resolved'}}));
-  showToast(summary);cancelAttack('undead-conversion-complete');renderActionPanel();return true;
+  showToast(summary,{actorId:attacker.id,actorName:attacker.name,actorPlayerId:player.id});cancelAttack('undead-conversion-complete');renderActionPanel();return true;
 }
 
 function performTileTransform(target, session, options, state, player, attacker, transformSpec, apCost, ctx) {
@@ -1114,10 +1285,74 @@ function performTileTransform(target, session, options, state, player, attacker,
   if (options.clearPending) window.dispatchEvent(new CustomEvent("v39:cast-ended", {
     detail:{ playerId:player.id, unitId:text(attacker.id), reason:"resolved" }
   }));
-  showToast(summary);
+  showToast(summary,{actorId:attacker.id,actorName:attacker.name,actorPlayerId:player.id});
   cancelAttack("tile-transform-complete");
   renderActionPanel();
   return true;
+}
+
+function strikeSustainedTornado(state,map,ownerId,unitId,effect) {
+  const caster=state.players.find(player=>player.id===ownerId)?.factionState?.units?.find(unit=>unit.id===unitId);
+  if(!caster||number(caster.hp,caster.currentHp)<=0)return;
+  const tiles=v39TornadoTiles(map,effect.area);
+  const keys=new Set(tiles.map(tile=>coordKey(tile.x,tile.y)));
+  const entries=[],hits=[];
+  const strike=unit=>{
+    if(number(unit.hp,unit.currentHp)<=0||!isV39UnitInWorld(unit,effect.area.worldId)||!keys.has(coordKey(unit.x,unit.y)))return unit;
+    const damage=resolveAppliedAttackDamage({attacker:caster,target:unit,skillRow:effect.skillRow});
+    entries.push({targetId:unit.id,targetName:unit.name,x:unit.x,y:unit.y,beforeHp:number(unit.hp,unit.currentHp),afterHp:Math.max(0,number(unit.hp,unit.currentHp)-damage.total),maxHp:unit.maxHp,...damage});
+    if(damage.hitResults?.some(hit=>hit.hit))hits.push(unit.id);
+    return applyDirectDamage(unit,damage,effect.skillRow);
+  };
+  let next={...state,players:state.players.map(player=>({...player,factionState:{...player.factionState,units:player.factionState.units.map(strike)}})),
+    enemies:state.enemies.map(strike),neutralVillages:replaceNeutralVillageGuards(state,strike)};
+  if(hits.length){
+    const spec=resolveV39SkillForcedMovement(effect.skillRow,caster,map);
+    if(spec){
+      const moved=applyV39ForcedMovement(next,map,[{...spec,origin:effect.area.center,targetIds:hits,worldId:effect.area.worldId,turn:state.timeline.turnNumber}]);
+      next={...next,players:moved.players,enemies:moved.enemies,neutralVillages:moved.neutralVillages};
+      for(const collision of moved.damageEntries)entries.push({targetId:collision.unitId,targetName:collision.name,...collision});
+    }
+  }
+  if(entries.length){
+    commitVillageCombatState({players:next.players,enemies:next.enemies,neutralVillages:next.neutralVillages},{reason:'sustained-tornado-hit'});
+    window.dispatchEvent(new CustomEvent('v39:combat-log',{detail:{summary:`${effect.skillName}：${entries.length}体に命中`,attackerId:unitId,skillName:effect.skillName,entries}}));
+  }
+}
+
+function resolveSustainedTornadoTurn(turnNumber=currentV39TurnNumber()){
+  const state=window.getV39GameState?.({includeWorlds:false}),map=activeRuntime()?.data;
+  if(!state||!map)return;
+  for(const player of state.players)for(const [unitId,effects] of Object.entries(player.factionState?.combatRuntime?.activeEffectsByUnitId||{})){
+    for(const effect of effects||[]){
+      if(!effect.sustained||!effect.area||effect.area.worldId!==state.activeWorldId||effect.lastAreaHitTurn>=turnNumber)continue;
+      const area=moveV39SustainedTornado(map,effect.area);
+      const latest=window.getV39GameState({includeWorlds:false});
+      const players=latest.players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,combatRuntime:{...row.factionState.combatRuntime,
+        activeEffectsByUnitId:{...row.factionState.combatRuntime.activeEffectsByUnitId,[unitId]:(row.factionState.combatRuntime.activeEffectsByUnitId[unitId]||[]).map(item=>item===effect||item.skillName===effect.skillName&&item.area?{...item,area,lastAreaHitTurn:turnNumber}:item)}}}});
+      window.setV39GameState({players},{reason:'sustained-tornado-move',returnState:false});
+      strikeSustainedTornado(window.getV39GameState({includeWorlds:false}),map,player.id,unitId,{...effect,area});
+    }
+  }
+}
+
+function performSustainedTornadoCast(target,session,options,state,player,attacker,apCost,map){
+  const hpCost=Math.max(0,number(session.skillRow.HP消費));
+  if(number(attacker.hp,attacker.currentHp)<=hpCost||(!options.apPaid&&currentAp(attacker)<apCost)){showToast('APまたはHPが不足しています');return false;}
+  const turn=currentV39TurnNumber(state),runtime=player.factionState.combatRuntime||{};
+  const unitId=text(attacker.id),skillName=text(session.skillRow.名前);
+  const effect={skillName,skillRow:session.skillRow,sustained:true,sustainOwnerId:unitId,stackGroup:'persistent',expiresAtTurn:Number.MAX_SAFE_INTEGER,modifiers:{},
+    area:{worldId:state.activeWorldId,center:{x:target.x,y:target.y},facing:session.defenseFacing||0,moving:String(session.skillRow.効果).includes('毎ターン移動_1')},lastAreaHitTurn:turn-1};
+  const activeEffectsByUnitId={...runtime.activeEffectsByUnitId,[unitId]:[...(runtime.activeEffectsByUnitId?.[unitId]||[]).filter(item=>item.skillName!==skillName),effect]};
+  const pendingActionsByUnitId={...runtime.pendingActionsByUnitId};if(options.clearPending)delete pendingActionsByUnitId[unitId];
+  const cooldownsByUnitId={...runtime.cooldownsByUnitId,[unitId]:{...runtime.cooldownsByUnitId?.[unitId],[skillName]:resolveV39DeadlineTurn(turn,cooldownDurationTurns(session.skillRow))}};
+  const players=state.players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,
+    units:row.factionState.units.map(unit=>unit.id!==unitId?unit:{...unit,ap:options.apPaid?currentAp(unit):currentAp(unit)-apCost,currentAp:options.apPaid?currentAp(unit):currentAp(unit)-apCost,
+      actionPoint:options.apPaid?currentAp(unit):currentAp(unit)-apCost,hp:number(unit.hp,unit.currentHp)-hpCost,currentHp:number(unit.hp,unit.currentHp)-hpCost,lastActionTurn:turn}),
+    combatRuntime:{...runtime,activeEffectsByUnitId,pendingActionsByUnitId,cooldownsByUnitId}}});
+  commitVillageCombatState({players},{reason:'sustained-tornado-cast'});
+  strikeSustainedTornado(window.getV39GameState({includeWorlds:false}),map,player.id,unitId,effect);
+  cancelAttack('sustained-tornado-cast');renderActionPanel();return true;
 }
 
 function performAttack(target, session = attackSession, options = {}) {
@@ -1136,6 +1371,8 @@ function performAttack(target, session = attackSession, options = {}) {
     options={...options,apPaid:true,clearPending:true};
     session={...session,skillRow:pending.skillRow};
   }
+  if(getV39ActionBlock(attacker,currentV39TurnNumber(state),'skill',session.skillRow))return false;
+  if(isAttackBlockedByCast(state,attacker,session.skillRow))return false;
   const targetKey = coordKey(target.x, target.y);
   if (!options.isCounter && unitRuntimeState(player.factionState, attacker, session.skillRow).cooldownRemainingTurns > 0) {
     showToast("使用済み、またはCT中のスキルです");
@@ -1162,6 +1399,7 @@ function performAttack(target, session = attackSession, options = {}) {
     if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id,text(attacker.id),"cast-target-blocked");
     return false;
   }
+  if(isV39SustainedTornado(session.skillRow))return performSustainedTornadoCast(target,session,options,state,player,attacker,apCost,ctx.data);
   if (!supportSkill && !transformSpec && !revivalSpec) target=areaScale.impact;
   const targetFaction = !supportSkill && state.players.find((row) => row.id !== player.id && row?.factionState?.units?.some((unit) =>
     isV39UnitInWorld(unit,state.activeWorldId) && integer(unit?.x) === integer(target.x) && integer(unit?.y) === integer(target.y) && number(unit?.hp, unit?.currentHp) > 0
@@ -1176,6 +1414,12 @@ function performAttack(target, session = attackSession, options = {}) {
   }
   const targetVillage=!supportSkill&&state.neutralVillages.find(village=>village.defenseUnits?.some(unit=>isV39UnitInWorld(unit,state.activeWorldId)&&number(unit.hp??unit.currentHp)>0&&coordKey(unit.x,unit.y)===coordKey(target.x,target.y)));
   if(targetVillage&&!isV39VillageHostileToPlayer(targetVillage,player.id)){showToast('この村とは敵対していません。村の会話から襲撃を選択してください');return false;}
+  const sustained = isV39SustainedSkill(session.skillRow);
+  const hpCost = sustained ? Math.max(0, Number(session.skillRow.HP消費) || 0) : 0;
+  if (sustained && number(attacker.hp,attacker.currentHp) <= hpCost) {
+    showToast('HPが不足しています');
+    return false;
+  }
   if (!options.apPaid && currentAp(attacker) < apCost) {
     showToast("APが不足しています");
     cancelAttack("ap-shortage");
@@ -1318,15 +1562,17 @@ function performAttack(target, session = attackSession, options = {}) {
   const activeEffectsByUnitId = { ...(runtime.activeEffectsByUnitId || {}) };
   const activeDurationTurns = effectDurationTurns(session.skillRow);
   const timedModifiers = resolveSkillTimedModifiers(session.skillRow);
-  const healing = resolveSkillHealing(session.skillRow, adjustedAttacker);
+  const transformation = resolveV39TransformationSpec(session.skillRow);
+  const healing = hasV39SkillEffect(session.skillRow,'状態解除')?0:resolveSkillHealing(session.skillRow, adjustedAttacker);
   const grantedGuard = hasV39SkillEffect(session.skillRow,'守護')?0:resolveSkillGuard(session.skillRow, adjustedAttacker, { isCounter:!!options.isCounter });
   const supportTargetIds = new Set(supportTargets.map(unit => text(unit.id)));
-  if (supportSkill && activeDurationTurns > 0 && Object.keys(timedModifiers).length) for (const unitId of supportTargetIds) {
+  if (supportSkill && activeDurationTurns > 0 && (Object.keys(timedModifiers).length || isV39TimedWeaponEnhancement(session.skillRow) || transformation)) for (const unitId of supportTargetIds) {
     const active = Array.isArray(activeEffectsByUnitId[unitId]) ? activeEffectsByUnitId[unitId] : [];
-    activeEffectsByUnitId[unitId] = [
-      ...active.filter(effect => text(effect?.skillName) !== text(session.skillRow?.名前)),
-      { skillName:text(session.skillRow?.名前),stackGroup:activeDurationTurns===1?'oneTurn':hasV39SkillEffect(session.skillRow,'変身')?'transformation':'persistent', expiresAtTurn:resolveV39DeadlineTurn(currentV39TurnNumber(state), activeDurationTurns), modifiers:timedModifiers }
-    ];
+    const targetUnit=player.factionState.units.find(unit=>text(unit.id)===unitId);
+    const previousTransformation=active.find(effect=>effect?.stackGroup==='transformation');
+    const baseMaxHp=number(previousTransformation?.baseMaxHp,targetUnit?.maxHp);
+    const nextEffect={ skillName:text(session.skillRow?.名前),stackGroup:transformation?'transformation':activeDurationTurns===1?'oneTurn':'persistent', expiresAtTurn:sustained?Number.MAX_SAFE_INTEGER:resolveV39DeadlineTurn(currentV39TurnNumber(state), activeDurationTurns), modifiers:timedModifiers, ...(sustained?{sustained:true,sustainOwnerId:text(attacker.id),skillRow:session.skillRow}:{}), ...(transformation?{appearance:transformation.appearance,form:transformation.form,system:text(session.skillRow?.系統),sizeSpec:transformation.sizeSpec,baseMaxHp}:{}), ...(isV39TimedWeaponEnhancement(session.skillRow)?{skillRow:session.skillRow,judgeValue:Number(adjustedAttacker?.status?.HP)||0}:{}) };
+    activeEffectsByUnitId[unitId] = transformation?replaceV39TransformationEffect(active,nextEffect):[...active.filter(effect=>text(effect?.skillName)!==nextEffect.skillName),nextEffect];
   }
   const nextPlayers = state.players.map((row) => ({
     ...row,
@@ -1356,12 +1602,19 @@ function performAttack(target, session = attackSession, options = {}) {
         const guardTarget = supportSkill ? supportTarget : own;
         const maxHp = Math.max(1, number(unit?.maxHp, unit?.status?.HP || unit?.hp));
         const hp = supportTarget && healing > 0
-          ? Math.min(maxHp, number(unit?.hp, unit?.currentHp) + Math.floor(healing*v39HazardRecoveryMultiplier(window.__v39FieldRuntime?.mapData,unit,state.timeline.turnNumber)))
+          ? Math.min(maxHp, number(unit?.hp, unit?.currentHp) + reduceV39BlockedHealing(unit,Math.floor(healing*v39HazardRecoveryMultiplier(window.__v39FieldRuntime?.mapData,unit,state.timeline.turnNumber))))
           : number(unit?.hp, unit?.currentHp);
+        const paidHp = own && sustained ? hp-hpCost : hp;
         if (!own && !supportTarget && !guardTarget) return unit;
         const ap = own && !options.apPaid ? Math.max(0, currentAp(unit) - apCost) : currentAp(unit);
+        const transformationEffect=transformation&&supportTarget?activeEffectsByUnitId[text(unit.id)]?.find(effect=>effect.stackGroup==='transformation'):null;
+        const sizedUnit=transformationEffect?.sizeSpec
+          ?scaleV39TransformationHp({...unit,hp:paidHp,currentHp:paidHp},resolveV39TransformationMaxHp(transformationEffect.baseMaxHp,unit?.status?.SIZ,transformationEffect.sizeSpec))
+          :transformation&&supportTarget&&number(unit?.maxHp)!==number(transformationEffect?.baseMaxHp)
+            ?scaleV39TransformationHp({...unit,hp:paidHp,currentHp:paidHp},transformationEffect?.baseMaxHp)
+            :{...unit,hp:paidHp,currentHp:paidHp};
         return {
-          ...unit, hp, currentHp:hp, ap, currentAp:ap,
+          ...sizedUnit, ap, currentAp:ap,
           ...(own ? { lastActionTurn:currentV39TurnNumber() } : {}),
           ...guardStatePatch(unit, null, guardTarget ? grantedGuard : 0),
           ...(supportTarget ? grantV39PersonalDefense(session.skillRow, attacker, currentV39TurnNumber(state)) : {}),
@@ -1414,7 +1667,7 @@ function performAttack(target, session = attackSession, options = {}) {
     : "";
   const summary = supportSkill
     ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
-    : `${text(attacker.name)}：${text(session.skillRow.名前)} / ${obstruction?.reason || `合計${total}${hits.length ? ` (${hits.join(",")})` : ""}`} / AP-${apCost}${expText}${levelUpText}${areaScale.groundSummary||''}`;
+    : `${text(attacker.name)}：${text(session.skillRow.名前)} / ${obstruction?.reason || `合計${total+(areaScale.groundDamageTotal||0)}${hits.length ? ` (対ユニット ${hits.join(",")})` : ""}`} / AP-${apCost}${expText}${levelUpText}${areaScale.groundSummary||''}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{
       summary,
@@ -1432,7 +1685,7 @@ function performAttack(target, session = attackSession, options = {}) {
     detail:{ attackerSide:"player", attackerId:text(attacker.id), target, skillRow:session.skillRow, entries:combatLog }
   }));
   if (options.clearPending) window.dispatchEvent(new CustomEvent("v39:cast-ended", { detail:{ playerId:player.id, unitId:text(attacker.id), reason:"resolved" } }));
-  showToast(summary);
+  showToast(summary,{actorId:attacker.id,actorName:attacker.name,actorPlayerId:player.id});
   cancelAttack("attack-complete");
   renderActionPanel();
   return true;
@@ -1448,6 +1701,8 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   const villageTarget = neutralVillageGuards(state).find((unit) => text(unit?.id) === text(targetUnitId));
   let targetUnit = playerTarget || enemyTarget || villageTarget;
   if (!ctx || !state || !attacker || !targetUnit || number(attacker?.hp, attacker?.currentHp) <= 0 || number(targetUnit?.hp, targetUnit?.currentHp) <= 0) return false;
+  if(getV39ActionBlock(attacker,currentV39TurnNumber(state),'skill',skillRow))return false;
+  if(isAttackBlockedByCast(state,attacker,skillRow))return false;
   if (!isCounter && remainingV39Turns(state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(attacker.id)]?.[text(skillRow?.名前)], currentV39TurnNumber(state)) > 0) return false;
   const range = resolveAttackRange(skillRow, attacker, ctx.data);
   if (!tilesWithin(ctx.data, attacker, range,{ignoreOcclusion:hasV39SkillEffect(skillRow,'曲射')}).has(coordKey(targetUnit.x, targetUnit.y))) return false;
@@ -1628,7 +1883,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     {terrainReports:areaScale.achievementTerrainReports}), { reason:"enemy-combat-attack" });
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
-  const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""} / AP-${apCost}${areaScale.groundSummary||''}`;
+  const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total+(areaScale.groundDamageTotal||0)}${hits.length ? ` (対ユニット ${hits.join(",")})` : ""} / AP-${apCost}${areaScale.groundSummary||''}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{ summary, attackerName:`${text(attacker.name)} Lv${integer(attacker.level, 1)}`, attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost, target:{ x:targetUnit.x, y:targetUnit.y }, entries:combatLog, enemyAction:true } }));
   if (!isCounter) window.dispatchEvent(new CustomEvent("v39:attack-resolved", {
     detail:{ attackerSide:"enemy", targetSide:state.enemies.some(unit=>unit.id===targetUnit.id) ? "enemy"
@@ -1646,6 +1901,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, t
   const target = state?.enemies?.find(enemy => text(enemy?.id) === text(targetEnemyId||targetUnitId))
     || v39VillageHostilePlayerUnits(state||{},village).find(unit=>text(unit.id)===text(targetUnitId||targetEnemyId));
   if (!ctx || !state || !village || !attacker || !target || !skillRow || !isV39UnitInWorld(attacker,state.activeWorldId) || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
+  if(getV39ActionBlock(attacker,currentV39TurnNumber(state),'skill',skillRow))return false;
   if(remainingV39Turns(attacker.skillCooldownsByName?.[text(skillRow?.名前)],currentV39TurnNumber(state))>0)return false;
   const defenseApCost=resolveAttackApCost(skillRow,attacker);
   if(currentAp(attacker)<defenseApCost)return false;
@@ -1687,7 +1943,7 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, t
   const total=entries.reduce((sum,entry)=>sum+entry.total,0);
   const hits = entries.flatMap(entry=>(entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss"));
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{
-    summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total}${hits.length ? ` (${hits.join(",")})` : ""}${area.groundSummary||''}`,
+    summary:`${text(attacker.name)}：${text(skillRow?.名前)} / 合計${total+(area.groundDamageTotal||0)}${hits.length ? ` (対ユニット ${hits.join(",")})` : ""}${area.groundSummary||''}`,
     attackerName:text(attacker.name), attackerId:text(attacker.id), skillName:text(skillRow?.名前), apCost:defenseApCost, target:area.impact, entries, villageAction:true
   } }));
   if(!isCounter)window.dispatchEvent(new CustomEvent("v39:attack-resolved", { detail:{
@@ -1702,6 +1958,7 @@ function runNeutralVillageDefenseTurn() {
   const turn=currentV39TurnNumber(initial);let attacks=0,moves=0;
   for(const village of initial.neutralVillages||[]){
     if(village.abandoned)continue;
+    const garrisonIds=new Set(selectV39BaseGarrisons(village.defenseUnits,[village],village.resourceOperations?.aiState?.garrisons).map(row=>row.unitId));
     for(const original of village.defenseUnits||[]){
       if(original.tradeAssignment||Number(original.hp??original.currentHp)<=0||original.lastDefenseTurn>=turn)continue;
       const patchGuard=patch=>{const current=window.getV39GameState({includeWorlds:false});
@@ -1709,10 +1966,17 @@ function runNeutralVillageDefenseTurn() {
       const safe=![...(initial.enemies||[]),...v39VillageHostilePlayerUnits(initial,village)].some(enemy=>Number(enemy.hp??enemy.currentHp)>0&&getHexDistance(enemy,village)<=npcDefense.villageDefenseRadius);
       const hp=safe&&getHexDistance(original,village)<=1&&Number(original.lastCombatTurn||0)<turn-1
         ?Math.min(Number(original.maxHp),Number(original.hp??original.currentHp)+Math.max(1,Math.floor(Number(original.maxHp)*npcDefense.safeRecoveryRate))):Number(original.hp??original.currentHp);
-      patchGuard({ap:100,currentAp:100,lastDefenseTurn:turn,hp,currentHp:hp});
+      const {ap}=applyV39ControlTurnAp({...original,ap:resolveV39MaxAp(original,100)},turn,{restored:true});
+      patchGuard({ap,currentAp:ap,actionPoint:ap,lastDefenseTurn:turn,hp,currentHp:hp});
       for(let step=0;step<npcDefense.maximumActions;step++){
         const state=window.getV39GameState({includeWorlds:false}),guard=state.neutralVillages.find(v=>v.id===village.id)?.defenseUnits.find(u=>u.id===original.id);
-        if(!guard||Number(guard.hp??guard.currentHp)<=0)break;
+        if(guard?.knockedDown){
+          const standing=standUpV39Unit(guard,turn);
+          if(standing===guard)break;
+          patchGuard({knockedDown:false,ap:standing.ap,currentAp:standing.currentAp});
+          continue;
+        }
+        if(!guard||Number(guard.hp??guard.currentHp)<=0||getV39ActionBlock(guard,turn,'move'))break;
         const hostilePlayers=v39VillageHostilePlayerUnits(state,village),hostileIds=new Set(hostilePlayers.map(u=>u.id));
         const targets=[...(state.enemies||[]),...hostilePlayers].filter(enemy=>Number(enemy.hp??enemy.currentHp)>0&&enemy.state!=='死亡'
           &&getHexDistance(enemy,village)<=npcDefense.villageDefenseRadius
@@ -1725,7 +1989,9 @@ function runNeutralVillageDefenseTurn() {
           &&remainingV39Turns(guard.skillCooldownsByName?.[text(row.名前)],turn)<=0
           &&getHexDistance(guard,target)<=resolveAttackRange(row,guard,map)):null;
         if(skill&&performNeutralVillageGuardAttack({villageId:village.id,guardId:guard.id,targetEnemyId:target.id,skillRow:skill})){attacks++;continue;}
-        const goal=target&&!retreat?target:village;
+        const stationed=garrisonIds.has(guard.id);
+        const goal=target&&!retreat&&!stationed?target:village;
+        if(stationed&&isV39GarrisonAtHome(guard,village))break;
         if(!target&&getHexDistance(guard,village)<=1)break;
         const occupied=new Set([...state.enemies,...state.players.flatMap(p=>p.factionState.units),...neutralVillageGuards(state)]
           .filter(u=>Number(u.hp??u.currentHp)>0).map(u=>u.x+','+u.y));
@@ -1743,6 +2009,7 @@ function runNeutralVillageDefenseTurn() {
 
 function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
   const state = window.getV39GameState?.({ includeWorlds:false });
+  if(isV39CastAttackLocked(state,attackerId,currentV39TurnNumber(state)))return false;
   const guardVillage=state?.neutralVillages.find(v=>v.defenseUnits?.some(u=>u.id===attackerId));
   if(guardVillage)return performNeutralVillageGuardAttack({villageId:guardVillage.id,guardId:attackerId,targetUnitId:targetId,skillRow:resolveCounterAttackRow(guardVillage.defenseUnits.find(u=>u.id===attackerId)),isCounter:true});
   const attacker = attackerSide === "enemy"
@@ -1753,6 +2020,7 @@ function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
   target ||= neutralVillageGuards(state).find(unit=>text(unit.id)===text(targetId));
   const skillRow = resolveCounterAttackRow(attacker);
   if (!attacker || !target || !skillRow || number(attacker?.hp, attacker?.currentHp) <= 0 || number(target?.hp, target?.currentHp) <= 0) return false;
+  if(getV39ActionBlock(attacker,currentV39TurnNumber(state),'skill',skillRow))return false;
   const apCost = resolveAttackApCost(skillRow, attacker);
   if (currentAp(attacker) < apCost) return false;
   if (attackerSide === "enemy") {
@@ -1773,7 +2041,7 @@ function handleCounter(event) {
   const attacker=state&&[...state.enemies,...state.players.flatMap(p=>p.factionState.units),...neutralVillageGuards(state)].find(unit=>unit.id===detail.attackerId);
   if(!state||!canTriggerMeleeCounter(detail.skillRow,attacker))return;
   const directEntry = (detail.entries || []).find((entry) => entry.friendly !== true && integer(entry.x) === integer(detail.target?.x) && integer(entry.y) === integer(detail.target?.y));
-  if (!directEntry || number(directEntry.afterHp) <= 0) return;
+  if (!directEntry || number(directEntry.afterHp) <= 0 || !(directEntry.hitCount>0||directEntry.hitResults?.some(hit=>hit.hit)||number(directEntry.total)>0)) return;
   executeCounterAction({
     attackerSide:state.enemies.some(unit=>unit.id===directEntry.targetId)?"enemy":"player",
     attackerId:text(directEntry.targetId),
@@ -1794,14 +2062,20 @@ function pruneCombatRuntime(turnNumber = currentV39TurnNumber()) {
       if (Object.keys(active).length !== Object.keys(cooldowns || {}).length) changed = true;
     }
     const activeEffectsByUnitId = {};
+    const expiredTransformationByUnitId={};
     for (const [unitId, effects] of Object.entries(runtime.activeEffectsByUnitId || {})) {
       const active = (Array.isArray(effects) ? effects : []).filter((effect) => number(effect?.expiresAtTurn) > turnNumber);
+      const expired=(Array.isArray(effects)?effects:[]).find(effect=>effect?.stackGroup==='transformation'&&number(effect?.expiresAtTurn)<=turnNumber);
+      if(expired?.baseMaxHp && !active.some(effect=>effect?.stackGroup==='transformation'))expiredTransformationByUnitId[unitId]=expired;
       if (active.length) activeEffectsByUnitId[unitId] = active;
       if (active.length !== (Array.isArray(effects) ? effects.length : 0)) changed = true;
     }
     return changed ? {
       ...player,
-      factionState:{ ...player.factionState, combatRuntime:{ ...runtime, cooldownsByUnitId, activeEffectsByUnitId } }
+      factionState:{ ...player.factionState,
+        units:player.factionState.units.map(unit=>expiredTransformationByUnitId[unit.id]
+          ?scaleV39TransformationHp(unit,expiredTransformationByUnitId[unit.id].baseMaxHp):unit),
+        combatRuntime:{ ...runtime, cooldownsByUnitId, activeEffectsByUnitId } }
     } : player;
   });
   if (changed) window.setV39GameState({ players }, { reason:"combat-timing-expired" });
@@ -1981,6 +2255,7 @@ window.addEventListener("v39:tile-selected", (event) => {
     return ctx ? buildAreaScaleMap(ctx.data, attacker, target, skillRow) : new Map();
   };
   window.resolveV39PendingCombatActions = resolvePendingActions;
+  window.resolveV39SustainedAreaAttacks = resolveSustainedTornadoTurn;
   window.getV39AttackSession = () => attackSession ? {
     unitId:attackSession.unitId, skillName:attackSession.skillName, range:attackSession.range,
     confirmedTarget:attackSession.confirmedTarget ? { ...attackSession.confirmedTarget } : null,

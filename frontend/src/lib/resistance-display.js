@@ -1,9 +1,9 @@
 import { getIconSrcByName, hasIconName } from "./icon-library.js";
 
 export const RESISTANCE_ICON_NAME_MAP = Object.freeze({
-  "物理耐性":"防御",
-  "魔法耐性":"魔法",
-  "射撃耐性":"弓",
+  "物理軽減":"防御",
+  "魔法軽減":"魔法",
+  "遠隔軽減":"弓",
   "切断耐性":"剣使い",
   "貫通耐性":"槍使い",
   "打撃耐性":"棍使い",

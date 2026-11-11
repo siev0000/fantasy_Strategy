@@ -1,3 +1,4 @@
+import {normalizeV39ReductionKey,readV39ReductionField} from './v39-reduction-keys.js';
 import { cityData } from "./game-data-registry.js";
 import { V39_CITY_SPECIALIZATION_BALANCE } from "./v39-gameplay-balance.js";
 import {resolveCurrentResearchLevel} from './research-progress.js';
@@ -180,7 +181,8 @@ export function resolveV39CityDisasterMultiplier(state,tileKey,disasterId,worldI
 
 export function resolveV39CityHazardDamage(state,tileKey,power,disasterId,element='炎') {
   const {base,modifiers}=resolveV39CityAtTile(state,tileKey);
-  const reduction=resolveV39ResistanceReduction(power,base?.scaleLevel||1,modifiers.resistances[`${element}耐性`]);
+  const resistanceKey=normalizeV39ReductionKey(`${element}耐性`);
+  const reduction=resolveV39ResistanceReduction(power,base?.scaleLevel||1,readV39ReductionField(modifiers.resistances,resistanceKey),0,resistanceKey);
   return Math.max(0,Math.round(reduction.reducedPower*(1-reduction.resistanceRate)*resolveV39CityDisasterMultiplier(state,tileKey,disasterId)));
 }
 
@@ -193,8 +195,9 @@ export function resolveV39SettlementTerritoryDamage(base,tileKey,power,{skillRow
   const modifiers=resolveV39CitySpecializationModifiers(base,{tileKey,worldId}),reduction=modifiers.defenseBonus;
   const damage=Math.max(1,number(power));
   const element=[...DAMAGE_TYPE_FIELDS,'精神'].reduce((best,key)=>number(skillRow[key])>number(skillRow[best])?key:best,'物理');
-  const resistance=number(modifiers.resistances[`${element}耐性`]);
-  const reduced=resolveV39ResistanceReduction(damage,base?.scaleLevel||1,resistance,attacker?.status?.耐性貫通);
+  const resistanceKey=normalizeV39ReductionKey(`${element}耐性`);
+  const resistance=number(readV39ReductionField(modifiers.resistances,resistanceKey));
+  const reduced=resolveV39ResistanceReduction(damage,base?.scaleLevel||1,resistance,attacker?.status?.耐性貫通,resistanceKey);
   const resisted=resistance?Math.max(0,Math.floor(reduced.reducedPower*(1-reduced.resistanceRate))):damage;
   return resisted<=0?0:reduction?Math.max(1,Math.round(resisted*(1-reduction/100))):resisted;
 }

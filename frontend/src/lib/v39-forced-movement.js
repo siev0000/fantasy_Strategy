@@ -14,7 +14,7 @@ export const V39_FORCED_MOVEMENT_DEFAULTS=defaults;
 export function inspectV39ForcedMovement(unit,request,map){
   const rule={...defaults,...request.configuration};
   const adjusted=applyV39PassiveCombatSkills(applyV39TerrainModifiers(unit,map),{名前:request.source||'強制移動'}).attacker;
-  const resistance=Number(adjusted.status?.[rule.resistanceKey]??adjusted.resistances?.[rule.resistanceKey])||0;
+  const resistance=0;
   const power=Math.max(0,Number(request.power)||0);
   const reduction=resolveV39ResistanceReduction(power,unit.level??unit.status?.Lv,resistance);
   const defense=Math.max(0,Number(adjusted.status?.[rule.defenseKey||'防御'])||0);

@@ -29,6 +29,18 @@
       "color": "#FFE16A",
       "template": "{label} +{amount}"
     },
+    "apDamage": {
+      "color": "#60DDFB",
+      "template": "{label} AP−{amount}"
+    },
+    "maxApDamage": {
+      "color": "#60DDFB",
+      "template": "{label} 最大AP−{amount}"
+    },
+    "durationDamage": {
+      "color": "#FFE16A",
+      "template": "{label} −{amount}T"
+    },
     "dot": {
       "color": "#FF6B6B",
       "template": "{label} {amount}"

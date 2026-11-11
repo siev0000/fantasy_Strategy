@@ -1,3 +1,4 @@
+import {getV39NpcGarrisonIds} from './v39-npc-garrison.js';
 import {getHexNeighborCoords} from './hex-grid.js';
 import {collectV39FactionVision} from './v39-faction-intelligence-rules.js';
 import {resolveV39AutomaticRoute} from './v39-transport-rules.js';
@@ -17,6 +18,8 @@ export function moveV39ResourceTeam(state,playerId,actorId,objective,map){
   const player=state.players.find(row=>row.id===playerId),actor=player.factionState.units.find(unit=>unit.id===actorId);
   const group=resolveV39SquadMovementGroup(player.factionState,actorId);
   if(!group.ok||group.moveAp<=0||!actor)return null;
+  const garrisons=getV39NpcGarrisonIds(player);
+  if(group.participants.some(unit=>garrisons.has(unit.id)))return null;
   const ids=new Set(group.participantIds);
   const blocked=new Set([...(state.players||[]).flatMap(row=>row.factionState.units||[]),...(state.enemies||[]),
     ...(state.neutralVillages||[]).flatMap(row=>row.defenseUnits||[])].filter(unit=>!ids.has(unit.id)&&Number(unit.hp??unit.currentHp)>0

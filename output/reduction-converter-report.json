@@ -1,0 +1,50 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-reductions.xlsx",
+  "output_dir": "output\\reduction-preview",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "クラス",
+    "付与"
+  ],
+  "source_sheets": {
+    "クラス": "クラス",
+    "付与": "付与"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 2,
+    "records": 502,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "クラス",
+      "output": "クラス.json",
+      "input_rows": 1270,
+      "records": 463,
+      "skipped_blank_rows": 569,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 238,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "付与",
+      "output": "付与.json",
+      "input_rows": 999,
+      "records": 39,
+      "skipped_blank_rows": 959,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 1,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

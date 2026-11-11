@@ -26,9 +26,9 @@ export const SKILL_FIELD_DEFS = Object.freeze(skillNames.map(key=>Object.freeze(
 export const SKILL_LEVEL_FIELDS = Object.freeze(SKILL_FIELD_DEFS.map(field => field.key));
 
 export const RESISTANCE_FIELDS = Object.freeze([
-  "物理耐性",
-  "魔法耐性",
-  "射撃耐性",
+  "物理軽減",
+  "魔法軽減",
+  "遠隔軽減",
   "切断耐性",
   "貫通耐性",
   "打撃耐性",

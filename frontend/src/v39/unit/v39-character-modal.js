@@ -1,8 +1,10 @@
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
+import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
 import { openV39EquipmentPicker } from "./v39-equipment-picker.js";
 import { isMobUnit } from "../../composables/unitCoreUtils.js";
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
 import { renderV39UnitAbility, renderV39DetailTabs, renderV39UnitEquipment, renderV39UnitGrowth,renderV39UnitAchievements } from "./v39-unit-detail.js";
+import {scaleV39TransformationHp} from '../../lib/v39-transformation.js';
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import {resolveV39ToolSlots,getV39ToolLoadout,getV39ConsumableDefinitions,setV39ToolLoadout} from "../../lib/v39-consumables.js";
 import {getV39ClassPromotionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
@@ -97,7 +99,7 @@ const storageLabel = unit => {
 };
 
 function characterRows(current) {
-  const field=current.units.filter(unit=>!isDead(unit));
+  const field=current.units.filter(unit=>!isDead(visualV39CombatUnit(unit)));
   const stored=(current.facilityStorage||[]).filter(entry=>entry.unit?.id).map(entry=>({...entry.unit,characterStorage:entry}));
   const corpses=(current.deadUnitReserve||[]).filter(entry=>entry.corpseStorage&&entry.unit?.id).map(entry=>({...entry.unit,reserveEntry:entry}));
   return [...new Map([...field,...stored,...corpses].map(unit=>[unit.id,unit])).values()];
@@ -423,6 +425,28 @@ function install() {
   });
 
   document.addEventListener("click", (event) => {
+    const sustainCancel=event.target instanceof Element?event.target.closest('#characterModal [data-v39-sustain-cancel]'):null;
+    if(sustainCancel){
+      const state=window.getV39GameState({includeWorlds:false});
+      const unitId=sustainCancel.dataset.v39SustainUnit;
+      const skillName=sustainCancel.dataset.v39SustainCancel;
+      if(unitId!==detailUnitId())return;
+      const players=state.players.map(player=>{
+        if(player.id!==state.activePlayerId)return player;
+        const faction=player.factionState,runtime=faction.combatRuntime||{};
+        const effects=runtime.activeEffectsByUnitId?.[unitId]||[];
+        const removed=effects.find(effect=>effect.sustained&&effect.skillName===skillName);
+        if(!removed)return player;
+        const activeEffectsByUnitId={...runtime.activeEffectsByUnitId};
+        const remaining=effects.filter(effect=>effect!==removed);
+        if(remaining.length)activeEffectsByUnitId[unitId]=remaining;else delete activeEffectsByUnitId[unitId];
+        const units=faction.units.map(unit=>unit.id===unitId&&removed.stackGroup==='transformation'&&removed.baseMaxHp
+          ?scaleV39TransformationHp(unit,removed.baseMaxHp):unit);
+        return {...player,factionState:{...faction,units,combatRuntime:{...runtime,activeEffectsByUnitId}}};
+      });
+      window.setV39GameState({players},{reason:'sustained-effect-cancel'});
+      render();return;
+    }
     const army=event.target.closest?.('#characterModal [data-animal-army-open]');
     if(army){openV39AnimalArmyEditor(army.dataset.animalArmyOpen,openCharacterModal);return;}
     const promotion=event.target instanceof Element?event.target.closest('[data-v39-class-acquire]'):null;
@@ -521,6 +545,9 @@ function install() {
       pendingRender = 0;
       if (document.getElementById("characterModal")?.classList.contains("open")) render();
     });
+  });
+  window.addEventListener('v39:combat-visual-hp-released',()=>{
+    if(document.getElementById('characterModal')?.classList.contains('open'))render();
   });
   window.openV39CharacterModal = openCharacterModal;
   window.renderV39CharacterModal = render;

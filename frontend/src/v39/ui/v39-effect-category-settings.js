@@ -1,7 +1,7 @@
 import { createV39EffectDraftSync, V39_EFFECT_DRAFT_PATH } from '../../lib/v39-effect-local-draft.js';
 import { getV39EffectSettingsSnapshot, importV39EffectSettings } from '../../lib/v39-effect-settings.js';
 import { normalizeV39EffectTransform } from "../../lib/v39-effect-transform.js";
-import { configureV39EffectSettingsEditor, selectV39EffectSettingsProxy } from "./v39-effect-settings.js";
+import { configureV39EffectSettingsEditor, selectV39EffectSettingsProxy,setV39EffectPreviewSpeed } from "./v39-effect-settings.js";
 import { installV39EffectSettingsUiState } from "./v39-effect-settings-ui-state.js";
 import {
   getV39EffectSetting,
@@ -176,6 +176,10 @@ function hiddenRow(controlId, hidden) {
 
 function applyModeVisibility() {
   const attributeMode = editorMode === "attribute";
+  for(const key of ['playbackSpeedPercent','shakeStartPercent','shakeEndPercent','damageMomentPercent']){
+    const row=element(`v39-effect-timing-${key}`)?.closest('label');
+    if(row)row.hidden=attributeMode||(key!=='playbackSpeedPercent'&&currentCategory()?.group==='support');
+  }
   element("v39-effect-settings-panel").classList.toggle("is-attribute-mode", attributeMode);
   hiddenRow("v39-effect-setting-base", attributeMode);
   element("v39-effect-setting-sequence").hidden = attributeMode;
@@ -278,6 +282,11 @@ function activateCurrent({ announce = true } = {}) {
   }
   fillEditorSelector();
   updateModeButtons();
+  for(const key of ['playbackSpeedPercent','shakeStartPercent','shakeEndPercent','damageMomentPercent']){
+    const input=element(`v39-effect-timing-${key}`);
+    if(input)input.value=String(category[key]);
+  }
+  setV39EffectPreviewSpeed(category.playbackSpeedPercent);
   applyModeVisibility();
   if (announce) setStatus(`${label}を編集中 / 自動保存 ON`);
   return true;
@@ -361,6 +370,27 @@ function ensureEditorUi() {
     input.addEventListener("change", () => renameV39EffectCategory(selectedCategoryId, input.value));
     row.append(caption, input);
     element('v39-effect-preview-controls').prepend(row);
+  }
+  if(!element('v39-effect-timing-playbackSpeedPercent')){
+    const controls=element('v39-effect-preview-controls');
+    for(const [key,label,min,max,step] of [
+      ['playbackSpeedPercent','再生速度 (%)',25,400,5],
+      ['shakeStartPercent','揺れ開始 (%)',0,100,1],
+      ['shakeEndPercent','揺れ終了 (%)',0,100,1],
+      ['damageMomentPercent','ダメージ表示 (%)',0,100,1]
+    ]){
+      const row=document.createElement('label');row.className='v39-effect-setting-row';
+      const caption=document.createElement('span');caption.textContent=label;
+      const input=document.createElement('input');input.type='number';input.id=`v39-effect-timing-${key}`;
+      input.min=String(min);input.max=String(max);input.step=String(step);
+      input.addEventListener('change',()=>{
+        if(editorMode!=='category')return;
+        syncCurrentFromProxy();
+        updateV39EffectCategory(selectedCategoryId,{[key]:Number(input.value)});
+        activateCurrent({announce:false});
+      });
+      row.append(caption,input);controls.appendChild(row);
+    }
   }
   return true;
 }

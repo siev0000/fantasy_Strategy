@@ -1,3 +1,4 @@
+import {normalizeV39ReductionKey} from './v39-reduction-keys.js';
 import {getGameDataRows} from './game-data-registry.js';
 import {RESISTANCE_FIELDS} from '../constants/unitCommon.js';
 import {getHexDistance} from './hex-grid.js';
@@ -13,7 +14,8 @@ export function parseV39CityEffectSettings(row={}) {
   if(radius===undefined)diagnostics.push(`未対応の効果範囲: ${scope}`);
   for(const entry of splitV39CityEffects(row.耐性)) {
     const parts=entry.match(/^(.+?)(?:[=:：_]\s*)?([+-]?\d+(?:\.\d+)?)$/);
-    const key=parts?`${parts[1].replace(/耐性$/,'')}耐性`:'';
+    const raw=parts?.[1].trim()||'';
+    const key=normalizeV39ReductionKey(raw.endsWith('軽減')?raw:raw.replace(/耐性$/,'')+'耐性');
     if(!parts||!RESISTANCE_FIELDS.includes(key)){diagnostics.push(`不正な耐性: ${entry}`);continue;}
     resistances[key]=(resistances[key]||0)+Number(parts[2]);
   }

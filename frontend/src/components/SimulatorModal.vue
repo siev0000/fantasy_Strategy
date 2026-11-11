@@ -140,7 +140,7 @@ function createTarget() {
       HP: hp,
       防御: Math.max(0, number(damageTune.targetDefense)),
       精神: Math.max(0, number(damageTune.targetSpirit)),
-      回避: Math.max(1, number(damageTune.targetEvasion, 1)),
+      速度: Math.max(1, number(damageTune.targetEvasion, 1)),
       [resistanceKey]: Math.max(0, number(damageTune.targetResistance)),
       Cr率耐性: Math.max(0, number(damageTune.targetCriticalRateResistance)),
       Cr威力耐性: Math.max(0, number(damageTune.targetCriticalPowerResistance))

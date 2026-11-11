@@ -6,7 +6,7 @@ import { getV39EffectSettingsCatalog } from "./v39-effect-settings.js";
 
 const STORAGE_KEY = "v39-effect-category-settings-v1";
 const SCHEMA = "v39-effect-category-settings";
-const VERSION = 12;
+const VERSION = 13;
 let customCategories = [];
 
 function text(value, fallback = "") {
@@ -17,6 +17,16 @@ function clamp(value, min, max, fallback) {
   const parsed = Number(value);
   const safe = Number.isFinite(parsed) ? parsed : fallback;
   return Math.max(min, Math.min(max, safe));
+}
+
+function timingSetting(raw={}) {
+  const shakeStartPercent=Math.round(clamp(raw.shakeStartPercent,0,100,0));
+  return {
+    playbackSpeedPercent:Math.round(clamp(raw.playbackSpeedPercent,25,400,100)),
+    shakeStartPercent,
+    shakeEndPercent:Math.round(clamp(raw.shakeEndPercent,shakeStartPercent,100,15)),
+    damageMomentPercent:Math.round(clamp(raw.damageMomentPercent,0,100,75))
+  };
 }
 
 function defaults() {
@@ -53,7 +63,8 @@ function defaultSetting(category) {
     sequenceSteps:normalizeV39EffectSequence(saved.sequenceSteps,getV39EffectSettingsCatalog()),
     orientToAttack:saved.orientToAttack === true,
     baseEffect:text(saved.baseEffect, category.defaultEffect),
-    scaleMultiplierPercent:Math.round(clamp(saved.scaleMultiplierPercent, 10, 400, 100))
+    scaleMultiplierPercent:Math.round(clamp(saved.scaleMultiplierPercent, 10, 400, 100)),
+    ...timingSetting(saved)
   };
 }
 
@@ -68,14 +79,17 @@ function normalizeSetting(category, raw = {}) {
     sequenceSteps:normalizeV39EffectSequence(raw.sequenceSteps,getV39EffectSettingsCatalog()),
     orientToAttack:raw.orientToAttack === true,
     baseEffect:catalog.size && !catalog.has(rawBase) ? standard.baseEffect : rawBase,
-    scaleMultiplierPercent:Math.round(clamp(raw.scaleMultiplierPercent, 10, 400, 100))
+    scaleMultiplierPercent:Math.round(clamp(raw.scaleMultiplierPercent, 10, 400, 100)),
+    ...timingSetting(raw)
   };
 }
 
 function sameSetting(a, b) {
   return a.hitEffectMode === b.hitEffectMode && a.hitEffectName === b.hitEffectName && JSON.stringify(a.decorationTransform) === JSON.stringify(b.decorationTransform) && JSON.stringify(a.sequenceSteps) === JSON.stringify(b.sequenceSteps) && a.rotationDeg === b.rotationDeg && a.offsetX === b.offsetX && a.offsetY === b.offsetY
     && a.orientToAttack === b.orientToAttack && a.baseEffect === b.baseEffect
-    && a.scaleMultiplierPercent === b.scaleMultiplierPercent && a.placementMode === b.placementMode
+    && a.scaleMultiplierPercent === b.scaleMultiplierPercent && a.playbackSpeedPercent===b.playbackSpeedPercent
+    && a.shakeStartPercent===b.shakeStartPercent && a.shakeEndPercent===b.shakeEndPercent
+    && a.damageMomentPercent===b.damageMomentPercent && a.placementMode === b.placementMode
     && a.powerScaleAxis === b.powerScaleAxis && a.areaDisplay === b.areaDisplay && a.areaTiming === b.areaTiming && a.areaDelayMs === b.areaDelayMs;
 }
 
@@ -101,7 +115,8 @@ function readState() {
         decorationTransform:normalizeV39DecorationTransform(raw?.decorationTransform),
         orientToAttack:raw?.orientToAttack === true,
         baseEffect:raw?.baseEffect ?? raw?.effectName,
-        scaleMultiplierPercent:raw?.scaleMultiplierPercent
+        scaleMultiplierPercent:raw?.scaleMultiplierPercent,
+        ...timingSetting(raw)
       }])));
     }
     if (parsed.assignments && typeof parsed.assignments === "object" && !Array.isArray(parsed.assignments)) {
@@ -213,7 +228,8 @@ export function getV39EffectCategorySettingsSnapshot() {
       baseEffect:category.baseEffect,
       decorationTransform:normalizeV39DecorationTransform(category.decorationTransform),
       sequenceSteps:normalizeV39EffectSequence(category.sequenceSteps,getV39EffectSettingsCatalog()),
-      scaleMultiplierPercent:category.scaleMultiplierPercent
+      scaleMultiplierPercent:category.scaleMultiplierPercent,
+      ...timingSetting(category)
     };
   }
   return { schema:SCHEMA, version:VERSION, categories };

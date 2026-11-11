@@ -25,6 +25,8 @@ import {resolveV39ClimateDisasterPower} from '../../lib/v39-disaster-power.js';
 import {isV39DynamicDisasterAnchor,advanceV39DynamicDisaster,projectV39DynamicDisasterFields,withV39TyphoonSpawnRadius} from '../../lib/v39-disaster-dynamics.js';
 import {applyV39FacilityDisasterDamage} from '../../lib/v39-facility-disaster-damage.js';
 import {getFactionSettlements} from '../../lib/settlement-state.js';
+import {applyV39NaturalLandslide,damageV39EarthquakeGround} from '../../lib/v39-terrain-destruction.js';
+import {scheduleV39CaveEarthquake} from '../../lib/v39-cave-earthquake.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -425,7 +427,14 @@ export function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "",
   environment.activeDisasters=existing;
   environment.weather=projectV39DynamicDisasterFields(mapData,environment.weather,existing,turn);
   const diagnostics=recordDisasterDiagnostics&&!skipNaturalDisasters&&!forceDisasterId?[]:null;
-  const created = skipNaturalDisasters ? [] : createNaturalDisasters(state, mapData, turn, forceDisasterId, forceDisasterAt,diagnostics,disasterSource);
+  const created = (skipNaturalDisasters ? [] : createNaturalDisasters(state, mapData, turn, forceDisasterId, forceDisasterAt,diagnostics,disasterSource))
+    .map(event=>applyV39NaturalLandslide(mapData,event,state));
+  const terrainDamageReports=[];
+  for(const event of created.filter(row=>row.disasterId==='災害:地震')){
+    const result=damageV39EarthquakeGround(mapData,event,turn,state);
+    if(result.map!==mapData)Object.assign(mapData,result.map);
+    terrainDamageReports.push(...result.reports);
+  }
   const activeDisasters = [...existing, ...created.map(event=>advanceV39DynamicDisaster(event,mapData,turn,state))];
   environment.weather=projectV39DynamicDisasterFields(mapData,environment.weather,activeDisasters,turn);
   const ticked = tickDisasterDamage(state, mapData, activeDisasters, turn);
@@ -460,7 +469,7 @@ export function applyNaturalEvents({ state, mapData, turn, forceDisasterId = "",
   };
   const updatedSettlementById = new Map([...(ticked.players||[]).flatMap(player=>getFactionSettlements(player.factionState)),...neutralVillages].map(village => [text(village?.settlementId||village?.id), village]));
   const settlements = (state?.settlements || []).map(settlement => updatedSettlementById.get(text(settlement?.settlementId||settlement?.id)) || settlement);
-  return { players:ticked.players, enemies, enemySquads, neutralVillages, settlements, groundLootByTile:undead.groundLootByTile, worldEnvironment, created, ended, recoveryEntries:areaEffects.recoveries, damageEntries:ticked.entries, knockbackEntries:ticked.knockbackEntries||[], undead:undead.spawned, spawnedByDisaster };
+  return { players:ticked.players, enemies, enemySquads, neutralVillages, settlements, groundLootByTile:undead.groundLootByTile, worldEnvironment, created, ended, terrainDamageReports, recoveryEntries:areaEffects.recoveries, damageEntries:ticked.entries, knockbackEntries:ticked.knockbackEntries||[], undead:undead.spawned, spawnedByDisaster };
 }
 
 export function runV39NaturalEvents(options = {}) {
@@ -487,6 +496,8 @@ export function runV39NaturalEvents(options = {}) {
     skipNaturalDisasters:mapData.isUnderground || mapData.hegemonyInterior || mapData.hegemonyTestHub || mapData.villagePlanTest || options?.skipNaturalDisasters === true,
     recordDisasterDiagnostics:window.isV39TestMode?.()===true
   });
+  if((result.created.some(event=>event.disasterId==='災害:土砂崩れ')||result.terrainDamageReports.length)&&!window.__v39BackgroundWorldTurn)window.refreshV39MapEntities?.();
+  const caveEarthquakes=scheduleV39CaveEarthquake(state.explorationWorlds,result.created.filter(event=>event.disasterId==='災害:地震'),turn);
   // Snapshot before damage/state updates change vision; any affected tile is enough.
   const lifecycleNotices=[...result.created.map(event=>({event,phase:'started'})),
     ...result.ended.map(event=>({event,phase:'ended'}))].map(row=>({...row,
@@ -508,6 +519,7 @@ export function runV39NaturalEvents(options = {}) {
     neutralVillages:result.neutralVillages,
     settlements:result.settlements,
     groundLootByTile:result.groundLootByTile,
+    ...(caveEarthquakes.scheduled.length?{explorationWorlds:caveEarthquakes.worlds}:{}),
     worldEnvironment:result.worldEnvironment
   }, { reason:"natural-events" });
   const allPlayers = (state.players || []).map(player => text(player?.id)).filter(Boolean);
@@ -518,6 +530,11 @@ export function runV39NaturalEvents(options = {}) {
     window.appendV39ActivityLog?.([state.activePlayerId],'災害',message,detail);
     window.pushV39Notification?.(message,{title:'災害',environmentVisibility:{playerId:state.activePlayerId,
       worldId:detail.worldId,observed}});
+  }
+  if(caveEarthquakes.scheduled.length){
+    const message='洞窟全体が揺れています。';
+    window.appendV39ActivityLog?.([state.activePlayerId],'災害',message,{turnNumber:turn,worldIds:[...new Set(caveEarthquakes.scheduled.map(row=>row.worldId))]});
+    window.pushV39Notification?.(message,{title:'災害'});
   }
   const visibleToActive=(x,y)=>window.isV39TestMode?.()===true||window.isV39TileInCurrentVision?.(x,y)===true;
   for(const event of result.worldEnvironment.activeDisasters){

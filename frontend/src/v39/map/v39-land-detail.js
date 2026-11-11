@@ -443,7 +443,12 @@ function renderLandDetail(selected) {
   setField("v39-land-volcano-lava", `${detail.volcano} / ${detail.lava}`);
   setField("v39-land-modifiers", formatV39TerrainModifiers(window.__v39FieldRuntime?.mapData, detail.x, detail.y));
   const ground=window.__v39FieldRuntime?.mapData?.terrainDamage||{},groundKey=`${detail.x},${detail.y}`;
-  setField('v39-land-ground-damage',ground.rubbleByTile?.[groundKey]?`瓦礫 ${ground.rubbleByTile[groundKey].hp}/${ground.rubbleByTile[groundKey].maxHp}`:ground.pendingByTile?.[groundKey]?`落石予告 T${ground.pendingByTile[groundKey].resolvesAtTurn}`:ground.cells?.[groundKey]?`地形耐久 ${ground.cells[groundKey].hp}/${ground.cells[groundKey].maxHp}`:'なし');
+  const groundCell=ground.cells?.[groundKey],pending=ground.pendingByTile?.[groundKey],rubble=ground.rubbleByTile?.[groundKey];
+  setField('v39-land-ground-damage',[
+    groundCell?`地形耐久 ${groundCell.hp}/${groundCell.maxHp} 崩壊${groundCell.collapseCount||Number(groundCell.broken)}回${groundCell.broken?'・下限':''}`:'',
+    pending&&!pending.hiddenWarning?`${pending.kind==='landslide'?'土砂崩れ':'落石'}予告 T${pending.resolvesAtTurn} 威力${pending.power} 土砂${pending.rubbleDurability}`:'',
+    rubble?`瓦礫 ${rubble.hp}/${rubble.maxHp}`:''
+  ].filter(Boolean).join(' / ')||'なし');
   const map=window.__v39FieldRuntime?.mapData,key=coordKey(detail.x,detail.y);
   setField('v39-land-purification',String(map?.purificationByTile?.[key] ?? 0));
   setField('v39-land-cave-area',map?.isUnderground?(map?.caveAreaByTile?.[key] || '未設定'):'-');

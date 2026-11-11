@@ -1,3 +1,4 @@
+import {getV39NpcGarrisonIds} from './v39-npc-garrison.js';
 import balance from '../../../config/v39-npc-faction-ai.json';
 import { getFactionSettlements } from './settlement-state.js';
 import { resolvePopulationClassDefinition, resolveV39PopulationResourceUnitValue } from './v39-population-economy.js';
@@ -13,9 +14,12 @@ import { receiveV39VillageSacrifice } from './v39-village-sacrifice.js';
 const n = value => Number(value) || 0;
 const alive = unit => n(unit?.hp ?? unit?.currentHp) > 0 && unit.state !== '死亡';
 const keyOf = unit => `${unit.x},${unit.y}`;
-const surfaceUnits = player => (player.factionState?.units || []).filter(unit => alive(unit)
+const surfaceUnits = player => {
+  const garrisons=getV39NpcGarrisonIds(player);
+  return (player.factionState?.units || []).filter(unit => alive(unit)
   && (unit.worldId || 'surface') === 'surface' && Number.isInteger(unit.x) && Number.isInteger(unit.y) && !unit.pendingWorldExit
-  && !unit.tradeAssignment && !unit.transportAssignment && !unit.surveyTask && !player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id));
+  && !garrisons.has(unit.id) && !unit.tradeAssignment && !unit.transportAssignment && !unit.surveyTask && !player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id));
+};
 
 export function inspectV39NpcResourceNeeds(player, config = balance, {includeSatisfied=false}={}) {
   const patterns = config.resourcePatterns || {};

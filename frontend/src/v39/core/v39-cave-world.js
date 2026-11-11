@@ -10,6 +10,7 @@ import { createPlayerRecord } from "../../lib/player-state.js";
 import { addV39CargoToFactionUnit, resolveV39FactionUnitCargoStatus } from "../../lib/v39-logistics-state.js";
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { groupV39SurfaceCaves, isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
+import { getV39Rubble } from "../../lib/v39-terrain-destruction.js";
 import { isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
 import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
@@ -127,12 +128,14 @@ export function enterV39Cave(options={}){
     const group=groupV39SurfaceCaves(surfaceMap).find(row=>row.some(tile=>tile.x===selected?.x&&tile.y===selected?.y));
     if(!group)throw new Error("洞窟の入口に移動してください。");
     if(!isV39CaveEntranceDiscovered(player.factionState,surfaceMap,selected.x,selected.y))throw new Error("この洞窟入口は未発見です。索敵範囲を調査してください。");
+    if(getV39Rubble(surfaceMap,selected.x,selected.y))throw new Error("洞窟入口が土砂で塞がれています。瓦礫を撤去してください。");
     options={...options,seed:`entrance-${group[0].x}-${group[0].y}`,surfaceEntrances:group,entrySurface:{x:selected.x,y:selected.y}};
   }
   const worlds=rememberWorld(state),worldId=options.worldId||`cave:${options.seed||"expedition-1"}:${options.floor||1}`;
   worlds[worldId] ||= createWorld(options);
   worlds[worldId].spatial=normalizeV39SpatialUnitWorlds(worlds[worldId].spatial,worldId);
   const world=worlds[worldId],entry=world.map.entrances.find(tile=>tile.surfaceEntrance?.x===options.entrySurface?.x&&tile.surfaceEntrance?.y===options.entrySurface?.y)||world.map.entrances[0];
+  if(options.entrySurface&&getV39Rubble(surfaceMap,options.entrySurface.x,options.entrySurface.y))throw new Error("洞窟入口が土砂で塞がれています。瓦礫を撤去してください。");
   if(world.map.hegemonyInterior&&options.entrySurface)world.map.parentExit={...options.entrySurface};
   if(world.map.hegemonyInterior)world.map.hegemonyVisited=true;
   const path=findV39CavePath(world.map,entry,world.map.entryTarget||world.map.stairsDown||world.map.entrances[1]);
@@ -293,6 +296,7 @@ export function leaveV39Cave(){
   if(!worlds[destination]?.map)throw new Error("戻るマップがありません。");
   if(map?.parentWorldId&&exit!==map.entrances[0])throw new Error("上り口に移動してください。");
   if(map?.entrances?.some(tile=>tile.surfaceEntrance)&&!exit?.surfaceEntrance)throw new Error("地上への入口に移動してください。");
+  if(exit?.surfaceEntrance&&getV39Rubble(worlds.surface?.map,exit.surfaceEntrance.x,exit.surfaceEntrance.y))throw new Error("地上への入口が土砂で塞がれています。瓦礫を撤去してください。");
   const faction=state.players.find(player=>player.id===state.activePlayerId)?.factionState;
   const squad=faction?.squads.find(row=>row.unitIds?.includes(actor?.id));
   const ids=new Set(v39SquadMoveMode(actor)!=='follow'?[actor?.id]:(squad?.unitIds||[actor?.id]).filter(id=>v39SquadMoveMode(faction.units.find(unit=>unit.id===id))==='follow'));

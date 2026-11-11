@@ -1,4 +1,5 @@
 import {formatV39EnvironmentDamageEntry} from '../../lib/v39-environment-damage-log.js';
+import {resolveV39LogActor,resolveV39LogActorColor,stripV39LogActorPrefix} from '../../lib/v39-log-actor.js';
 const MAX_LOGS = 300;
 let sequence = 0;
 let selectedLogGroupId = "";
@@ -24,11 +25,13 @@ export function appendV39ActivityLog(playerIds, category, message, detail = {}) 
   const targetIds = new Set((Array.isArray(playerIds) ? playerIds : [playerIds]).map(text).filter(Boolean));
   if (!state || !targetIds.size || !text(message)) return null;
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
+  const actor=resolveV39LogActor(state,detail?.attackerId??detail?.actorId??detail?.unitId);
   const entry = {
     id:`log:${turn}:${Date.now()}:${sequence += 1}`,
     turn,
     category:text(category) || "システム",
     message:text(message),
+    actorName:actor?.name||'',actorColor:actor?.color||'',actorPlayerId:actor?.playerId||'',
     detail:detail && typeof detail === "object" ? detail : {}
   };
   const players = state.players.map(player => targetIds.has(text(player?.id)) ? ({
@@ -84,8 +87,20 @@ function logGroups() {
 }
 
 function renderLogRow(entry, kind) {
-  if (kind === "activity") return `<article class="v39-log-row"><span>T${Math.max(1, Math.floor(number(entry.turn, 1)))}</span><b>${escapeHtml(text(entry.category) || "システム")}</b><p>${escapeHtml(entry.message)}</p></article>`;
-  return `<article class="v39-log-row v39-ai-log-row"><span>T${Math.max(1, Math.floor(number(entry.turn, 1)))}</span><b>${escapeHtml(entry.actorName || "AI")}</b><p><strong>${escapeHtml(entry.decision || "待機")}</strong>${entry.reason ? `<small>${escapeHtml(entry.reason)}</small>` : ""}</p></article>`;
+  const savedColor=resolveV39LogActorColor(window.getV39GameState?.({includeWorlds:false}),entry.actorPlayerId,entry.actorColor);
+  const actorColor=/^#[0-9a-f]{6}$/i.test(savedColor||'')?savedColor:'#e5d194';
+  if (kind === "activity") return `<article class="v39-log-row${entry.actorName?' has-actor':''}"><b>${escapeHtml(text(entry.category) || "システム")}</b>${entry.actorName?`<strong class="v39-log-actor" style="color:${actorColor}">${escapeHtml(entry.actorName)}</strong>`:''}<p>${escapeHtml(stripV39LogActorPrefix(entry.message,entry.actorName))}</p></article>`;
+  return `<article class="v39-log-row v39-ai-log-row has-actor"><b>AI</b><strong class="v39-log-actor">${escapeHtml(entry.actorName || "AI")}</strong><p><strong>${escapeHtml(entry.decision || "待機")}</strong>${entry.reason ? `<small>${escapeHtml(entry.reason)}</small>` : ""}</p></article>`;
+}
+
+function renderLogTurnGroups(rows,kind){
+  const groups=new Map();
+  for(const entry of rows){
+    const turn=Math.max(1,Math.floor(number(entry.turn,1)));
+    if(!groups.has(turn))groups.set(turn,[]);
+    groups.get(turn).push(entry);
+  }
+  return [...groups].map(([turn,entries])=>`<section class="v39-log-turn-group"><h3>T${turn}</h3>${entries.map(entry=>renderLogRow(entry,kind)).join('')}</section>`).join('');
 }
 
 function renderLogModal() {
@@ -112,7 +127,7 @@ function renderLogModal() {
   }
   const list = modal.querySelector("#v39-log-list");
   const rows = [...(selected?.rows || [])].reverse();
-  if (list) list.innerHTML = rows.length ? rows.map(entry => renderLogRow(entry, selected?.kind)).join("") : `<div class="v39-log-empty">この勢力のログはありません</div>`;
+  if (list) list.innerHTML = rows.length ? renderLogTurnGroups(rows,selected?.kind) : `<div class="v39-log-empty">この勢力のログはありません</div>`;
 }
 
 function installStyles() {
@@ -120,6 +135,7 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "v39-activity-log-style";
   style.textContent = `.v39-log-modal{width:min(760px,94vw);height:min(620px,86vh)}.v39-log-body{overflow:auto!important}.v39-log-group-tabs{display:flex;gap:6px;overflow-x:auto;padding:0 0 9px;border-bottom:1px solid #30434a}.v39-log-group-tabs[hidden]{display:none}.v39-log-group-tabs button{flex:0 0 auto;min-height:38px;border:1px solid #486169;border-radius:7px;background:#142329;color:#e8efee;padding:6px 10px;font-size:var(--font-body);font-weight:800}.v39-log-group-tabs button.active{border-color:#63d6e7;background:#1d4b55}.v39-log-group-tabs small{color:#a9bbc0}.v39-log-row{display:grid;grid-template-columns:48px 90px minmax(0,1fr);gap:8px;align-items:start;padding:9px;border-bottom:1px solid #30434a}.v39-log-row span{color:#83d9a4;font-weight:800}.v39-log-row b{color:#e3c778}.v39-log-row p{margin:0;color:#dce6e6;line-height:1.45}.v39-ai-log-row p{display:grid;gap:3px}.v39-ai-log-row strong{color:#f0d17b}.v39-ai-log-row small{color:#aebdc0;font-size:var(--font-size-14)}.v39-log-empty{padding:24px;color:#91a2a6;text-align:center}@media(max-width:620px){.v39-log-row{grid-template-columns:40px 72px minmax(0,1fr);gap:5px;padding:7px;font-size:var(--font-size-14)}.v39-log-group-tabs button{font-size:var(--font-size-14);padding:5px 8px}}`;
+  style.textContent += `.v39-log-turn-group h3{margin:10px 0 2px;padding:5px 8px;border-bottom:1px solid #4c7579;background:#172a30;color:#9be5b6;font-size:var(--font-body)}.v39-log-row{grid-template-columns:70px minmax(0,110px) minmax(0,1fr)}.v39-log-row b{font-size:calc(var(--font-log)*.82);font-weight:700}.v39-log-actor{overflow-wrap:anywhere;font-size:var(--font-log)}.v39-log-row:not(.has-actor) p{grid-column:2/-1}.v39-log-row.has-actor p{grid-column:3}@media(max-width:620px){.v39-log-row{grid-template-columns:48px minmax(0,72px) minmax(0,1fr)}}`;
   document.head.appendChild(style);
 }
 

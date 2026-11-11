@@ -1,4 +1,5 @@
 <script setup>
+import {normalizeV39ReductionKey,isV39FlatReduction,readV39ReductionField} from "../lib/v39-reduction-keys.js";
 import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../lib/v39-enemy-formation.js';
 import { resolveV39UnitMovementStepCost } from '../lib/v39-terrain-traversal.js';
 import { addV39FieldVisionRangeKeys } from "../lib/v39-field-visibility.js";
@@ -3777,11 +3778,11 @@ function buildEquipmentSkillRow(equipmentRow, entry) {
     const range = Number.isFinite(Number(entry?.range)) ? Math.round(toSafeNumber(entry?.range, 0)) : null;
     skillRow["射程"] = range;
   }
-  if (Object.prototype.hasOwnProperty.call(skillRow, "物理耐性")) {
-    skillRow["物理耐性"] = Math.round(toSafeNumber(entry?.resistanceBonus?.["物理耐性"], 0));
+  if (Object.prototype.hasOwnProperty.call(skillRow, "物理軽減")) {
+    skillRow["物理軽減"] = Math.round(toSafeNumber(entry?.resistanceBonus?.["物理軽減"], 0));
   }
-  if (Object.prototype.hasOwnProperty.call(skillRow, "魔法耐性")) {
-    skillRow["魔法耐性"] = Math.round(toSafeNumber(entry?.resistanceBonus?.["魔法耐性"], 0));
+  if (Object.prototype.hasOwnProperty.call(skillRow, "魔法軽減")) {
+    skillRow["魔法軽減"] = Math.round(toSafeNumber(entry?.resistanceBonus?.["魔法軽減"], 0));
   }
   if (Object.prototype.hasOwnProperty.call(skillRow, "効果")) {
     skillRow["効果"] = traitsText || nonEmptyText(skillRow["効果"]) || null;
@@ -11578,9 +11579,9 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
     resistanceBonus[key] = Math.round(toSafeNumber(row?.[key], 0) * multiplier);
   }
   if (isArmorEquipmentRow(row) && armorBaseResistance > 0) {
-    resistanceBonus["物理耐性"] = Math.round(toSafeNumber(resistanceBonus["物理耐性"], 0) + armorPhysicalRes);
-    resistanceBonus["魔法耐性"] = Math.round(
-      toSafeNumber(resistanceBonus["魔法耐性"], 0) + armorMagicBaseRes
+    resistanceBonus["物理軽減"] = Math.round(toSafeNumber(resistanceBonus["物理軽減"], 0) + armorPhysicalRes);
+    resistanceBonus["魔法軽減"] = Math.round(
+      toSafeNumber(resistanceBonus["魔法軽減"], 0) + armorMagicBaseRes
     );
   }
   const traits = [row?.特性1, row?.特性2, row?.特性3, row?.特性4]
@@ -11611,8 +11612,8 @@ function createEquipmentEntry(row, isNamed, rarityOverride = "", slotOverride = 
     craftLevel: craftCost.level,
     craftCostMaterial: craftCost.material,
     resistanceBonus,
-    physicalResistance: Math.round(toSafeNumber(resistanceBonus["物理耐性"], 0)),
-    magicResistance: Math.round(toSafeNumber(resistanceBonus["魔法耐性"], 0)),
+    physicalResistance: Math.round(toSafeNumber(resistanceBonus["物理軽減"], 0)),
+    magicResistance: Math.round(toSafeNumber(resistanceBonus["魔法軽減"], 0)),
     traits
   };
   entry.skillRow = buildEquipmentSkillRow(row, entry);
@@ -20467,7 +20468,7 @@ function resolveSkillDefenseStatKey(skillRow) {
 }
 
 function resolveSkillResistanceKey(skillRow) {
-  if (!skillRow || typeof skillRow !== "object") return "物理耐性";
+  if (!skillRow || typeof skillRow !== "object") return "物理軽減";
   let pickedType = "";
   let pickedValue = Number.NEGATIVE_INFINITY;
   for (const key of ATTACK_DAMAGE_TYPE_KEYS) {
@@ -20478,18 +20479,18 @@ function resolveSkillResistanceKey(skillRow) {
     pickedValue = value;
     pickedType = key;
   }
-  if (pickedType) return `${pickedType}耐性`;
+  if (pickedType) return normalizeV39ReductionKey(`${pickedType}耐性`);
   const judge = nonEmptyText(skillRow?.判定).toLowerCase();
-  if (judge.includes("魔") || judge.includes("magic")) return "魔法耐性";
-  return "物理耐性";
+  if (judge.includes("魔") || judge.includes("magic")) return "魔法軽減";
+  return "物理軽減";
 }
 
 function resolveUnitResistanceValue(unit, resistanceKey) {
   const key = nonEmptyText(resistanceKey);
   if (!key) return 0;
-  const direct = toSafeNumber(unit?.resistances?.[key], Number.NaN);
+  const direct = toSafeNumber(readV39ReductionField(unit?.resistances,key), Number.NaN);
   if (Number.isFinite(direct)) return Math.max(0, direct);
-  const fallback = toSafeNumber(unit?.status?.[key], Number.NaN);
+  const fallback = toSafeNumber(readV39ReductionField(unit?.status,key), Number.NaN);
   if (Number.isFinite(fallback)) return Math.max(0, fallback);
   return 0;
 }
@@ -20520,7 +20521,7 @@ function computeSkillDamageBreakdown(options = {}) {
   const defense = Math.max(0, toSafeNumber(targetUnit?.status?.[defenseKey], 0));
   const resistanceKey = resolveSkillResistanceKey(options?.skillRow || null);
   const resistanceValue = Math.max(0, resolveUnitResistanceValue(targetUnit, resistanceKey));
-  const resistanceRate = Math.max(0, Math.min(1, resistanceValue / 100));
+  const resistanceRate = isV39FlatReduction(resistanceKey)?0:Math.max(0, Math.min(1, resistanceValue / 100));
   const targetLevel = resolveUnitLevelValue(targetUnit);
   const flatReduction = (targetLevel / 10) * resistanceValue;
   const powerAfterLevelReduction = Math.max(0, power - flatReduction);

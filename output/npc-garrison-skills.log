@@ -1,0 +1,18 @@
+PASS: bleeding, reactions, passive isolation, real field fixture, normal test skills and A/B control. No browser.
+PASS: ability damage/curse, floors, full-HP recovery, curse recovery, persistent max/stacking and derived idempotence.
+PASS: complete test skill catalog resolves on both field units.
+PASS: automatic reactions use normal map effects, explicit animation, hit data and suppression/world filtering.
+PASS: test skills use saved effect categories/sequences and existing explicit image names are preserved.
+PASS: 3v3 fixture, adjacent centers, upper/lower/rear placement and piercing/protection skills on all six units.
+PASS: test skill descriptions show actual source data in template notation.
+PASS: self-target defaults and guarding application.
+PASS: barrier direction, friendly/enemy movement, destruction and distinct human/flying-angel teams.
+PASS: barriers allow outgoing attacks by default; explicit prohibition blocks both directions.
+PASS: configurable popup colors/formats, actual ability/curse/heal/state/buff changes, idempotence and world filtering.
+PASS: captured pointer tile stays stable after camera movement, focus matrix refresh and paid-cast validation.
+PASS: separate buff/debuff sections, max/waiting status, stacking, shield/barrier values and expiration.
+PASS: ability/skill/resistance/movement displays use the same current values as combat without mutating base values.
+PASS: green/red sub-values, constant passive baseline, zero-floor accuracy, APP negatives and net-zero cancellation.
+PASS: percentage drain, actual-HP/overkill cap, independent poison damage, normal-heal exclusion and detox recovery.
+PASS: blood-value absorption, poison/burn full-value ticks, duration, idempotence, independent doses and detox.
+PASS: restraint level cap/stages, max-stat defense, fractional decay, accuracy/evasion, grapple movement/link release, popup and trigger integration.

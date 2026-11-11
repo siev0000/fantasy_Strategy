@@ -1,3 +1,4 @@
+import {getV39NpcGarrisonIds} from './v39-npc-garrison.js';
 import balance from '../../../config/v39-npc-faction-ai.json';
 import {getFactionSettlements,replaceFactionSettlement} from './settlement-state.js';
 import {getHexDistance} from './hex-grid.js';
@@ -87,7 +88,8 @@ export function assignV39NpcResourceTeams(state,playerId,goals,map,options={}){
   if(options.supplyBudgetBySettlement)player={...player,factionState:{...player.factionState,aiState:{...player.factionState.aiState,supplyBudgetBySettlement:options.supplyBudgetBySettlement}}};
   const cfg=balance.resourceTeams,work=inspectV39NpcResourceWorkforce(goals,player,options);
   const old=player.factionState.aiState?.resourceTeams||[],all=getV39EditableSquads(player.factionState);
-  const eligible=unit=>alive(unit)&&!unit.isSovereign&&!unit.isNamed&&!unit.summon&&!unit.surveyTask
+  const garrisons=getV39NpcGarrisonIds(player);
+  const eligible=unit=>!garrisons.has(unit.id)&&alive(unit)&&!unit.isSovereign&&!unit.isNamed&&!unit.summon&&!unit.surveyTask
     &&!player.factionState.aiState?.growthPlan?.busyIds?.includes(unit.id)
     &&!getV39SquadMemberRestriction(player.factionState,unit,'surface')
     &&Number.isInteger(unit.x)&&Number.isInteger(unit.y)

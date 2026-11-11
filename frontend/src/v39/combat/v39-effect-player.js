@@ -10,7 +10,8 @@ import { getV39EffectAttributes } from "../../lib/v39-effect-attribute-settings.
 import { resolveV39CombatEffect } from "../../lib/v39-combat-effect-rules.js";
 import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
 import {resolveAttackPower,isV39SupportSkill} from '../../lib/v39-combat-engine.js';
-import {applyV39TerrainModifiers} from '../../lib/v39-terrain-modifiers.js';
+import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abilities.js';
+import {isV39CastingMagic} from '../../lib/v39-casting-rules.js';
 import {resolveV39PowerEffectScale,isV39PowerEffectSkillEnabled} from '../../lib/v39-effect-power-scale.js';
 import {resolveV39PowerAreaScale} from '../../lib/v39-effect-power-scale.js';
 import { MAP_ENTITY_SIZE_RULES } from "../../lib/map-entity-size-rules.js";
@@ -134,7 +135,7 @@ export function resolveV39EffectPlaybackDescriptor(rawName) {
 export function resolveV39FieldEffectDescriptor(categoryId,fallback){
   const category=getV39EffectCategory(categoryId);
   const descriptor=resolveV39EffectPlaybackDescriptor(category?.baseEffect||fallback);
-  return descriptor&&category?{...descriptor,sequenceSources:resolveSequence(category.baseEffect,resolveV39EffectSequence(category)).map(entry=>entry.source),...normalizeV39EffectTransform(category),scaleMultiplierPercent:category.scaleMultiplierPercent}:descriptor;
+  return descriptor&&category?{...descriptor,sequenceSources:resolveSequence(category.baseEffect,resolveV39EffectSequence(category)).map(entry=>entry.source),...normalizeV39EffectTransform(category),scaleMultiplierPercent:category.scaleMultiplierPercent,playbackSpeedPercent:category.playbackSpeedPercent}:descriptor;
 }
 
 function requestValue(request, key, fallback) {
@@ -159,6 +160,8 @@ export async function playV39MapEffect(request = {}) {
     getV39EffectCategories(), getV39EffectAttributes()) : null;
   const requestedEffectName = combatEffect?.effectName || text(request.effectName ?? request.name ?? request.animation, "斬撃");
   const playbackSettings = { ...resolveV39EffectPlaybackSettings(requestedEffectName), ...combatEffect?.settings };
+  const effectDurationMs=Math.max(16,Math.round(number(request.totalDurationMs,
+    EFFECT_TOTAL_DURATION_MS*100/number(playbackSettings.playbackSpeedPercent,100))));
   const origin = request.attackerTile ? tileCenter(request.attackerTile.x, request.attackerTile.y) : null;
   const attackAngle = origin ? Math.atan2(position.y - origin.y, position.x - origin.x) * 180 / Math.PI : 0;
   const endpoint=request.worldX !== undefined && request.worldY !== undefined ? {x:number(request.worldX),y:number(request.worldY)} : tileCenter(x,y);
@@ -178,7 +181,7 @@ export async function playV39MapEffect(request = {}) {
   const requestedScalePercent = Math.max(10, number(request.scalePercent, V39_EFFECT_BASE_SCALE_PERCENT * (perTile ? 1 : 1 + splash)));
   let power=number(request.power,0);
   if(request.power==null&&request.skillRow){
-    const actor=applyV39TerrainModifiers(request.attacker||{},window.__v39FieldRuntime?.mapData);
+    const actor=resolveV39CurrentUnitAbilities(request.attacker||{}, {mapData:window.__v39FieldRuntime?.mapData});
     if(!isV39SupportSkill(request.skillRow,actor))power=resolveAttackPower(request.skillRow,actor);
   }
   const powerScale=resolveV39PowerEffectScale(power,request.powerScaleEnabled!==false&&isV39PowerEffectSkillEnabled(request.skillRow?.名前));
@@ -223,8 +226,41 @@ export async function playV39MapEffect(request = {}) {
   });
   const isolatedSource = Number.isInteger(request.previewSequenceIndex) ? sequence[request.previewSequenceIndex] : null;
   const playbackSequence = isolatedSource ? [isolatedSource] : sequence;
+  const presentationKey=request.attacker?.id&&request.skillRow
+    ? String(request.attacker.id)+'|'+String(request.skillRow.名前||'') : '';
+  if(presentationKey)window.dispatchEvent(new CustomEvent('v39:attack-effect-queued',{detail:{key:presentationKey}}));
+  let impactTimer;
+  let shakeTimer;
+  let impactLate=false;
+  const markImpactLate=()=>{
+    if(impactLate)return;
+    impactLate=true;
+    if(presentationKey)window.dispatchEvent(new CustomEvent('v39:attack-effect-late',{detail:{key:presentationKey}}));
+    request.onImpactLate?.();
+  };
   const endRender = activeScene()?.game?.v39BeginEffectRender?.();
   try {
+    if(request.attackerTile&&isV39CastingMagic(request.skillRow)){
+      const scene=activeScene(),circle=resolveV39FieldEffectDescriptor('magic_cast','魔法陣');
+      if(scene&&circle){
+        const caster=tileCenter(request.attackerTile.x,request.attackerTile.y);
+        const castPlayer=new V39AreaEffectPlayer(scene,{totalDurationMs:EFFECT_TOTAL_DURATION_MS,depth:1000001});
+        const castTransform=resolveV39EffectTransform(circle,caster,0);
+        const castDurationMs=Math.max(16,Math.round(EFFECT_TOTAL_DURATION_MS*100/number(circle.playbackSpeedPercent,100)));
+        let markStarted;
+        const started=new Promise(resolve=>{markStarted=resolve;});
+        let firstFrame=false;
+        void castPlayer.play({...circle,x:castTransform.x,y:castTransform.y,
+          scalePercent:V39_EFFECT_BASE_SCALE_PERCENT*circle.scaleMultiplierPercent/100,showPreviousFrameGhost:false,
+          totalDurationMs:castDurationMs,displayName:'v39-magic-cast-effect',
+          onFrame:()=>{if(!firstFrame){firstFrame=true;markStarted(true);}}})
+          .then(()=>markStarted(false),()=>markStarted(false)).finally(()=>castPlayer.destroy());
+        await started;
+        await new Promise(resolve=>setTimeout(resolve,castDurationMs/2));
+        if(activeScene()!==scene)return false;
+      }
+    }
+    let impactStarted=false;
     const playback = targetPlayer.play({
       instances,
       areaTiming:playbackSettings.areaTiming,
@@ -254,11 +290,31 @@ export async function playV39MapEffect(request = {}) {
       brightnessPercent:requestValue(request,"brightnessPercent",playbackSettings.brightnessPercent),
       renderStyle:text(request.renderStyle, "soft"),
       showPreviousFrameGhost:request.showPreviousFrameGhost !== false,
-      totalDurationMs:number(request.totalDurationMs, EFFECT_TOTAL_DURATION_MS),
+      totalDurationMs:effectDurationMs,
       sequenceGapMs:number(request.sequenceGapMs, 10),
       depth:number(request.depth, 1000000),
       displayName:"v39-effect-image",
-      onFrame:request.onFrame
+      onFrame:frame=>{
+        if(!impactStarted){
+          impactStarted=true;
+          if(presentationKey){
+            window.dispatchEvent(new CustomEvent('v39:attack-effect-started',{detail:{key:presentationKey}}));
+            impactTimer=setTimeout(markImpactLate,Math.round(effectDurationMs*number(playbackSettings.damageMomentPercent,75)/100));
+          }
+          if(request.skillRow&&!isV39SupportSkill(request.skillRow,request.attacker)&&power>=500){
+            const camera=activeScene()?.cameras?.main;
+            if(power>1000)camera?.flash?.(130,0,0,0);
+            const shakeStart=Math.max(0,number(playbackSettings.shakeStartPercent,0));
+            const shakeEnd=Math.max(shakeStart,number(playbackSettings.shakeEndPercent,15));
+            if(shakeEnd>shakeStart){
+              const shake=()=>camera?.shake?.(Math.round(effectDurationMs*(shakeEnd-shakeStart)/100),power>=1000?0.012:0.004);
+              if(shakeStart)shakeTimer=setTimeout(shake,Math.round(effectDurationMs*shakeStart/100));
+              else shake();
+            }
+          }
+        }
+        request.onFrame?.(frame);
+      }
     });
     const generation=targetPlayer.requestId;
     const played=await playback;
@@ -278,7 +334,15 @@ export async function playV39MapEffect(request = {}) {
       }
     }
     return played;
-  } finally { endRender?.(); }
+  } finally {
+    if(impactTimer)clearTimeout(impactTimer);
+    if(shakeTimer)clearTimeout(shakeTimer);
+    if(presentationKey){
+      markImpactLate();
+      window.dispatchEvent(new CustomEvent('v39:attack-effect-finished',{detail:{key:presentationKey}}));
+    }
+    endRender?.();
+  }
 }
 
 window.addEventListener("v39:field-generated", () => {

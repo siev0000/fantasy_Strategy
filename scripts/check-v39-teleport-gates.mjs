@@ -50,7 +50,7 @@ try{for(const width of [390,1100]){
   check(success.players[0].factionState.units.find(u=>u.id===id).x===6,'forced teleport leaves caster');
   const immuneCast=r.beginV39Teleport(original,pid,id,'TEST_強制転移',base.id,map,'other','teleport-immune');check(immuneCast.ok,'immune target still accepts cast attempt');
   const immune=r.advanceV39Teleports(immuneCast.state,turn+1,map,()=>0);
-  check(immune.enemies.find(e=>e.id==='teleport-immune').x===5,'resistance100 prevents transfer');
+  check(immune.enemies.find(e=>e.id==='teleport-immune').x===5,'sufficient fixed reduction prevents transfer');
   check(immune.players[0].factionState.units.find(u=>u.id===id).ap===0,'resistance does not refund AP');
   check(immune.players[0].factionState.activityLog.at(-1).detail.resisted,'resistance logged');
   const attacker={status:{魔力:100},techniques:[]},row={魔法:100,判定:'魔力'};

@@ -154,7 +154,7 @@ function applyEnemyPlan(plan, presentationEvents) {
     if (simulated === before) return false;
     patchEnemyTurnState({enemies:simulated.enemies,groundLootByTile:simulated.groundLootByTile,
       enemyCombatRuntime:simulated.enemyCombatRuntime},"enemy-corpse-eating");
-  } else if (["move", "wait", "queue-attack"].includes(plan.type)) {
+  } else if (["move", "wait", "queue-attack", "stand-up"].includes(plan.type)) {
     const simulated = applyEnemyPlanToSimulation(before, plan);
     patchEnemyTurnState({ enemies:simulated.enemies, enemyCombatRuntime:simulated.enemyCombatRuntime }, `enemy-action-${plan.type}`);
     if (plan.type === "move") {
@@ -334,6 +334,10 @@ function compactAiUnit(unit, enemySide = false) {
     maxAp:unit?.maxAp,
     state:unit?.state,
     statusName:unit?.statusName,
+    knockedDown:unit?.knockedDown,
+    staggeredTurn:unit?.staggeredTurn,
+    controlStatuses:unit?.controlStatuses,
+    numericStatuses:unit?.numericStatuses,
     status:unit?.status,
     skillLevels:unit?.skillLevels,
     resistances:unit?.resistances,

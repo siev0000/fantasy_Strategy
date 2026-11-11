@@ -163,7 +163,8 @@ function applyInfrastructureDamage(settlement, target, turnNumber) {
   for (const facilityName of next?.tileFacilityMap?.[target.key] || []) {
     const source = tileStates[facilityName] || {};
     const requestedDamage = Math.max(0, target.damage * V39_VOLCANO_DAMAGE_BALANCE.facilityDamageMultiplier);
-    const {beforeHp,afterHp,maxHp,damage,health}=damageV39FacilityHealth(source,requestedDamage,turnNumber,target.eventType === "eruption" ? "火山噴火" : "溶岩");
+    const cause=target.eventType === "eruption" ? "火山噴火" : target.eventType === "landslide" ? "土砂崩れ" : "溶岩";
+    const {beforeHp,afterHp,maxHp,damage,health}=damageV39FacilityHealth(source,requestedDamage,turnNumber,cause);
     tileStates[facilityName] = health;
     if (damage > 0) facilityEntries.push({ settlementId:text(next?.settlementId || next?.id), key:target.key, facilityName, beforeHp, afterHp, maxHp, damage });
   }
@@ -186,20 +187,21 @@ function applyInfrastructureDamage(settlement, target, turnNumber) {
   return { settlement:normalizeV39Village(next), facilityEntries, storageEntries };
 }
 
-export function applyTerritoryHazardDamage(state, mapData, events, turnNumber) {
+export function applyTerritoryHazardDamage(state, mapData, events, turnNumber, directTargets = null) {
   const territoryStateByTile = { ...(state?.territoryStateByTile || {}) };
   const populationLossBySettlement = new Map();
   const settlementUpdates = new Map();
   const entries = [];
   const facilityEntries = [];
   const storageEntries = [];
-  for (const target of territoryDamageTargets(events, mapData)) {
+  for (const target of directTargets || territoryDamageTargets(events, mapData)) {
     const ownerPlayerId = text(state?.territoryOwnerByTile?.[target.key]);
     if (!ownerPlayerId) continue;
     const territory = normalizeTerritoryStateRecord(territoryStateByTile[target.key]);
     const maxHp = Math.max(1, Number(territory.maxHp) || TERRITORY_TILE_MAX_HP);
     const beforeHp = Math.max(0, Math.min(maxHp, Number(territory.hp) || 0));
-    target.damage=resolveV39CityHazardDamage(state,target.key,target.damage,'災害:火山噴火');
+    const cause=target.eventType === 'landslide' ? '土砂崩れ' : target.eventType === 'eruption' ? '火山噴火' : '溶岩';
+    target.damage=resolveV39CityHazardDamage(state,target.key,target.damage,`災害:${cause}`,target.eventType === 'landslide' ? '打撃' : '炎');
     const afterHp = Math.max(0, beforeHp - target.damage);
     const settlementId = territorySettlementId(territory);
     const player = (state.players || []).find(row => text(row?.id) === ownerPlayerId);
@@ -213,7 +215,7 @@ export function applyTerritoryHazardDamage(state, mapData, events, turnNumber) {
       hp:afterHp,
       maxHp,
       lastDamageTurn:turnNumber,
-      lastDamageCause:target.eventType === "eruption" ? "火山噴火" : "溶岩",
+      lastDamageCause:cause,
       lastDamage:Math.min(beforeHp, target.damage)
     };
     if (settlementId && populationLoss > 0) populationLossBySettlement.set(updateKey, (populationLossBySettlement.get(updateKey) || 0) + populationLoss);

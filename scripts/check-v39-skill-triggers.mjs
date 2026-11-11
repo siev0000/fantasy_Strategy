@@ -5,14 +5,19 @@ import { dirname,resolve } from 'node:path';
 process.on('uncaughtException',error=>{console.error(String(error.stack||error).replace(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g,'[bundle]').slice(0,1400));process.exit(1);});
 const bundle=await build({stdin:{resolveDir:process.cwd(),contents:`
 export * from './frontend/src/lib/v39-bleeding.js';
+export * from './frontend/src/lib/v39-reduction-keys.js';
+export {inspectV39StatusResistance} from './frontend/src/lib/v39-status-resistance.js';
+export * from './frontend/src/lib/v39-resistance-math.js';
+export {parseV39CityEffectSettings} from './frontend/src/lib/v39-city-effect-schema.js';
+export * from './frontend/src/lib/v39-hit-trigger-rules.js';
 export * from './frontend/src/lib/v39-restraint.js';
-export {resolveScaleStatValue} from './frontend/src/lib/skill-power.js';
+export {resolveScaleStatValue,computeSkillScaledTriplet,formatV39SkillCombatValues} from './frontend/src/lib/skill-power.js';
 export {resolveV39UnitMovementStepCost} from './frontend/src/lib/v39-terrain-traversal.js';
 export * from './frontend/src/lib/v39-periodic-status.js';
 export {resolveV39CurrentUnitAbilities,resolveV39UnitAbilityDisplay} from './frontend/src/lib/v39-current-unit-abilities.js';
 export {captureV39PointerTap} from './frontend/src/lib/v39-pointer-tap-selection.js';
 export {focusV39MapTile} from './frontend/src/v39/map/v39-map-focus.js';
-export {isV39PaidCastRelease} from './frontend/src/lib/v39-casting-rules.js';
+export {isV39PaidCastRelease,isV39CastingMagic,isV39CastAttackLocked,settleV39CastingActions} from './frontend/src/lib/v39-casting-rules.js';
 export * from './frontend/src/lib/v39-combat-popup-rules.js';
 export {createV39DefenseStructure,v39WallStepHeight} from './frontend/src/lib/v39-defense-rules.js';
 export {v39RayStructureAtStep} from './frontend/src/lib/v39-combat-ray.js';
@@ -24,11 +29,16 @@ export * from './frontend/src/lib/v39-ability-damage.js';
 export {applyV39ActiveCombatEffects} from './frontend/src/lib/v39-combat-engine.js';
 export {applyV39DerivedCharacterData} from './frontend/src/v39/unit/v39-character-derived-rules.js';
 export {renderV39UnitConditions,renderV39UnitAbility} from './frontend/src/v39/unit/v39-unit-detail.js';
-export {resolveV39StateInfliction} from './frontend/src/lib/v39-combat-engine.js';
+export {resolveV39StateInfliction,resolveV39HarmfulEffectDefense,resolveV39HarmfulEffectPower,resolveV39StaggerDamage} from './frontend/src/lib/v39-combat-engine.js';
+export {getV39ActionBlock,standUpV39Unit,resolveV39MaxAp,applyV39ControlTurnAp} from './frontend/src/lib/v39-control-status.js';
+export {resolveDetectionScoutValue} from './frontend/src/lib/v39-detection-rules.js';
+export {resolveV39ChainDepth,runV39ChainAttacks} from './frontend/src/lib/v39-chain-attacks.js';
+export {reduceV39BlockedHealing} from './frontend/src/lib/v39-ability-damage.js';
 export * from './frontend/src/lib/v39-skill-triggers.js';
 export * from './frontend/src/v39/dev/v39-skill-trigger-test.js';
 export * from './frontend/src/lib/v39-passive-rules.js';
-export {computeAttackDamage,resolveSkillHealing} from './frontend/src/lib/v39-combat-engine.js';
+export {resolveV39TransformationSpec,replaceV39TransformationEffect,resolveV39ActiveTransformationAppearance,resolveV39TransformedSiz,resolveV39TransformationMaxHp,scaleV39TransformationHp} from './frontend/src/lib/v39-transformation.js';
+export {applyV39GuardToDamage,computeAttackDamage,resolveAttackPower,resolveSkillHealing} from './frontend/src/lib/v39-combat-engine.js';
 export {canV39FactionAttack} from './frontend/src/lib/v39-diplomacy-rules.js';
 export {getV39UnitTestTechniques,describeV39TestSkillData} from './frontend/src/lib/v39-test-skill-rules.js';
 `},bundle:true,write:false,loader:{'.css':'empty'},format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/skill-trigger.js"'},plugins:[{name:'registry',setup(b){
@@ -53,6 +63,31 @@ unit=m.addV39Bleeding(unit,10,2);assert.equal(unit.bleeding.initialValue,100);as
 assert.equal(m.tickV39Bleeding(unit,3).unit.bleeding.value,90,'additional bleeding resets baseline and ten turns');
 assert.equal(m.reduceV39Bleeding(unit,25).bleeding.value,75);assert.equal(m.reduceV39Bleeding(unit,100).bleeding,null);
 const fixture=JSON.parse(readFileSync('config/v39-skill-trigger-test.json','utf8')),random=()=>.5;
+const dragonForm=m.resolveV39TransformationSpec(fixture.actions.find(row=>row.名前==='検証・竜変身'));
+const turtleForm=m.resolveV39TransformationSpec(fixture.actions.find(row=>row.名前==='検証・玄武変身'));
+assert.equal(fixture.actions.find(row=>row.名前==='検証・竜変身').系統,'竜化');
+assert.equal(fixture.actions.find(row=>row.名前==='検証・玄武変身').系統,'変身');
+assert.equal(dragonForm.appearance?.slotNumber,1);
+assert.equal(turtleForm.appearance?.slotNumber,8);
+assert.equal(m.resolveV39TransformedSiz(150,dragonForm.sizeSpec),300);
+assert.equal(m.resolveV39TransformedSiz(150,turtleForm.sizeSpec),300);
+const dragonMax=m.resolveV39TransformationMaxHp(100,100,dragonForm.sizeSpec);
+assert.ok(dragonMax>100,'larger SIZ raises maximum HP');
+const sizedHp=m.scaleV39TransformationHp({hp:50,maxHp:100},dragonMax);
+assert.equal(sizedHp.hp,Math.round(dragonMax/2),'current HP keeps its percentage');
+assert.equal(m.scaleV39TransformationHp(sizedHp,100).hp,50,'ending the form restores base maximum HP and half health');
+const sizedAbilities=m.applyV39ActiveCombatEffects({status:{SIZ:100,HP:100,攻撃:100,速度:100,命中:100},skillLevels:{隠密:100},resistances:{}},[{stackGroup:'transformation',sizeSpec:dragonForm.sizeSpec,modifiers:{炎耐性:30}}]);
+assert.equal(sizedAbilities.status.SIZ,300);
+assert.equal(sizedAbilities.resistances.炎耐性,30);
+assert.ok(sizedAbilities.status.攻撃>100&&sizedAbilities.status.速度<100&&sizedAbilities.skillLevels.隠密<100,'SIZ changes derived combat and stealth values');
+const sizeAndBuff=m.applyV39ActiveCombatEffects({status:{SIZ:100,攻撃:100},resistances:{}},[{stackGroup:'transformation',sizeSpec:dragonForm.sizeSpec,modifiers:{攻撃:20}}]);
+assert.equal(sizeAndBuff.status.攻撃,sizedAbilities.status.攻撃+20,'direct transformation buff is added after SIZ scaling');
+const transformed=m.replaceV39TransformationEffect([{skillName:'竜',stackGroup:'transformation',expiresAtTurn:4,appearance:dragonForm.appearance,modifiers:{攻撃:20}}],{skillName:'玄武',stackGroup:'transformation',expiresAtTurn:5,appearance:turtleForm.appearance,modifiers:{防御:20}});
+assert.equal(transformed.length,1,'later transformation replaces the previous form and modifiers');
+const transformationState={timeline:{turnNumber:2},players:[{factionState:{units:[{id:'transformation-test'}],combatRuntime:{activeEffectsByUnitId:{'transformation-test':transformed}}}}]};
+assert.equal(m.resolveV39ActiveTransformationAppearance({id:'transformation-test'},transformationState)?.form,'玄武');
+transformationState.timeline.turnNumber=5;
+assert.equal(m.resolveV39ActiveTransformationAppearance({id:'transformation-test'},transformationState),null,'expired transformation restores base appearance');
 function createState(){return {activeWorldId:'surface',activePlayerId:'trigger-test',timeline:{turnNumber:1},enemies:[],neutralVillages:[],players:[{id:'trigger-test',factionState:{units:fixture.units.map((unit,index)=>({...unit,worldId:'surface',hp:fixture.hp,currentHp:fixture.hp,maxHp:fixture.hp,ap:100,status:{...fixture.status,HP:fixture.hp},techniques:index?[{source:fixture.passives[0]}]:[]}))}}]};}
 function act(state,index,row,{random}){
  const units=state.players[0].factionState.units,actor=units[index],target=Number(row.回復)>0?actor:units[1-index];
@@ -139,12 +174,28 @@ assert.equal(m.selectV39SkillTriggerTestSide(1),true);
 assert.equal(current.activePlayerId,'trigger-test-opponent');
 assert.equal(current.timeline.activeTurnPlayerId,current.activePlayerId);
 assert.equal(m.selectV39SkillTriggerTestSide(0),true);assert.equal(current.activePlayerId,'p');
+const formUnit=current.players[0].factionState.units[0];
+const formBase=m.resolveV39CurrentUnitAbilities(formUnit,{state:current,mapData:null});
+const formRuntime=current.players[0].factionState.combatRuntime;
+formRuntime.activeEffectsByUnitId={[formUnit.id]:[{skillName:'検証・竜変身',stackGroup:'transformation',system:'竜化',expiresAtTurn:4,modifiers:{}}]};
+const dragonPassive=m.resolveV39CurrentUnitAbilities(formUnit,{state:current,mapData:null});
+assert.equal(dragonPassive.status.攻撃,formBase.status.攻撃+15,'竜化中パッシブが常時起動');
+assert.equal(dragonPassive.status.防御,formBase.status.防御,'変身系統パッシブは竜化で起動しない');
+formRuntime.activeEffectsByUnitId[formUnit.id]=[{skillName:'検証・玄武変身',stackGroup:'transformation',system:'変身',expiresAtTurn:4,modifiers:{}}];
+const turtlePassive=m.resolveV39CurrentUnitAbilities(formUnit,{state:current,mapData:null});
+assert.equal(turtlePassive.status.攻撃,formBase.status.攻撃,'上書きで竜化パッシブを解除');
+assert.equal(turtlePassive.status.防御,formBase.status.防御+15,'変身系統パッシブに切り替え');
+current.timeline.turnNumber=4;
+const expiredPassive=m.resolveV39CurrentUnitAbilities(formUnit,{state:current,mapData:null});
+assert.equal(expiredPassive.status.防御,formBase.status.防御,'期限切れで変身パッシブを解除');
+current.timeline.turnNumber=1;
+formRuntime.activeEffectsByUnitId={};
 console.log('PASS: bleeding, reactions, passive isolation, real field fixture, normal test skills and A/B control. No browser.');
 
 const inflictor={status:{攻撃:0}},defender={level:1,status:{防御:50}};
 assert.equal(m.resolveV39StateInfliction(inflictor,defender,{出血:100},'出血'),66);
 assert.ok(m.resolveV39StateInfliction(inflictor,{...defender,status:{防御:200}},{出血:100},'出血')<66);
-assert.equal(m.resolveV39StateInfliction(inflictor,{...defender,resistances:{出血耐性:100}},{出血:100},'出血'),0);
+assert.equal(m.resolveV39StateInfliction(inflictor,{...defender,resistances:{物理耐性:100}},{出血:100},'出血'),60);
 assert.equal(m.describeV39Bleeding({bleeding:{value:66,remainingTurns:10}}).damage,6);
 assert.match(m.renderV39UnitConditions({bleeding:{value:66,remainingTurns:10}}),/次回 6ダメージ/);
 assert.match(m.renderV39UnitConditions({}),/なし/);
@@ -182,13 +233,20 @@ assert.equal(m.applyV39DerivedCharacterData(derived).status.速度,speed,'derive
 console.log('PASS: ability damage/curse, floors, full-HP recovery, curse recovery, persistent max/stacking and derived idempotence.');
 
 for(const player of field.players){
- const unit=player.factionState.units[0],techniques=m.getV39UnitTestTechniques(unit),names=techniques.map(row=>row.name);
- for(const name of [...fixture.actions.map(row=>row.名前),...fixture.additionalSkillNames,...fixture.units[field.players.indexOf(player)].passiveSkillNames])assert.ok(names.includes(name),'fixture skill resolves: '+name);
- assert.equal(new Set(names).size,names.length,'no duplicated fixture skills');
+ for(const unit of player.factionState.units){
+  const names=m.getV39UnitTestTechniques(unit).map(row=>row.name);
+  for(const name of unit.testSkillNames)assert.ok(names.includes(name),'fixture skill resolves: '+name);
+  for(const row of fixture.actions)assert.ok(names.includes(row.名前),unit.id+' has '+row.名前);
+  const olderUnit={...unit,testSkillNames:unit.testSkillNames.filter(name=>!['検証・竜変身','検証・玄武変身','竜化中攻撃（検証）','変身中防御（検証）'].includes(name))};
+  const refreshed=m.getV39UnitTestTechniques(olderUnit).map(row=>row.name);
+  assert.ok(refreshed.includes('検証・竜変身')&&refreshed.includes('検証・玄武変身'),'existing skill-test units receive added actions');
+  if(unit.id==='trigger-test-a')assert.ok(refreshed.includes('竜化中攻撃（検証）')&&refreshed.includes('変身中防御（検証）'),'existing skill-test leader receives added passives');
+  assert.equal(new Set(names).size,names.length,'no duplicated fixture skills');
+ }
 }
 assert.ok(fixture.actions.some(row=>row.効果==='速度ダメージ'&&row.呪い===50));
 assert.ok(fixture.actions.some(row=>row.効果==='呪い回復'));
-console.log('PASS: complete test skill catalog resolves on both field units.');
+console.log('PASS: complete test skill catalog resolves on all six field units.');
 
 const requests=[];window.playV39MapEffect=request=>requests.push(request);
 const reactionLog=bleed.logs.find(log=>log.entry);
@@ -282,7 +340,7 @@ console.log('PASS: barriers allow outgoing attacks by default; explicit prohibit
 assert.equal(m.resolveV39CombatPopup('abilityDamage',12,'速度').text,'速度 −12');
 assert.equal(m.resolveV39CombatPopup('critical',48).text,'48!');
 assert.equal(m.resolveV39CombatPopup('curseHeal',10,'速度').text,'速度 呪回復10');
-assert.equal(new Set(Object.values(m.V39_COMBAT_POPUPS.types).map(rule=>rule.color)).size,10);
+assert.equal(new Set(Object.values(m.V39_COMBAT_POPUPS.types).map(rule=>rule.color)).size,11);
 const popupBefore={activeWorldId:'surface',timeline:{turnNumber:1},players:[{id:'p',factionState:{units:[{id:'u',x:1,y:1,hp:80,maxHp:100,abilityDamage:{攻撃:20,速度:20},abilityCurses:{速度:20}}],combatRuntime:{}}}]};
 const popupAfter=structuredClone(popupBefore),pu=popupAfter.players[0].factionState.units[0];
 pu.hp=90;pu.abilityDamage={攻撃:10,速度:10};pu.abilityCurses={速度:10};pu.bleeding={value:15};
@@ -442,7 +500,7 @@ console.log('PASS: ability/skill/resistance/movement displays use the same curre
  assert.equal(m.getV39RestraintPenalty(actor,held),.25);assert.equal(m.getV39RestraintPenalty(bound,held),.5);
  assert.equal(m.resolveV39UnitMovementStepCost(null,6,4,7,4,bound,held),Infinity);
  const penalized=m.applyV39RestraintPenalties(bound,held);
- assert.equal(penalized.status.命中,50);assert.equal(penalized.status.回避,50);assert.equal(penalized.status.速度,100);
+ assert.equal(penalized.status.命中,50);assert.equal(penalized.status.速度,50);
  assert.equal(m.applyV39RestraintPenalties(penalized,held).status.命中,50,'no duplicate penalty');
  assert.equal(m.resolveV39CurrentUnitAbilities(bound,{state:held,mapData:null}).status.命中,50);
  const physical=m.computeAttackDamage({attacker:bound,target:actor,skillRow:{物理:10},random:()=>0});
@@ -477,4 +535,367 @@ console.log('PASS: ability/skill/resistance/movement displays use the same curre
  assert.match(m.renderV39UnitConditions(result.state.enemies[0]),/拘束/);
  const missed=m.applyV39SkillTriggerCombat(state,state,actor,row,[{...entry,hitCount:0}],{random:()=>0});assert.equal(missed.state.enemies[0].restraint,undefined);
  console.log('PASS: restraint level cap/stages, max-stat defense, fractional decay, accuracy/evasion, grapple movement/link release, popup and trigger integration.');
+}
+
+{
+ const base=createState();base.players[0].factionState.units.forEach(unit=>unit.techniques=[]);
+ const defender=base.players[0].factionState.units[1];
+ const blood={名前:'multi blood counter',行動:'P',発動:'被出血付与',対象:'発動元',効果:'反撃_出血値_切断',AP消費:5,射程:60};
+ defender.techniques=[{source:blood}];
+ const row={名前:'three bleed hits',行動:'A',対象:'相手',攻撃手段:'テスト',切断:10,出血:100,攻撃回数:3,効果:'必中'};
+ const result=act(base,0,row,{random:()=>0}),target=result.state.players[0].factionState.units[1];
+ const bleeding=result.logs.filter(log=>log.kind==='bleeding'),counters=result.logs.filter(log=>log.kind==='trigger');
+ assert.equal(bleeding.length,3,'state infliction per successful hit');
+ assert.equal(target.bleeding.value,bleeding.reduce((sum,log)=>sum+log.amount,0));
+ assert.equal(result.events.filter(event=>event.name==='被弾').length,3);
+ assert.equal(counters.length,1,'one counter for the full action');
+ assert.equal(counters[0].amount,target.bleeding.value,'counter uses sum of actual post-defense bleed values');
+ assert.equal(counters[0].power,target.bleeding.value);
+ assert.equal(target.ap,95,'counter AP cost paid only once');
+ const next=act(result.state,0,row,{random:()=>0});assert.equal(next.logs.filter(log=>log.kind==='trigger').length,1,'new action can counter again');
+ const source=base.players[0].factionState.units[0];
+ const damageCounter={...blood,名前:'damage counter',発動:'被ダメージ',効果:'反撃_被ダメージ_打撃'};
+ const prior=structuredClone(base);prior.players[0].factionState.units[1].techniques=[{source:damageCounter}];
+ const after=structuredClone(prior);after.players[0].factionState.units[1].hp=1450;
+ const mixed=m.applyV39SkillTriggerCombat(prior,after,source,{...row,効果:'',出血:0},[{targetId:defender.id,beforeHp:1500,afterHp:1450,hitCount:2,hits:[20,0,30],hitResults:[{hit:true,damage:20},{hit:false,damage:0},{hit:true,damage:30}]}],{random:()=>0});
+ assert.equal(mixed.events.filter(event=>event.name==='被弾').length,2);assert.equal(mixed.events.filter(event=>event.name==='回避成功').length,1);
+ assert.equal(mixed.logs.filter(log=>log.kind==='trigger').length,1);assert.equal(mixed.logs.find(log=>log.kind==='trigger').amount,50,'actual HP damage sum, not raw power');
+ const normalHeal={名前:'per-hit heal',行動:'P',発動:'被弾',対象:'自身',効果:'回復',回復:1,射程:60};
+ prior.players[0].factionState.units[1].techniques=[{source:normalHeal}];after.players[0].factionState.units[1].techniques=[{source:normalHeal}];
+ const healed=m.applyV39SkillTriggerCombat(prior,after,source,row,[{targetId:defender.id,beforeHp:1500,afterHp:1450,hitResults:[{hit:true,damage:20},{hit:false,damage:0},{hit:true,damage:30}]}],{random:()=>0});
+ assert.equal(healed.logs.filter(log=>log.skill==='per-hit heal').length,2,'non-counter reactions remain per-hit');
+ const dying=structuredClone(base);dying.players[0].factionState.units[1].hp=10;
+ const dead=structuredClone(dying);dead.players[0].factionState.units[1]={...dead.players[0].factionState.units[1],hp:0,currentHp:0,state:'死亡'};
+ const killed=m.applyV39SkillTriggerCombat(dying,dead,source,row,[{targetId:defender.id,beforeHp:10,afterHp:0,hitResults:[{hit:true,damage:4},{hit:true,damage:20},{hit:true,damage:10}]}],{random:()=>0});
+ assert.equal(killed.logs.filter(log=>log.kind==='bleeding').length,1,'living earlier hits apply states but lethal/later hits do not');
+ assert.equal(killed.logs.filter(log=>log.kind==='trigger').length,0,'dead unit cannot counter at action end');
+ assert.equal(killed.state.players[0].factionState.units[1].hp,0);assert.equal(killed.state.players[0].factionState.units[1].state,'死亡','hit replay never resurrects');
+ const capped=m.expandV39SkillHitEntries([{targetId:'low',beforeHp:10,afterHp:0,hitResults:[{hit:true,damage:6},{hit:true,damage:99},{hit:true,damage:99}]}]);
+ assert.deepEqual(capped.map(hit=>hit.total),[6,4],'overkill and hits after death are excluded');
+ const events=[{name:'被怯み',ownerId:'a',sourceId:'b',cause:'攻撃',amount:20},{name:'被怯み',ownerId:'a',sourceId:'b',cause:'攻撃',amount:15}];
+ assert.equal(m.aggregateV39CounterEvents(events)[0].amount,35);
+ console.log('PASS: per-hit states/events, misses, one action-end counter, actual-value sums, AP once, new-action reset, ordinary per-hit reactions and lethal/overkill handling.');
+}
+
+{
+ window.isV39TestMode=()=>true;
+ for(const [name,defendingSide,member,counterName] of [
+   ['検証・3連撃',0,0,'被弾反撃（検証）'],
+   ['検証・3連撃',1,1,'被ダメージ反撃（検証）'],
+   ['検証・3連出血',1,0,'流血の刃（検証）']
+ ]){
+   const fixtureState=m.createV39SkillTriggerFieldFixture({id:'test-fixture',factionState:{}});
+   const state={...fixtureState,activeWorldId:'surface',timeline:{turnNumber:1}},actor=state.players[1-defendingSide].factionState.units[0],victim=state.players[defendingSide].factionState.units[member];
+   window.getV39GameState=()=>state;
+   assert.ok(m.getV39UnitTestTechniques(actor).some(skill=>skill.name===name));
+   assert.ok(m.getV39TriggeredSkills(victim).some(skill=>skill.名前===counterName));
+   const row=fixture.actions.find(row=>row.名前===name),damage=m.computeAttackDamage({attacker:actor,target:victim,skillRow:row,random:()=>0});
+   const after=structuredClone(state),target=after.players[defendingSide].factionState.units[member];
+   target.hp=Math.max(0,victim.hp-damage.total);target.currentHp=target.hp;
+   const result=m.applyV39SkillTriggerCombat(state,after,actor,row,[{...damage,targetId:victim.id,beforeHp:victim.hp,afterHp:target.hp}],{random:()=>0});
+   const reactions=result.logs.filter(log=>log.kind==='trigger'&&log.skill===counterName);
+   assert.equal(reactions.length,1,name+' fixture target '+victim.name+' '+JSON.stringify({damage:damage.total,detail:damage.detail,resistances:victim.resistances}));
+   if(name==='検証・3連出血')assert.equal(reactions[0].amount,result.logs.filter(log=>log.kind==='bleeding').reduce((sum,log)=>sum+log.amount,0));
+   if(counterName==='被ダメージ反撃（検証）'){
+     assert.equal(reactions[0].amount,victim.hp-target.hp);
+     assert.equal(result.state.players[defendingSide].factionState.units[member].ap,95);
+   }
+ }
+ console.log('PASS: actual skill-test fixture exposes 3-hit actions and ordinary/blood/damage-sum counters on the intended units.');
+}
+
+{
+ const source={status:{攻撃:0,魔力:0}},target={level:10,status:{防御:100,精神:300},resistances:{物理耐性:20,魔法耐性:60,出血耐性:100,幻覚耐性:100,毒耐性:100,炎耐性:100}};
+ for(const [row,expected] of [[{出血:100},40],[{出血:100,判定:'魔力'},20],[{出血:100,判定:'攻撃',攻撃手段:'魔法'},20],[{出血:100,判定:'魔力',攻撃手段:'魔法'},20],[{出血:100,判定:'魔術'},40]]){
+   assert.equal(m.resolveV39StateInfliction(source,target,row,'出血'),expected,JSON.stringify(row));
+ }
+ assert.equal(m.resolveV39StateInfliction(source,target,{幻覚:100},'幻覚'),20,'mental effects use spirit even for physical resistance');
+ assert.equal(m.resolveV39StateInfliction(source,target,{幻覚:100,攻撃手段:'魔法'},'幻覚'),10);
+ assert.equal(m.resolveV39StateInfliction(source,target,{精神攻撃:100},'精神攻撃'),20);
+ assert.equal(m.resolveV39StateInfliction(source,target,{精神攻撃:100},'精神'),20,'existing mental field alias');
+ assert.equal(m.resolveV39HarmfulEffectPower(source,target,{},100,'毒'),40,'individual poison resistance is not stacked');
+ assert.equal(m.resolveV39HarmfulEffectPower(source,target,{},100,'燃焼'),40,'individual flame resistance is not stacked for state infliction');
+ assert.equal(m.resolveV39StateInfliction({...source,status:{魔力:0,攻撃:0}},target,{拘束:100,判定:'魔力'},'拘束',{judgement:'最大_攻撃_防御'}),20,'restraint scaling override preserves original magic classification');
+ const penetrator={status:{耐性貫通:20}};
+ assert.equal(m.resolveV39StateInfliction(penetrator,target,{出血:100},'出血'),50,'resistance penetration uses selected physical resistance');
+ assert.equal(m.resolveV39StateInfliction(source,{...target,level:20},{出血:100},'出血'),30,'selected resistance keeps level-fixed reduction');
+ console.log('PASS: effect-based defense, mental/spirit exceptions, magic judgment OR magic method, individual resistance exclusion, restraint classification, level reduction and penetration.');
+}
+
+{
+ for(const key of ['物理軽減','魔法軽減','遠隔軽減','物理耐性','魔法耐性','射撃耐性','遠隔耐性']){
+   const reduced=m.resolveV39ResistanceReduction(500,10,100,0,key);
+   assert.equal(reduced.resistanceRate,0,key);assert.equal(reduced.reducedPower,400,key);
+ }
+ assert.equal(m.resolveV39ResistanceReduction(500,10,100,0,'炎耐性').resistanceRate,1);
+ assert.equal(m.resolveV39ResistanceReduction(500,10,100,20,'物理軽減').reducedPower,420);
+ assert.equal(m.resolveV39ResistanceReduction(500,20,100,0,'遠隔軽減').reducedPower,300);
+ assert.deepEqual(m.normalizeV39ReductionFields({物理耐性:20,魔法耐性:30,射撃耐性:40}),{物理軽減:20,魔法軽減:30,遠隔軽減:40});
+ assert.deepEqual(m.normalizeV39ReductionFields({物理軽減:30,物理耐性:20}),{物理軽減:30},'no duplicate old/new value stacking');
+ const oldUnit={status:{},resistances:{物理耐性:100,魔法耐性:100,射撃耐性:100,炎耐性:100}};
+ assert.equal(m.readV39UnitResistance(oldUnit,'遠隔軽減'),100);
+ const active=m.applyV39ActiveCombatEffects(oldUnit,[{modifiers:{物理耐性:20,魔法軽減:30,射撃耐性:10}}]);
+ assert.equal(active.resistances.物理軽減,120);assert.equal(active.resistances.魔法軽減,130);assert.equal(active.resistances.遠隔軽減,110);
+ assert.equal(active.resistances.物理耐性,undefined);
+ const passive=m.collectV39PassiveBonuses([{名前:'old saved passive',行動:'P',物理耐性:15,射撃耐性:10}]);
+ assert.equal(passive.resistances.物理軽減,15);assert.equal(passive.resistances.遠隔軽減,10);
+ const city=m.parseV39CityEffectSettings({耐性:'物理軽減20/魔法耐性30/射撃40/炎20'});
+ assert.deepEqual(city.resistances,{物理軽減:20,魔法軽減:30,遠隔軽減:40,炎耐性:20});
+ assert.equal(city.diagnostics.length,0);
+ const actor={hp:1000,status:{命中:100,攻撃:0}},victim={...oldUnit,hp:1000,level:10,status:{防御:0,速度:1}};
+ for(const type of ['物理','魔法','射撃']){
+   const hit=m.computeAttackDamage({attacker:actor,target:victim,skillRow:{[type]:500,効果:'必中'},random:()=>0});
+   assert.ok(hit.total>0,type+' must not become immune at reduction 100');assert.equal(hit.detail.resistanceRate,0);
+ }
+ const flame=m.computeAttackDamage({attacker:actor,target:victim,skillRow:{炎:500,効果:'必中'},random:()=>0});assert.equal(flame.total,0,'attribute resistance keeps percentage immunity');
+ console.log('PASS: flat physical/magic/ranged reductions, level scaling/penetration, attribute resistance unchanged, saved-key migration, active/passive buffs and city settings.');
+}
+
+{
+ const row={魔法:100,判定:'魔力'},attacker={status:{魔力:0}},target={level:1,status:{精神:0},resistances:{魔法軽減:100}};
+ const partial=m.inspectV39StatusResistance({attacker,target,skillRow:row});
+ assert.equal(partial.resistanceRate,0);assert.equal(partial.effectivePower,90);assert.ok(partial.chance>0,'reduction 100 no longer gives automatic status immunity');
+ assert.equal(m.inspectV39StatusResistance({attacker,target:{...target,resistances:{魔法軽減:10000}},skillRow:row}).chance,0);
+ console.log('PASS: forced-status magic reduction is fixed only; full rejection requires sufficient fixed value.');
+}
+
+{
+ const actor={id:'stagger-source',hp:100,status:{}};
+ const target={id:'stagger-target',hp:100,ap:40,level:10,status:{防御:20}};
+ const row={怯み:40};
+ assert.equal(m.resolveV39StaggerDamage(actor,{...target,hp:80},row,()=>1),20);
+ assert.equal(m.resolveV39StaggerDamage(actor,{...target,hp:80,resistances:{怯み耐性:20}},row,()=>1),8);
+ assert.equal(m.resolveV39StaggerDamage({...actor,status:{耐性貫通:20}},{...target,hp:80,resistances:{怯み耐性:20}},row,()=>1),20);
+ const before={enemies:[actor,target],timeline:{turnNumber:1}};
+ const after={...before,enemies:[actor,{...target,hp:40}]};
+ const entries=[{targetId:target.id,beforeHp:100,afterHp:40,hitResults:[
+  {hit:true,damage:20},{hit:false,damage:0},{hit:true,damage:40}
+ ]}];
+ const result=m.applyV39SkillTriggerCombat(before,after,actor,row,entries,{random:()=>1});
+ assert.equal(result.state.enemies[1].hp,40);
+ assert.equal(result.state.enemies[1].ap,0);
+ assert.deepEqual(result.events.filter(event=>event.name==='怯ませ').map(event=>event.amount),[20,20]);
+ const lowAp={...after,enemies:[actor,{...after.enemies[1],ap:10}]};
+ const capped=m.applyV39SkillTriggerCombat(before,lowAp,actor,row,entries,{random:()=>1});
+ assert.equal(capped.state.enemies[1].ap,0);
+ assert.equal(capped.events.some(event=>['怯ませ','被怯み'].includes(event.name)),false);
+ console.log('PASS: stagger uses post-hit HP, applies resistance and penetration, and checks the actual AP loss per hit.');
+}
+
+{
+ const actor={id:'control-source',hp:100,status:{}};
+ const target={id:'control-target',hp:100,ap:50,guard:12,shield:{remaining:10},barrier:{remaining:8},status:{}};
+ const before={enemies:[actor,target],timeline:{turnNumber:4}};
+ const entries=[{targetId:target.id,beforeHp:100,afterHp:100,hitResults:[{hit:true,damage:0},{hit:true,damage:0}]}];
+ const result=m.applyV39SkillTriggerCombat(before,before,actor,{精神攻撃:60,魔法:100,体幹:35,効果:'睡眠/沈黙/転倒'},entries,{random:()=>1});
+ const afflicted=result.state.enemies[1];
+ assert.deepEqual(afflicted.controlStatuses,{
+  睡眠:{value:0,expiresAtTurn:5},沈黙:{value:0,expiresAtTurn:6}
+ });
+ assert.equal(afflicted.ap,30,'two hits of 60 produce one turn and subtract 20 AP');
+ m.attachV39HitStatusPopups(entries,result.logs);
+ assert.deepEqual(entries[0].statusPopups.filter(popup=>popup.popupLabel==='睡眠'),[
+  {popupType:'state',popupLabel:'睡眠',amount:60,hitIndex:0},
+  {popupType:'state',popupLabel:'睡眠',amount:60,hitIndex:1},
+  {popupType:'apDamage',popupLabel:'睡眠',amount:20,hitIndex:1}
+ ]);
+ assert.equal(m.resolveV39CombatPopup('apDamage',20,'睡眠').text,'睡眠 AP−20');
+ assert.notEqual(m.resolveV39CombatPopup('apDamage',20,'睡眠').color,m.resolveV39CombatPopup('hpDamage',20).color);
+ assert.equal(afflicted.guard,0);
+ assert.equal(afflicted.shield,target.shield);
+ assert.equal(afflicted.barrier,target.barrier);
+ assert.equal(m.getV39ActionBlock(afflicted,5,'move'),'転倒');
+ const low={...afflicted,ap:19};
+ assert.equal(m.standUpV39Unit(low,5),low);
+ assert.equal(m.standUpV39Unit(afflicted,4),afflicted);
+ const standing=m.standUpV39Unit(afflicted,5);
+ assert.equal(standing.ap,10);
+ assert.equal(m.getV39ActionBlock(standing,4,'move'),'睡眠');
+ assert.equal(m.getV39ActionBlock(standing,5,'move'),'');
+ assert.equal(m.getV39ActionBlock(standing,5,'skill',{攻撃手段:'魔法'}),'沈黙');
+ assert.equal(m.getV39ActionBlock(standing,6,'skill',{攻撃手段:'魔法'}),'');
+ console.log('PASS: cumulative control statuses, turn expiry, knockdown protection and stand-up AP.');
+}
+
+{
+ const actor={id:'element-source',hp:100,ap:100,status:{}};
+ const target={id:'element-target',hp:100,ap:250,status:{}};
+ const before={enemies:[actor,target],timeline:{turnNumber:4}};
+ const entries=[{targetId:target.id,beforeHp:100,afterHp:100,hitResults:[{hit:true,damage:0}]}];
+ const apply=(state,row,hits=entries,supportTargetIds=[])=>m.applyV39SkillTriggerCombat(state,state,actor,row,hits,{supportTargetIds}).state;
+ const shockSkill={雷:220,効果:'感電'};
+ const shock=m.applyV39SkillTriggerCombat(before,before,actor,shockSkill,entries);
+ const shocked=shock.state;
+ assert.equal(shocked.enemies[1].ap,130);
+ const popupEntries=structuredClone(entries);
+ m.attachV39HitStatusPopups(popupEntries,shock.logs);
+ assert.deepEqual(popupEntries[0].statusPopups.map(({popupType,popupLabel,amount})=>[popupType,popupLabel,amount]),[['apDamage','感電',120]]);
+ assert.equal(apply(before,{雷:220}).enemies[1].controlStatuses,undefined);
+ assert.equal(apply(before,{感電:220,効果:'感電'}).enemies[1].controlStatuses,undefined);
+ const resistant={...before,enemies:[actor,{...target,level:10,resistances:{雷耐性:50}}]};
+ assert.equal(apply(resistant,shockSkill).enemies[1].controlStatuses.感電.value,85);
+ const shockedNext=m.advanceV39SkillTriggerTurn(shocked,5).state;
+ assert.equal(shockedNext.enemies[1].ap,30);
+ assert.equal(m.advanceV39SkillTriggerTurn(shockedNext,6).state.enemies[1].ap,30);
+ const frozen=apply(before,{氷:35,効果:'凍結'});
+ assert.equal(frozen.enemies[1].ap,215);
+ const immune={...before,enemies:[actor,{...target,resistances:{氷耐性:100}}]};
+ assert.equal(apply(immune,{氷:35,効果:'凍結'}).enemies[1].controlStatuses,undefined);
+ const next=m.advanceV39SkillTriggerTurn(frozen,5).state;
+ assert.equal(next.enemies[1].controlStatuses.凍結.value,25);
+ assert.equal(next.enemies[1].ap,190);
+ assert.equal(m.advanceV39SkillTriggerTurn(next,5).changed,false);
+ assert.equal(apply(frozen,{炎:10}).enemies[1].controlStatuses.凍結,undefined);
+ assert.equal(apply(frozen,{炎:10},[{...entries[0],hitResults:[{hit:false,damage:0}]}]).enemies[1].controlStatuses.凍結.value,35);
+ assert.equal(apply(frozen,{効果:'浄化'},[],[target.id]).enemies[1].controlStatuses.凍結,undefined);
+ const frozenCaster={...frozen,enemies:[{...actor,controlStatuses:{凍結:{value:35}}},target]};
+ assert.equal(apply(frozenCaster,{炎:10},[]).enemies[0].controlStatuses.凍結,undefined);
+ console.log('PASS: shock AP per turn, freeze AP and natural thaw, fire hit/use and purification.');
+}
+
+{
+ const actor={id:'curse-source',hp:100,status:{}};
+ const target={id:'curse-target',hp:80,status:{防御:100}};
+ const state={enemies:[actor,target],timeline:{turnNumber:1}};
+ const hits=[{targetId:target.id,beforeHp:80,afterHp:80,hitCount:1}];
+ const afflicted=m.applyV39SkillTriggerCombat(state,state,actor,{効果:'回復阻害',呪い:80},hits).state;
+ assert.equal(afflicted.enemies[1].abilityCurses.回復阻害,40);
+ assert.equal(m.reduceV39BlockedHealing(afflicted.enemies[1],60),20);
+ assert.equal(m.reduceV39BlockedHealing(afflicted.enemies[1],20),0);
+ const healed=m.applyV39SkillTriggerCombat(afflicted,afflicted,actor,{回復:20,効果:'呪い回復'},[],{supportTargetIds:[target.id]}).state;
+ assert.equal(healed.enemies[1].abilityCurses.回復阻害,20);
+ console.log('PASS: healing block uses resisted curse power and curse recovery lowers it.');
+}
+
+{
+ const skill={名前:'聖域',効果:'詠唱中攻撃不可',効果時間:'詠唱'};
+ const cast={unitId:'caster',skillName:skill.名前,skillRow:skill,aimAfterCast:true,apPaid:true,resolvesAtTurn:6};
+ const state={players:[{factionState:{combatRuntime:{pendingActionsByUnitId:{caster:cast}}}}]};
+ assert.equal(m.isV39CastingMagic(skill),true);
+ assert.equal(m.isV39CastAttackLocked(state,'caster',5),true);
+ assert.equal(m.isV39CastAttackLocked(state,'other',5),false);
+ assert.equal(m.isV39CastAttackLocked(state,'caster',6),false);
+ assert.equal(m.isV39PaidCastRelease(cast,'caster',skill.名前,6),true);
+ const faction={...state.players[0].factionState,units:[{id:'caster',hp:100,ap:40},{id:'other',hp:100,ap:100}]};
+ const marked=m.settleV39CastingActions(faction,5);
+ assert.equal(marked.units[0].lastActionTurn,5);
+ assert.equal(marked.combatRuntime.pendingActionsByUnitId.caster,undefined,'40 AP cannot maintain the cast');
+ assert.equal(marked.units[1],faction.units[1]);
+ assert.equal(m.settleV39CastingActions(marked,5),marked);
+ assert.equal(m.settleV39CastingActions(marked,6),marked);
+ const unpaid={...faction,combatRuntime:{pendingActionsByUnitId:{caster:{...cast,apCost:60,apPaid:false}}}};
+ assert.equal(m.settleV39CastingActions(unpaid,5).combatRuntime.pendingActionsByUnitId.caster,undefined);
+ const paid=m.settleV39CastingActions({...faction,units:[{...faction.units[0],ap:80}]},5);
+ assert.equal(paid.units[0].ap,20);
+ assert.equal(paid.combatRuntime.pendingActionsByUnitId.caster.apPaid,true);
+ assert.equal(m.settleV39CastingActions(paid,5),paid);
+ assert.equal(m.settleV39CastingActions(paid,6),paid,'ready casts have no maintenance fee');
+ const cancelled={...faction,combatRuntime:{pendingActionsByUnitId:{}}};
+ assert.equal(m.settleV39CastingActions(cancelled,5),cancelled,'manual cancellation avoids the maintenance fee');
+ const longer={...paid,units:[{...paid.units[0],ap:100}],combatRuntime:{pendingActionsByUnitId:{caster:{...paid.combatRuntime.pendingActionsByUnitId.caster,resolvesAtTurn:7}}}};
+ assert.equal(m.settleV39CastingActions(longer,6).units[0].ap,40,'each active turn charges its own maintenance fee');
+ assert.equal(m.isV39CastAttackLocked({players:[]},'caster',5),false);
+ cast.skillRow={...skill,効果:'攻撃不能'};
+ assert.equal(m.isV39CastAttackLocked(state,'caster',5),true);
+ cast.skillRow.効果時間='2t';
+ assert.equal(m.isV39CastAttackLocked(state,'caster',5),false);
+ console.log('PASS: sanctuary attack lock is limited to its caster and casting phase, with legacy compatibility.');
+}
+
+{
+ const actor={id:'numeric-source',hp:100,status:{}};
+ const target={id:'numeric-target',hp:100,ap:100,maxAp:100,status:{反応:100,精神:25,命中:100},skillLevels:{索敵:100,看破:75}};
+ const state={enemies:[actor,target],timeline:{turnNumber:3}};
+ const entries=[{targetId:target.id,beforeHp:100,afterHp:100,hitCount:1}];
+ const fatigued=m.applyV39SkillTriggerCombat(state,state,actor,{盲目:40,幻覚:60,呪い:100,効果:'疲労'},entries).state;
+ const afflicted=m.applyV39SkillTriggerCombat(fatigued,fatigued,actor,{毒:30,効果:'麻痺'},entries).state;
+ const victim=afflicted.enemies[1];
+ assert.deepEqual(victim.numericStatuses,{盲目:20,幻覚:30,疲労:100,麻痺:30});
+ assert.equal(m.resolveDetectionScoutValue(victim),50);
+ assert.equal(m.resolveV39MaxAp(victim),80);
+ assert.equal(victim.ap,50);
+ assert.equal(victim.periodicDamage,undefined);
+ const apply=row=>m.applyV39SkillTriggerCombat(state,state,actor,row,entries).state.enemies[1];
+ assert.equal(apply({毒:50}).periodicDamage[0].value,50);
+ assert.equal(apply({毒:50,効果:'麻痺/毒'}).periodicDamage[0].value,50);
+ assert.equal(apply({毒:50,効果:'麻痺/毒'}).numericStatuses.麻痺,50);
+ const combined=apply({毒:50,呪い:80,効果:'麻痺'});
+ assert.equal(combined.numericStatuses.麻痺,130);
+ assert.equal(combined.periodicDamage,undefined);
+ assert.equal(apply({疲労:100,麻痺:30,効果:'疲労/麻痺'}).numericStatuses,undefined);
+ assert.equal(m.applyV39ControlTurnAp({...victim,ap:80},4,{restored:true}).ap,50);
+ const healed=m.applyV39SkillTriggerCombat(afflicted,afflicted,actor,{回復:15,効果:'麻痺回復/盲目回復'},[],{supportTargetIds:[target.id]}).state.enemies[1];
+ assert.equal(healed.numericStatuses.麻痺,15);
+ assert.equal(healed.numericStatuses.盲目,5);
+ assert.equal(healed.ap,50);
+ const buffed={...state,enemies:[actor,{...target,shield:{remaining:10,expiresAtTurn:5}}],
+  enemyCombatRuntime:{activeEffectsByEnemyId:{[target.id]:[{expiresAtTurn:7,modifiers:{攻撃:20}}]}}};
+ const dispel=before=>m.applyV39SkillTriggerCombat(before,before,actor,{魔法:75,効果:'強化解除'},entries).state;
+ const first=dispel(buffed),second=dispel(first);
+ assert.equal(first.enemyCombatRuntime.activeEffectsByEnemyId[target.id][0].expiresAtTurn,7);
+ assert.equal(second.enemyCombatRuntime.activeEffectsByEnemyId[target.id][0].expiresAtTurn,6);
+ assert.equal(second.enemies[1].shield.expiresAtTurn,4);
+ assert.equal(second.enemies[1].dispelRemainder,50);
+ const mage={...actor,status:{魔力:40,精神:50}};
+ const scaled=m.applyV39SkillTriggerCombat(buffed,buffed,mage,{魔法:75,効果:'強化解除'},entries).state;
+ assert.equal(scaled.enemies[1].dispelRemainder,5);
+ assert.equal(scaled.enemyCombatRuntime.activeEffectsByEnemyId[target.id][0].expiresAtTurn,6);
+ const explicit=m.applyV39SkillTriggerCombat(buffed,buffed,mage,{魔法:80,判定:'精神',効果:'強化解除'},entries).state;
+ assert.equal(explicit.enemies[1].dispelRemainder,20);
+ console.log('PASS: numeric status resistance, detection, AP cap/loss, named recovery and timed dispel.');
+}
+
+{
+ assert.equal(m.resolveV39ChainDepth({効果:'連鎖'}),1);
+ assert.equal(m.resolveV39ChainDepth({効果:'必中/連鎖_3'}),3);
+ assert.equal(m.resolveV39ChainDepth({効果:'連鎖_5'}),0);
+ const entries=[{targetId:'a',x:0,hitCount:1},{targetId:'b',x:2,hitCount:1},{targetId:'miss',x:8,hitCount:0}];
+ const targets=[{id:'shared',x:1},{id:'stops',x:3},{id:'after',x:4},{id:'unreached',x:9}];
+ const strikes=[];
+ m.runV39ChainAttacks({depth:4,entries,targets,canSpread:(origin,target)=>Math.abs(origin.x-target.x)===1,
+  strike(id,scale,stage,followUp){strikes.push([id,scale,stage,followUp]);return id!=='stops';}});
+ assert.deepEqual(strikes,[['a',0.5,1,true],['b',0.5,1,true],['shared',0.5,1,false],['stops',0.5,1,false]]);
+ console.log('PASS: chain origins must hit, overlapping spreads hit once and a missed spread does not propagate.');
+}
+
+{
+ const scaled=m.computeSkillScaledTriplet({雷:40,効果:'感電',盲目:10,ガード:20,判定:'魔力'},{魔力:100});
+ assert.equal(m.formatV39SkillCombatValues(scaled),'威80 守40 状100');
+ const paralysis={毒:60,効果:'麻痺'};
+ assert.equal(m.formatV39SkillCombatValues({...m.computeSkillScaledTriplet(paralysis),power:m.resolveAttackPower(paralysis,{})}),'状60');
+ assert.equal(m.formatV39SkillCombatValues({power:0,guard:0,state:0,healing:50}),'回50');
+ assert.equal(m.formatV39SkillCombatValues({power:0,guard:0,state:0,healing:0}),'');
+ assert.equal(m.computeSkillScaledTriplet({効果:'速度ダメージ',全威力:50}).state,50);
+ console.log('PASS: skill summary displays power, guard and scaled numeric/legacy status power.');
+}
+
+{
+ const actor={status:{命中:100}};
+ const target={level:1,status:{防御:0},barrier:{remaining:30},shield:{remaining:35},guard:20};
+ const attack=m.computeAttackDamage({attacker:actor,target,skillRow:{物理:100,効果:'必中'},random:()=>0});
+ assert.equal(attack.barrierAbsorbed,30);
+ const damage=m.applyV39GuardToDamage(target,attack);
+ assert.equal(damage.shieldAbsorbed,35);
+ assert.equal(damage.guardAbsorbed,attack.total-35);
+ assert.equal(damage.guardRemaining,55-attack.total);
+ assert.equal(damage.total,0);
+ const multi=m.applyV39GuardToDamage(target,{hits:[20,0,40],hitResults:[{hit:true},{hit:false},{hit:true}]});
+ assert.deepEqual(multi.hits,[0,0,5]);
+ assert.equal(multi.shieldRemaining,0);
+ assert.equal(multi.guardRemaining,0);
+ console.log('PASS: barrier, shield, guard absorption order and remaining pools across hits.');
+}
+
+{
+ const actor={status:{攻撃:2,命中:100}};
+ const target={level:1,status:{防御:0},shield:{remaining:0.1}};
+ const params={attacker:actor,target,skillRow:{物理:9,判定:'攻撃',効果:'必中'},random:()=>0};
+ assert.equal(m.computeAttackDamage(params).hits[0],6,'fractional scaled power survives until HP damage');
+ const pending=m.computeAttackDamage({...params,deferRounding:true});
+ assert.ok(Math.abs(pending.hits[0]-5.508)<1e-8);
+ assert.equal(m.applyV39GuardToDamage(target,pending).hits[0],5,'shield is applied before rounding');
+ const critical=m.computeAttackDamage({...params,skillRow:{物理:6,Cr率:100,Cr威力:25,効果:'必中',攻撃回数:2}});
+ assert.deepEqual(critical.hits,[5,5]);
+ assert.equal(critical.total,10,'two hits of 4.5 round separately');
+ console.log('PASS: HP damage rounds once per hit after growth, critical and shield.');
 }

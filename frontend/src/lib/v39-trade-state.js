@@ -4,6 +4,7 @@ import {getGameDataRows} from './game-data-registry.js';
 import {v39SpecialtyDefinitions,getV39SpecialtyAccess} from './v39-specialty-rules.js';
 import {V39_SPECIALTY_BALANCE} from './v39-gameplay-balance.js';
 import {getHexDistance,getHexOffsetNeighbors} from './hex-grid.js';
+import {getV39DiplomacyRelation} from './v39-diplomacy-rules.js';
 import {resolveV39UnitCargoCapacity,resolveV39CargoLoad,normalizeV39Cargo} from './v39-logistics-state.js';
 
 export const V39_TRADE_CONFIG=config;
@@ -207,12 +208,30 @@ export function divertV39TradeIncome(state,kind,partyId,settlementId,income,turn
   }
   return {state:next,income:remaining,reserved};
 }
-export function stopV39Trade(state,playerId,id,cancel=false) {
+function applyTradeCancellationRelation(state,contract,playerId,reason){
+  const other=contract.sides.find(side=>side.partyId!==playerId);
+  if(!other)return state;
+  const loss=reason==='disaster'?n(config.disasterCancellationRelationLoss):n(config.cancellationRelationLoss);
+  if(loss<=0)return state;
+  const clamp=value=>Math.max(-100,Math.min(100,Math.round(value)));
+  if(other.kind==='player'){
+    const relation=getV39DiplomacyRelation(state,playerId,other.partyId);
+    if(!relation.pairKey)return state;
+    return {...state,diplomacyRelations:{...state.diplomacyRelations,[relation.pairKey]:{...relation,relationValue:clamp(n(relation.relationValue)-loss)}}};
+  }
+  if(other.kind==='village'){
+    const adjust=village=>village.id===other.partyId?{...village,relationsByPlayerId:{...village.relationsByPlayerId,[playerId]:clamp(n(village.relationsByPlayerId?.[playerId])-loss)}}:village;
+    return {...state,neutralVillages:(state.neutralVillages||[]).map(adjust),settlements:(state.settlements||[]).map(adjust)};
+  }
+  return state;
+}
+export function stopV39Trade(state,playerId,id,cancel=false,options={}) {
   const source=listV39Trades(state).find(row=>row.id===id);
-  if(!source||!source.sides.some(side=>side.kind==='player'&&side.partyId===playerId)||state.activePlayerId!==playerId||['complete','cancelled','rejected'].includes(source.status))return failure(state,'この取引は操作できません');
+  if(!source||!source.sides.some(side=>side.kind==='player'&&side.partyId===playerId)||state.activePlayerId!==playerId||['complete','cancelled','rejected','cancelling'].includes(source.status))return failure(state,'この取引は操作できません');
   const contract=structuredClone(source);let next=state;
   if(source.status==='proposed'){contract.status='rejected';return {ok:true,state:updateV39Trade(next,contract),message:'提案を取り下げ/拒否しました'};}
   contract.status=cancel?'cancelling':'interrupted';contract.reason=cancel?'中止・未交換の荷物は帰還':'手動中断';contract.resumeApprovals=[];
+  if(cancel)contract.cancellationReason=options.reason==='disaster'?'disaster':'manual';
   for(const side of contract.sides) {
     if(cancel){
       const pendingRights=Object.fromEntries(Object.entries(side.goods).filter(([name])=>V39_TRADE_RESOURCES.find(row=>row.name===name)?.specialty&&!['returning','returned'].includes(side.stage)).map(([name,count])=>[name,Math.max(0,count-n(side.reserved?.[name]))]));
@@ -223,7 +242,8 @@ export function stopV39Trade(state,playerId,id,cancel=false) {
     }
     next=updateTradeUnits(next,side,unit=>side.memberIds.includes(unit.id)?{...unit,tradeAssignment:{contractId:id,automatic:cancel}}:unit);
   }
-  return {ok:true,state:updateV39Trade(next,contract),message:cancel?'取引を中止。未積載の予約解除・担当者は引き返します（受領済み分は返却交渉が必要）':'取引を中断しました。再開は双方の確認が必要です'};
+  if(cancel)next=applyTradeCancellationRelation(next,contract,playerId,contract.cancellationReason);
+  return {ok:true,state:updateV39Trade(next,contract),message:cancel?`取引を中止。友好度-${contract.cancellationReason==='disaster'?config.disasterCancellationRelationLoss:config.cancellationRelationLoss}。未積載の予約解除・担当者は引き返します（受領済み分は返却交渉が必要）`:'取引を中断しました。再開は双方の確認が必要です'};
 }
 export function reserveV39TradeFromStock(state,playerId,id,npc=false,random=Math.random,context={}) {
   const source=listV39Trades(state).find(row=>row.id===id);

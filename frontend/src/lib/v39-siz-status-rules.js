@@ -27,3 +27,21 @@ export function applyV39SizStatusModifiers(status,skillLevels={}){
   return {status:{...applyPercent(status,modifiers.statusPercent),SIZ:modifiers.siz},
     skillLevels:applyPercent(skillLevels,modifiers.skillPercent),modifiers};
 }
+
+// Derived unit values already include the original SIZ modifier. Apply only
+// the ratio between the new and old modifier to avoid counting it twice.
+export function applyV39SizChangeToDerived(status,skillLevels,oldSiz,newSiz){
+  const old=resolveV39SizStatusModifiers(oldSiz);
+  const next=resolveV39SizStatusModifiers(newSiz);
+  const scale=(source,oldPercents,newPercents)=>{
+    const result={...source};
+    for(const key of Object.keys(newPercents)){
+      if(!Object.hasOwn(source||{},key))continue;
+      const before=Math.max(rules.minimumMultiplier,1+(oldPercents[key]||0)/100);
+      const after=Math.max(rules.minimumMultiplier,1+(newPercents[key]||0)/100);
+      result[key]=Math.max(key==='HP'&&Number(source[key])>0?1:0,Math.round((Number(source[key])||0)*after/before));
+    }
+    return result;
+  };
+  return {status:{...scale(status,old.statusPercent,next.statusPercent),SIZ:next.siz},skillLevels:scale(skillLevels,old.skillPercent,next.skillPercent)};
+}

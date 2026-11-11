@@ -30,7 +30,7 @@ function applySingleDisasterDamage(unit,spec,turn,source='災害',random=Math.ra
     if(Number(value?.power)>0){
       const skillRow={名前:source,装備攻撃:true,効果:'必中',全威力:value.power,
         判定:value.element==='精神'?'魔力':'',[value.element||'物理']:value.power};
-      const result=computeAttackDamage({attacker:{status:{},techniques:[]},target:unit,skillRow,damageType:value.element,random:()=>roll});
+      const result=computeAttackDamage({attacker:{status:{},techniques:[]},target:unit,skillRow,damageType:value.element,random:()=>roll,deferRounding:true});
       return {...applyV39GuardToDamage(unit,result),sourceName:value.sourceName,disasterId:value.disasterId};
     }
     const rate=Number(typeof value==='number'?value:value?.rate)||0;

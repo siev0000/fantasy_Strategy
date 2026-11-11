@@ -1,9 +1,12 @@
 import { resolveV39UnitExpDisplay } from "../../lib/v39-unit-experience.js";
+import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
+import {resolveV39MaxAp} from '../../lib/v39-control-status.js';
 import {renderV39CastSymbol} from '../../lib/v39-cast-symbol.js';
 import { getRaceIconSrc } from "../../lib/race-icon-library.js";
 import {resolveUnitArtwork} from '../../lib/map-entity-artwork.js';
 import {resolveMonsterSheetArtwork} from '../../lib/monster-sheet-artwork.js';
+import {resolveV39ActiveTransformationArtwork} from '../../lib/v39-transformation-artwork.js';
 import "./v39-unit-card.css";
 import './v39-unit-card-name-fit.js';
 import {v39SquadMoveMode,v39SquadMoveLabel} from '../../lib/v39-squad-coordination.js';
@@ -45,7 +48,8 @@ function levelBadgeIconMarkup(unit, options = {}) {
 }
 
 function portraitMarkup(unit, exp, expTitle) {
-  const art=resolveMonsterSheetArtwork(unit)||resolveUnitArtwork(unit);
+  const state=typeof window.getV39GameState==='function'?window.getV39GameState({includeWorlds:false}):null;
+  const art=resolveV39ActiveTransformationArtwork(unit,state)||resolveMonsterSheetArtwork(unit)||resolveUnitArtwork(unit);
   if(!art?.src || art.type==='icon')return '';
   const frame=art.sheetFrame;
   const columns=Math.max(1,Number(frame?.columns)||1),rows=Math.max(1,Number(frame?.rows)||1);
@@ -57,12 +61,13 @@ function portraitMarkup(unit, exp, expTitle) {
 
 // 部隊一覧と自キャラ画面が同じカードを描く。クリック先だけ呼出し側で指定する。
 export function renderV39UnitCard(unit, options={}) {
+  unit=visualV39CombatUnit(unit);
   const waited = isV39UnitWaitDimmed(unit, options.turnNumber ?? window.getV39TimelineState?.()?.turnNumber);
   const id = options.id ?? unit.id;
   const name = getV39UnitDisplayName(unit,options.name ?? unit.name ?? id);
   const exp = resolveV39UnitExpDisplay(unit);
   const hp = options.hp ?? {current:count(unit.hp ?? unit.currentHp),max:count(unit.maxHp ?? unit.status?.HP)};
-  const ap = options.ap ?? {current:count(unit.ap ?? unit.currentAp),max:count(unit.maxAp ?? unit.apMax ?? 100)};
+  const ap = options.ap ?? {current:count(unit.ap ?? unit.currentAp),max:count(resolveV39MaxAp(unit,unit.maxAp ?? unit.apMax ?? 100))};
   const defenses = options.defenses ?? [["shield","盾"],["barrier","障壁"]].flatMap(([kind,label]) => {
     const value = unit[kind];
     return value?.maximum > 0 && (kind !== "barrier" || value.remaining > 0)
@@ -78,5 +83,5 @@ export function renderV39UnitCard(unit, options={}) {
   const badgeIcon = levelBadgeIconMarkup(unit, options);
   const cast=describeV39Cast(getV39UnitCast(null,unit.id),options.turnNumber??window.getV39TimelineState?.()?.turnNumber);
   const badge = (options.portrait ? portraitMarkup(unit,exp,expTitle) : '') || `<span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="squad-icon">${badgeIcon}</span><span class="squad-level-number" aria-hidden="true">${exp.level}</span></span>`;
-  return `<button class="squad-card${waited ? " v39-unit-waited" : ""}${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead ? " dead" : ""}${options.collapseUnselected !== false ? " v39-card-collapse-unselected" : ""}" ${attribute}="${escapeHtml(id)}" style="--v39-waited-brightness:${V39_WAITED_UNIT_BRIGHTNESS}" title="${escapeHtml(name)} Lv${exp.level}${waited ? " / 待機済み" : ""}"><div class="squad-card-top"><div class="squad-main">${badge}${cast ? `<span class="v39-cast-card-mark${cast.ready?' is-ready':''}" title="${escapeHtml(cast.label)}" aria-label="${escapeHtml(cast.label)}">${renderV39CastSymbol(cast.ready)}</span>` : ""}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${cast ? ` <span class="v39-cast-state">${cast.label}</span>` : ""}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></button>`;
+  return `<button class="squad-card${waited ? " v39-unit-waited" : ""}${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead && hp.current<=0 ? " dead" : ""}${options.collapseUnselected !== false ? " v39-card-collapse-unselected" : ""}" ${attribute}="${escapeHtml(id)}" style="--v39-waited-brightness:${V39_WAITED_UNIT_BRIGHTNESS}" title="${escapeHtml(name)} Lv${exp.level}${waited ? " / 待機済み" : ""}"><div class="squad-card-top"><div class="squad-main">${badge}${cast ? `<span class="v39-cast-card-mark${cast.ready?' is-ready':''}" title="${escapeHtml(cast.label)}" aria-label="${escapeHtml(cast.label)}">${renderV39CastSymbol(cast.ready)}</span>` : ""}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${cast ? ` <span class="v39-cast-state">${cast.label}</span>` : ""}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></button>`;
 }

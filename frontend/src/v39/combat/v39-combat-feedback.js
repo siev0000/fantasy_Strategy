@@ -1,6 +1,7 @@
 import {V39_COMBAT_POPUPS,resolveV39CombatPopup} from '../../lib/v39-combat-popup-rules.js';
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { addV39FieldSymbol } from "../map/v39-field-symbols.js";
+import {holdV39CombatVisualHp,releaseV39CombatVisualHp} from '../../lib/v39-combat-visual-state.js';
 
 const POPUP_DEPTH = 1000010;
 const BAR_DEPTH = 1000005;
@@ -96,11 +97,13 @@ function showTypedPopup(scene,entry,center){
   const display=resolveV39CombatPopup(entry.popupType,entry.amount,entry.popupLabel);
   if(!display||number(entry.amount)<=0)return;
   const offset=popupOffset(entry.targetId);
+  const delay=Math.max(0,number(entry.hitIndex))*260;
   const label=scene.add.text(center.x,center.y-24-offset,display.text,{
     fontFamily:'Noto Sans JP, Meiryo, sans-serif',fontSize:display.secondaryFontSize+'px',fontStyle:'bold',color:display.color,
     stroke:display.stroke,strokeThickness:display.strokeThickness
   }).setOrigin(.5).setDepth(POPUP_DEPTH).setName('v39-effect-popup').setData('targetId',entry.targetId).setData('type',entry.popupType);
-  scene.tweens.add({targets:label,y:center.y-46-offset,alpha:{from:1,to:0},duration:1500,onComplete:()=>label.destroy()});
+  if(delay)label.setAlpha(0);
+  scene.tweens.add({targets:label,y:center.y-46-offset,alpha:{from:1,to:0},delay,duration:1500,onStart:()=>label.setAlpha(1),onComplete:()=>label.destroy()});
 }
 
 function showDamagePopups(scene, entry, center) {
@@ -173,7 +176,23 @@ function showEntry(entry) {
   flashMarker(entry.targetId);
   if(entry.popupType)showTypedPopup(scene,entry,center);
   else showDamagePopups(scene, entry, center);
+  for(const popup of entry.statusPopups||[])showTypedPopup(scene,{...popup,targetId:entry.targetId},center);
   showDelayedHpBar(scene, entry, center);
+}
+
+function showEntryDamage(entry){
+  const scene=activeScene();
+  if(!scene||!Number.isFinite(Number(entry?.x))||!Number.isFinite(Number(entry?.y)))return;
+  const center=tileCenter(entry.x,entry.y);
+  flashMarker(entry.targetId);
+  if(entry.popupType)showTypedPopup(scene,entry,center);
+  else showDamagePopups(scene,entry,center);
+  for(const popup of entry.statusPopups||[])showTypedPopup(scene,{...popup,targetId:entry.targetId},center);
+}
+
+function showEntryHp(entry){
+  const scene=activeScene();
+  if(scene&&Number.isFinite(Number(entry?.x))&&Number.isFinite(Number(entry?.y)))showDelayedHpBar(scene,entry,tileCenter(entry.x,entry.y));
 }
 
 function showCombatFeedback(detail) {
@@ -186,11 +205,54 @@ function showCombatFeedback(detail) {
   for (const entry of Array.isArray(detail?.entries) ? detail.entries : []) showEntry(entry);
 }
 
+const attackPresentations=new Map();
+const presentationKey=detail=>String(detail?.attackerId||'')+'|'+String(detail?.skillName||'');
+window.addEventListener('v39:attack-effect-queued',event=>{
+  const key=event.detail?.key;
+  if(key&&!attackPresentations.has(key))attackPresentations.set(key,{key});
+});
+window.addEventListener('v39:attack-effect-started',event=>{
+  const row=attackPresentations.get(event.detail?.key);if(!row)return;
+  row.started=true;
+  if(row.detail?.entries?.length)lungeMarker(row.detail.attackerId,row.detail.target);
+});
+window.addEventListener('v39:attack-effect-late',event=>{
+  const row=attackPresentations.get(event.detail?.key);if(!row)return;
+  row.late=true;
+  if(row.detail)for(const entry of row.detail.entries||[])showEntryDamage(entry);
+});
+window.addEventListener('v39:attack-effect-finished',event=>{
+  const row=attackPresentations.get(event.detail?.key);if(!row)return;
+  attackPresentations.delete(event.detail?.key);
+  if(row.detail){
+    if(!row.late)for(const entry of row.detail.entries||[])showEntryDamage(entry);
+    for(const entry of row.detail.entries||[])showEntryHp(entry);
+    releaseV39CombatVisualHp(row.detail.entries);
+  }
+});
 window.addEventListener("v39:combat-log", event => {
   if (window.__v39SuppressCombatEffects === true) return;
-  showCombatFeedback(event?.detail);
+  const detail=event?.detail;
+  if(!detail?.entries?.length){showCombatFeedback(detail);return;}
+  holdV39CombatVisualHp(detail.entries);
+  window.setTimeout(()=>{
+    const row=attackPresentations.get(presentationKey(detail));
+    if(!row){releaseV39CombatVisualHp(detail.entries);showCombatFeedback(detail);return;}
+    row.detail=detail;
+    if(row.started)lungeMarker(detail.attackerId,detail.target);
+    if(row.late)for(const entry of detail.entries)showEntryDamage(entry);
+  },0);
 });
-window.addEventListener("v39:combat-presentation", event => showCombatFeedback(event?.detail));
+window.addEventListener('v39:combat-presentation',event=>{
+  const detail=event?.detail,phase=detail?.presentationPhase;
+  if(phase==='start'){
+    if(detail?.entries?.length)lungeMarker(detail.attackerId,detail.target);
+  }else if(phase==='late'){
+    for(const entry of detail?.entries||[])showEntryDamage(entry);
+  }else if(phase==='end'){
+    for(const entry of detail?.entries||[])showEntryHp(entry);
+  }else showCombatFeedback(detail);
+});
 window.addEventListener("v39:cast-started", (event) => {if(!window.__v39BackgroundWorldTurn&&!event?.detail?.aimAfterCast)startCastBlink(event?.detail?.unitId);});
 window.addEventListener("v39:cast-ended", (event) => stopCastBlink(event?.detail?.unitId));
 

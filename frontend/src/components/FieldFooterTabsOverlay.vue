@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { skillData as skillInfoDb } from "../lib/game-data-registry.js";
-import { computeSkillScaledTriplet } from "../lib/skill-power.js";
+import { computeSkillScaledTriplet, formatV39SkillCombatValues } from "../lib/skill-power.js";
+import {resolveAttackPower,resolveSkillHealing,resolveV39SkillStatePower} from "../lib/v39-combat-engine.js";
 import { getRaceIconSrc } from "../lib/race-icon-library.js";
 import { SKILL_LEVEL_FIELDS } from "../constants/unitCommon.js";
 
@@ -79,7 +80,21 @@ function techRaw(r){if(typeof r==="string")return{name:text(r),row:skillDb.get(t
 const techRows=computed(()=>{const src=member.value?.techniques||member.value?.skills||member.value?.acquiredSkills||member.value?.skillNames||[];const seen=new Set(),out=[];for(const r of Array.isArray(src)?src:[]){const t=techRaw(r);if(t?.name&&!seen.has(t.name)){seen.add(t.name);out.push(t);}}return out;});
 const tech=computed(()=>techRows.value.find(x=>x.name===techName.value)||techRows.value[0]||null);
 watch(techRows,r=>{if(!r.length)techName.value="";else if(!r.some(x=>x.name===techName.value))techName.value=r[0].name;},{immediate:true});
-function techMeta(t){const r=t?.row;if(!r)return"";const s=computeSkillScaledTriplet(r,member.value?.status||null);const a=[];if(text(r?.AP消費||r?.apCost||r?.AP))a.push(`AP ${text(r?.AP消費||r?.apCost||r?.AP)}`);if(Number.isFinite(Number(s?.power)))a.push(`威力 ${Math.round(Number(s.power))}`);if(text(r?.射程||r?.range))a.push(`射程 ${text(r?.射程||r?.range)}`);if(text(r?.範囲||r?.対象||r?.pattern))a.push(text(r?.範囲||r?.対象||r?.pattern));return a.join(" / ");}
+function techMeta(technique) {
+  const row=technique?.row;
+  if(!row)return "";
+  const unit=member.value;
+  const scaled=computeSkillScaledTriplet(row,unit?.status);
+  const ap=text(row.AP消費??row.apCost??row.AP);
+  const range=text(row.射程??row.range);
+  return [
+    ap&&`AP ${ap}`,
+    formatV39SkillCombatValues({...scaled,power:resolveAttackPower(row,unit),
+      state:resolveV39SkillStatePower(row,unit),healing:resolveSkillHealing(row,unit)}),
+    range&&`射程 ${range}`,
+    text(row.範囲||row.対象||row.pattern)
+  ].filter(Boolean).join(" / ");
+}
 function move(){const id=unitId(member.value);if(id)emit("move-request",{unitId:id});}
 function attack(){const id=unitId(member.value);if(id){emit("attack-request",{unitId:id});emit("open-skill-request",{unitId:id});}}
 function useTech(){const id=unitId(member.value);if(id)emit("open-skill-request",{unitId:id,skillName:tech.value?.name||""});}

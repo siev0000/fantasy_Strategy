@@ -61,15 +61,15 @@ VALID_ACTIONS = {"A", "P", "Q", "S"}
 # 長いキーを先に判定する。
 BARE_PREFIX_KEYS = sorted({
     "クールタイム", "待機時間", "効果時間", "追加行動", "攻撃追加回数",
-    "攻撃回数", "ノックバック", "消費増加", "移動速度", "物理貫通",
-    "魔法貫通", "物理軽減", "魔法軽減", "物理ガード", "魔法ガード",
+    "攻撃回数", "ノックバック", "体幹", "消費増加", "移動速度", "物理貫通",
+    "魔法貫通", "物理軽減", "魔法軽減", "遠隔軽減", "物理ガード", "魔法ガード",
     "Cr率耐性", "Cr威力耐性", "Cr耐性", "Cr率", "Cr威力",
     "射撃耐性", "切断耐性", "貫通耐性", "打撃耐性", "炎耐性", "氷耐性",
     "雷耐性", "毒耐性", "光耐性", "闇耐性", "精神耐性", "盲目耐性",
     "怯み耐性", "出血耐性", "拘束耐性", "幻覚耐性", "疲労耐性", "支配耐性",
     "全威力", "威力", "ガード", "物理", "魔法", "射撃", "切断", "貫通",
     "打撃", "炎", "氷", "雷", "毒", "燃焼", "呪い", "光", "闇", "精神攻撃", "盲目",
-    "怯み", "出血", "拘束", "幻覚", "疲労", "回復", "HP", "MP", "ST",
+    "怯み", "出血", "拘束", "幻覚", "回復", "HP", "MP", "ST",
     "攻撃", "防御", "魔力", "魔防", "精神", "速度", "命中", "SIZ",
     "指揮", "威圧", "看破", "知覚", "早業", "技術", "隠密", "索敵",
     "軽業", "農業", "林業", "漁業", "工業", "統治", "交渉", "魔術", "信仰",
@@ -169,7 +169,7 @@ def _split_tokens(text: str) -> List[str]:
 
 
 def _set_value(out: Dict[str, Any], key: str, value: Any, duplicates: List[dict], token: str) -> None:
-    key = key.strip()
+    key = {"物理耐性":"物理軽減", "魔法耐性":"魔法軽減", "射撃耐性":"遠隔軽減", "遠隔耐性":"遠隔軽減"}.get(key.strip(), key.strip())
     if not key:
         return
     value = _json_scalar(value)
@@ -358,6 +358,18 @@ def compact_record(record: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# Project by header names: optional MP/ST columns must not shift AP or data.
+CS_LEGACY_COLUMNS = {1:"Lv", 2:"スキル名", 3:"ルビ", 4:"系統", 5:"行動", 6:"HP消費",
+                     7:"AP消費", 8:"データ", 9:"効果", 10:"効果説明", 11:"取得条件", 14:"アニメ"}
+
+def project_cs_row(row, headers):
+    columns = {str(value).strip():col for col,value in headers.items() if value is not None}
+    missing = [name for name in CS_LEGACY_COLUMNS.values() if name not in columns]
+    if missing:
+        raise ValueError("CSの必須列がありません: " + ", ".join(missing))
+    return {legacy:row.get(columns[name]) for legacy,name in CS_LEGACY_COLUMNS.items()}
+
+
 def row_to_skill(
     row_no: int,
     row: Dict[int, Any],
@@ -446,6 +458,7 @@ def convert(
         except ValueError:
             trigger_col = None
 
+        headers = next(row for number,row in xlsx.sheet_rows(cs_sheet) if number == output_check_header_row)
         for row_no, row in xlsx.sheet_rows(cs_sheet):
             if row_no <= max(3, output_check_header_row):
                 continue
@@ -461,7 +474,7 @@ def convert(
                 })
                 continue
 
-            rec, info = row_to_skill(row_no, row, effects)
+            rec, info = row_to_skill(row_no, project_cs_row(row, headers), effects)
             if rec is not None and trigger_col is not None and _clean_text(row.get(trigger_col)):
                 rec["発動"] = _clean_text(row.get(trigger_col))
             infos.append(info)

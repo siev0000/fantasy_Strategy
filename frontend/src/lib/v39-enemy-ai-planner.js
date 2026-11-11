@@ -1,3 +1,4 @@
+import {getV39ActionBlock,standUpV39Unit} from './v39-control-status.js';
 import { isV39SupportSkill, resolveActionSkillRows, resolveAttackApCost, resolveAttackRange, resolveAttackRows } from "./v39-combat-engine.js";
 import { getHexDistance, getHexNeighborCoords } from "./hex-grid.js";
 import {v39HazardRiskAt} from './v39-hazard-zones.js';
@@ -421,6 +422,7 @@ function attackSkillsFor(state, enemy, target, turnNumber, mapData) {
   const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(enemy.id)] || {};
   const targetDistance = distance(enemy, target);
   return resolveActionSkillRows(enemy).filter(skillRow => !isV39SupportSkill(skillRow, enemy)
+    && !getV39ActionBlock(enemy,turnNumber,'skill',skillRow)
     && resolveAttackApCost(skillRow, enemy) <= number(enemy.ap)
     && resolveAttackRange(skillRow, enemy, mapData) >= targetDistance
     && hasV39CaveLineOfSight(mapData,enemy,target)
@@ -504,6 +506,8 @@ export function planNextEnemyAction(state, mapData, turnNumber) {
   });
   if (!enemy) return null;
   const id = text(enemy.id);
+  if(enemy.knockedDown)return {type:standUpV39Unit(enemy,turnNumber)===enemy?'wait':'stand-up',enemyId:id,turnNumber};
+  if(getV39ActionBlock(enemy,turnNumber,'move'))return {type:'wait',enemyId:id,turnNumber};
   const inspection = inspectEnemyAiState(state, id, turnNumber, mapData);
   const targets = targetsFor(state, enemy);
   const nest = nestFor(state, enemy);
@@ -645,6 +649,9 @@ export function applyEnemyPlanToSimulation(state, plan) {
       actionPoint:Math.max(0, number(enemy.ap)-number(plan.cost)),
       lastMovedTurn:plan.turnNumber
     },[plan.to],state,plan.turnNumber).unit : enemy);
+  } else if (plan.type === "stand-up") {
+    enemies = enemies.map(enemy => text(enemy?.id) === id ? standUpV39Unit(enemy,plan.turnNumber) : enemy);
+    if(!enemies.find(enemy=>text(enemy?.id)===id)?.knockedDown)delete runtime.lastActionTurnByEnemyId[id];
   } else if (plan.type === "wait") {
     enemies = enemies.map(enemy => text(enemy?.id) === id ? { ...enemy, ...(plan.enemyPatch || {}) } : enemy);
   } else if (plan.type === "queue-attack") {
