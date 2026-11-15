@@ -4,6 +4,7 @@ const damage=entry=>Math.max(0,number(entry.damage??entry.total)||0);
 const source=(entry,fallback)=>text(entry.source)||fallback;
 export function formatV39EnvironmentDamageEntry(entry,fallback='災害'){
   const name=text(entry.name||entry.targetName||entry.unitId||entry.targetId)||'対象';
+  if(entry.ability)return `${name}: ${source(entry,fallback)} 威${entry.power??0} / ${entry.ability}-${damage(entry)}`;
   const hp=number(entry.beforeHp)!=null&&number(entry.afterHp)!=null?` / HP ${entry.beforeHp}→${entry.afterHp}`:'';
   const components=entry.detail?.components?.map(c=>`${text(c.resistanceKey).replace(/耐性$/u,'')} ${c.damage}`).join('＋');
   const force=number(entry.collisionPower)!=null?` / 衝突威力${entry.collisionPower}`:'';

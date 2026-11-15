@@ -11,6 +11,7 @@ import "./v39-unit-detail.css";
 import {EQUIPMENT_SLOT_KEYS} from '../../constants/unitCommon.js';
 import {resolveV39UnitWeatherMovement} from '../../lib/v39-terrain-traversal.js';
 import {V39_UNIT_ACHIEVEMENT_FIELDS} from '../../lib/v39-unit-achievements.js';
+import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -75,6 +76,8 @@ export function renderV39UnitConditions(unit){
   const state=globalThis.window?.getV39GameState?.({includeWorlds:false}),turn=Number(state?.timeline?.turnNumber)||1;
   const remaining=expires=>expires?'残り'+Math.max(0,Number(expires)-turn)+'T':'期限なし';
   const active=expires=>!expires||Number(expires)>turn;
+  const spatialPercent=resolveV39SpatialDistortionPercent(unit,state);
+  if(spatialPercent!==null)(spatialPercent>100?buffs:debuffs).push([`空間歪曲 ${spatialPercent}%`,`移動AP・射程 ${spatialPercent}%`]);
   if(unit?.knockedDown)debuffs.push(['転倒','起き上がり 20AP / 回避 -25%']);
   if(unit?.staggeredTurn===turn&&Number(unit.ap??unit.currentAp)<=0)debuffs.push(['怯み','AP 0']);
   for(const kind of V39_NUMERIC_STATUSES){
@@ -148,16 +151,16 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
     return '<span class="v39-ability-value"><b'+(fieldId?id(fieldId):'')+'>'+escapeHtml(value)+'</b>'+(annotation?'<small class="v39-ability-delta '+(amount>0?'is-up':'is-down')+'" aria-label="一時補正 '+escapeHtml(annotation)+'">'+escapeHtml(annotation)+'</small>':'')+'</span>';
   };
   const stats = STATUS_FIELDS.map(([label, key, fieldId]) => {
-    const raw = key==='移動'&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0)?Math.max(1,Math.floor(weatherMovement.movement))
-      :key==='飛行'&&weatherMovement.flightReduction>0?Math.round(weatherMovement.flight*10)/10
+    const raw = key==='移動'&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0||weatherMovement.coldWaveLoss>0||weatherMovement.gravityMovementLoss>0)?Math.max(0,Math.floor(weatherMovement.movement))
+      :key==='飛行'&&(weatherMovement.flightReduction>0||weatherMovement.stormFlightLoss>0||weatherMovement.coldWaveLoss>0||weatherMovement.gravityFlightBlocked)?Math.round(weatherMovement.flight*10)/10
       :key === "移動"
       ? adjusted?.status?.移動 ?? adjusted?.movement ?? unit?.move ?? unit?.moveRange ?? unit?.移動
       : key === "飛行" ? adjusted?.skillLevels?.飛行 ?? adjusted?.status?.飛行 ?? unit?.飛行 ?? 0
       : adjusted?.status?.[key] ?? unit?.[key];
     const value=Number.isFinite(Number(raw))?Number(raw):'-';
     let delta=key==='飛行'?deltas.skillLevels?.飛行??deltas.status?.飛行:deltas.status?.[key];
-    if(key==='移動'&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0))delta=Number(raw)-Math.max(1,Math.floor(baselineWeather.movement));
-    if(key==='飛行'&&weatherMovement.flightReduction>0)delta=Number(raw)-Math.round(baselineWeather.flight*10)/10;
+    if(key==='移動'&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0||weatherMovement.coldWaveLoss>0||weatherMovement.gravityMovementLoss>0))delta=Number(raw)-Math.max(0,Math.floor(baselineWeather.movement));
+    if(key==='飛行'&&(weatherMovement.flightReduction>0||weatherMovement.stormFlightLoss>0||weatherMovement.coldWaveLoss>0||weatherMovement.gravityFlightBlocked))delta=Number(raw)-Math.round(baselineWeather.flight*10)/10;
     const cityBonus=Number(adjusted?.cityAuraDeltas?.status?.[key])||0;
     return `<div class="detail-stat"${cityBonus?` title="都市常時 ${cityBonus>0?'+':''}${cityBonus}"`:''}><span>${label}</span>${valueHtml(value,delta,fieldId)}</div>`;
   }).join("");

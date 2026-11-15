@@ -122,7 +122,7 @@ function disasterCivicPenaltyForSettlement(state, settlementId) {
     if (securityLoss <= 0) continue;
     const affectedKeys = (event?.affectedCoords || []).map(point => text(point?.key) || coordKey(point?.x, point?.y));
     for(const key of affectedKeys)if(territorySettlementId(state?.territoryStateByTile?.[key])===settlementId)
-      penalty=Math.max(penalty,securityLoss*resolveV39CityDisasterMultiplier(state,key,event.disasterId||'災害:火山噴火'));
+      penalty=Math.max(penalty,securityLoss*resolveV39CityDisasterMultiplier(state,key,event.disasterId||'火山噴火'));
   }
   const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   for (const effect of state?.worldEnvironment?.activeTerrainEffects || []) {
@@ -130,7 +130,7 @@ function disasterCivicPenaltyForSettlement(state, settlementId) {
     const securityLoss = Math.max(0, number(effect?.securityLoss));
     if (securityLoss <= 0) continue;
     for(const key of effect?.tileKeys||[])if(territorySettlementId(state?.territoryStateByTile?.[text(key)])===settlementId)
-      penalty=Math.max(penalty,securityLoss*resolveV39CityDisasterMultiplier(state,key,effect.disasterId||'災害:火山噴火'));
+      penalty=Math.max(penalty,securityLoss*resolveV39CityDisasterMultiplier(state,key,effect.disasterId||'火山噴火'));
   }
   return penalty;
 }
@@ -1173,7 +1173,7 @@ export function resolveV39HazardYieldMultiplier(state, tileKey, turnNumber = sta
     const tileKeys = Array.isArray(effect?.tileKeys) ? effect.tileKeys : [];
     if (turn < startsAt || turn > expiresAt || !tileKeys.some(tile => text(tile) === key)) continue;
     const original=Math.max(0,number(effect?.yieldMultiplier,1));
-    const resistance=resolveV39CityDisasterMultiplier(state,key,effect.disasterId||'災害:火山噴火');
+    const resistance=resolveV39CityDisasterMultiplier(state,key,effect.disasterId||'火山噴火');
     multiplier=Math.min(multiplier,original>=1?original:Math.max(0,1-(1-original)*resistance));
   }
   return multiplier;

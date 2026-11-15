@@ -1,11 +1,12 @@
 import {getFactionSettlements,replaceFactionSettlement} from './settlement-state.js';
-import {resolveV39SettlementTerritoryDamage,resolveV39SettlementDisasterMultiplier} from './v39-city-specialization-rules.js';
+import {resolveV39SettlementDisasterTileDamage} from './v39-city-specialization-rules.js';
 import {damageV39FacilityHealth} from './v39-facility-health.js';
 import {resolveV39DisasterDamage} from './v39-disaster-damage.js';
 
 export function applyV39FacilityDisasterDamage(state,events,turn){
   const world=state.activeWorldId||'surface',entries=[];
-  const hazards=events.filter(event=>Number(event.details?.facilityDamageMultiplier)>0);
+  const hazards=events.filter(event=>event.disasterId==='山火事'||
+    event.groundDamageEnabled!==true&&Number(event.details?.facilityDamageMultiplier)>0);
   if(!hazards.length)return {players:state.players,neutralVillages:state.neutralVillages,entries};
   function damageBase(base,owner){
     if(!base||base.placed===false||(base.worldId||'surface')!==world)return base;
@@ -17,11 +18,10 @@ export function applyV39FacilityDisasterDamage(state,events,turn){
       for(const name of new Set(Array.isArray(names)?names:[])){
         let strongest=null;
         for(const event of active){
-          const spec=resolveV39DisasterDamage(event),power=spec.power*event.details.facilityDamageMultiplier;
+          const spec=resolveV39DisasterDamage(event),power=spec.power*(event.disasterId==='山火事'?1:event.details.facilityDamageMultiplier);
           if(power<=0)continue;
           const element=spec.element||'打撃';
-          const reduced=resolveV39SettlementTerritoryDamage(base,key,power,{skillRow:{[element]:power},worldId:world});
-          const damage=Math.max(0,Math.round(reduced*resolveV39SettlementDisasterMultiplier(base,key,event.disasterId,world)));
+          const damage=resolveV39SettlementDisasterTileDamage(base,key,power,event.disasterId,element,world);
           if(!strongest||damage>strongest.damage)strongest={event,damage};
         }
         if(!strongest||strongest.damage<=0)continue;

@@ -45,7 +45,7 @@ export function collectV39AtmosphereTiles(data,state){
 export function inspectV39EnvironmentEffectsAt(data,state,x,y){
   if(!data?.grid)return [];
   const turn=state.timeline?.turnNumber||1,key=`${x},${y}`,effects=[];
-  for(const {rule} of getV39ActiveHazardsAt(data,x,y,turn))effects.push({name:rule.カテゴリ名,remaining:null,persistent:true,description:rule.効果});
+  for(const {rule} of getV39ActiveHazardsAt(data,x,y,turn))effects.push({name:rule.表示名,remaining:null,persistent:true,description:rule.効果});
   for(const zone of data.hazardZones||[]){
     const remaining=Number(zone.suppressedUntilByTile?.[key]||0)-turn;
     if(remaining>0&&zone.tileKeys.includes(key))effects.push({name:zone.name,remaining:null,persistent:true,suppressedRemaining:remaining});

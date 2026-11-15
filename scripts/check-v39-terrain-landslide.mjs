@@ -3,7 +3,7 @@ import {createServer} from 'vite';
 
 const server=await createServer({configFile:false,root:'frontend',server:{middlewareMode:true},optimizeDeps:{noDiscovery:true,include:[]},appType:'custom'});
 try{
-  const {damageV39Ground,damageV39CaveEntrances,advanceV39GroundCollapses,clearV39Rubble,applyV39NaturalLandslide,damageV39EarthquakeGround}=await server.ssrLoadModule('/src/lib/v39-terrain-destruction.js');
+  const {damageV39Ground,damageV39CaveEntrances,advanceV39GroundCollapses,clearV39Rubble,applyV39NaturalLandslide,damageV39EarthquakeGround,damageV39DisasterGround}=await server.ssrLoadModule('/src/lib/v39-terrain-destruction.js');
   const {scheduleV39CaveEarthquake}=await server.ssrLoadModule('/src/lib/v39-cave-earthquake.js');
   const grid=Array.from({length:7},()=>Array(7).fill('平地'));
   grid[3][3]='丘陵';
@@ -59,12 +59,12 @@ try{
   assert.equal(clearing.ok,true);
   assert.equal(clearing.map.terrainDamage.rubbleByTile['2,2'],undefined);
   const naturalMap={...map,terrainDamage:{}};
-  const natural=applyV39NaturalLandslide(naturalMap,{disasterId:'災害:土砂崩れ',x:3,y:3,tileKeys:['3,3']});
+  const natural=applyV39NaturalLandslide(naturalMap,{disasterId:'土砂崩れ',x:3,y:3,tileKeys:['3,3']});
   assert.equal(natural.tileKeys.length,2);
   assert.equal(Object.values(naturalMap.terrainDamage.rubbleByTile).reduce((sum,row)=>sum+row.hp,0),350);
   assert.deepEqual(Object.keys(naturalMap.terrainDamage.rubbleByTile).sort(),[...natural.tileKeys].sort());
   const villageMap={...map,terrainDamage:{}};
-  const villageNatural=applyV39NaturalLandslide(villageMap,{disasterId:'災害:土砂崩れ',x:3,y:3},{neutralVillages:[{x:3,y:2}]});
+  const villageNatural=applyV39NaturalLandslide(villageMap,{disasterId:'土砂崩れ',x:3,y:3},{neutralVillages:[{x:3,y:2}]});
   assert(villageNatural.tileKeys.includes('3,2'));
   assert.equal(villageMap.terrainDamage.rubbleByTile['3,2'],undefined);
   const caveMap={...map,isUnderground:true,grid:grid.map(row=>row.map(()=>'洞窟')),
@@ -79,12 +79,19 @@ try{
   assert(Object.values(quakeMap.terrainDamage.pendingByTile).every(row=>row.resolvesAtTurn===3&&row.power===80&&row.hiddenWarning===true));
   const resolvedQuake=advanceV39GroundCollapses(quakeMap,3);
   assert.equal(resolvedQuake.impacts.length,quake.scheduled.length);
-  const quakeGround=damageV39EarthquakeGround(map,{disasterId:'災害:地震',tileKeys:['3,3'],damagePower:80},5);
+  const quakeGround=damageV39EarthquakeGround(map,{disasterId:'地震',tileKeys:['3,3'],damagePower:80},5);
   assert.equal(quakeGround.map.terrainDamage.cells['3,3'].hp,420);
   assert.equal(quakeGround.map.heightLevelMap[3][3],3);
   const nearCollapse={...map,terrainDamage:{cells:{'3,3':{hp:80,maxHp:500,terrain:'丘陵',broken:false}}}};
-  const quakeCollapse=damageV39EarthquakeGround(nearCollapse,{disasterId:'災害:地震',tileKeys:['3,3'],damagePower:80},5);
+  const quakeCollapse=damageV39EarthquakeGround(nearCollapse,{disasterId:'地震',tileKeys:['3,3'],damagePower:80},5);
   assert.equal(quakeCollapse.map.heightLevelMap[3][3],2);
   assert(Object.values(quakeCollapse.map.terrainDamage.pendingByTile).every(row=>row.resolvesAtTurn===6));
+  const meteor={disasterId:'流星落下',tileKeys:['3,3'],groundDamageEnabled:true};
+  assert.equal(damageV39DisasterGround(map,{...meteor,groundDamageEnabled:false},350,5).map,map);
+  assert.equal(damageV39DisasterGround(map,meteor,200,5).map,map);
+  const meteorHit=damageV39DisasterGround(map,meteor,350,5);
+  assert.equal(meteorHit.map.terrainDamage.cells['3,3'].hp,350);
+  assert.deepEqual(meteorHit.reports.map(row=>[row.power,row.damage]),[[350,150]]);
+  assert.equal(damageV39EarthquakeGround(map,{disasterId:'地震',tileKeys:['3,3'],damagePower:80,groundDamageEnabled:false},5).map,map);
   console.log('PASS: repeated collapse, downhill power, distributed debris, dual damage, height zero limit');
 }finally{await server.close();}

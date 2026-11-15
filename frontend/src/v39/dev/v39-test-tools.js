@@ -305,9 +305,9 @@ function forceDisasterAtSelectedTile() {
   if(selectedDisasterId.startsWith('危険地帯:'))return setStatus('常設の危険地帯は「危険地帯6種を確認」で配置してください');
   const rule=resolveV39DisasterRule(selectedDisasterId);
   const result = window.forceV39Disaster?.(selectedDisasterId, { x:tile.x, y:tile.y,
-    ...(selectedDisasterId==='災害:台風'?{radius:selectedTyphoonRadius??rule.radius,autoGrow:selectedTyphoonAutoGrow}:{}) });
+    ...(selectedDisasterId==='台風'?{radius:selectedTyphoonRadius??rule.radius,autoGrow:selectedTyphoonAutoGrow}:{}) });
   if (!result?.ok) return setStatus("災害を発生できません: " + text(result?.reason, "処理未接続"));
-  setStatus(`${result.disasters?.[0]?.name || "災害"}を発生しました${selectedDisasterId==='災害:台風'?`（半径${selectedTyphoonRadius??rule.radius}マス・${selectedTyphoonAutoGrow?'自動拡大':'固定'}）`:''}`);
+  setStatus(`${result.disasters?.[0]?.name || "災害"}を発生しました${selectedDisasterId==='台風'?`（半径${selectedTyphoonRadius??rule.radius}マス・${selectedTyphoonAutoGrow?'自動拡大':'固定'}）`:''}`);
 }
 
 function forceUndeadAtSelectedTile() {
@@ -665,7 +665,7 @@ function terrainTestHtml() {
 function fixedDisasterTestHtml(state){
   const map=window.__v39FieldRuntime?.mapData;
   if(!map?.disasterTestFixture||map.disasterNaturalTestFixture)return '';
-  const rows=map.hazardTestFixture?map.hazardZones.map(zone=>({...zone,id:zone.disasterId})):map.disasterExtendedTestFixture?disasterTest.extendedEvents.map(row=>({...row,...state.worldEnvironment?.activeDisasters?.find(event=>event.disasterId===row.id),id:row.id})):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}];
+  const rows=map.hazardTestFixture?map.hazardZones.map(zone=>({...zone,id:zone.disasterId})):map.disasterExtendedTestFixture?disasterTest.extendedEvents.map(row=>({...row,...state.worldEnvironment?.activeDisasters?.find(event=>event.disasterId===row.id),id:row.id})):[...disasterTest.events,{id:'落雷嵐',...disasterTest.lightning}];
   const turn=state.timeline?.turnNumber||1,active=state.worldEnvironment?.activeDisasters||[];
   const comparison=`<div data-atmosphere-test-info><button data-test-action="disaster-atmosphere-start">霧・重なり比較を開始</button>${map.disasterAtmosphereTestFixture?`<p>霧・対象災害は検証用⌛${disasterTest.atmosphere.durationTurns}。気象の色はOFFで比較。効果の内訳は土地画面へ。</p><div class="v39-test-form-row"><select id="v39-test-atmosphere-sample" aria-label="霧の比較地点">${disasterTest.atmosphere.samples.map((sample,index)=>`<option value="${index}"${index===selectedAtmosphereSample?' selected':''}>${escapeHtml(sample.name)} (${sample.x},${sample.y})</option>`).join('')}</select><button data-test-action="disaster-atmosphere-focus">比較地点へ</button></div>`:''}</div>`;
   return `<div data-fixed-disaster-info><p>固定配置 ${rows.length}種類／${map.hazardTestFixture?'常設危険地帯：通常・耐性100の観察者を配置':map.disasterAtmosphereTestFixture?'霧・対象災害の持続は比較用に延長':'継続・威力は通常データ（落雷の持続のみ検証用）'}</p><div class="v39-test-form-row"><select id="v39-test-disaster-fixture" aria-label="確認する固定災害">${rows.map(row=>{
@@ -694,7 +694,7 @@ function weatherTestHtml(tile) {
   const current=window.inspectV39WeatherAt?.(tile?.x,tile?.y);
   if(!current)return `${samples}<p>気候・天候: 地上のマスを選択してください</p>`;
   const checks=['山火事','洪水','落雷嵐'].map(name=>{
-    const rule=resolveV39DisasterRule(`災害:${name}`),allowed=resolveV39DisasterWeather(rule,map,state.worldEnvironment?.weather,tile).allowed;
+    const rule=resolveV39DisasterRule(name),allowed=resolveV39DisasterWeather(rule,map,state.worldEnvironment?.weather,tile).allowed;
     return `${name}${allowed?'○':'×'}`;
   }).join(' / ');
   const remaining=Math.max(0,(current.weatherUntilTurn||0)-(state.timeline?.turnNumber||1)+1);
@@ -702,7 +702,7 @@ function weatherTestHtml(tile) {
 }
 
 function typhoonRadiusControlsHtml() {
-  if(selectedDisasterId!=='災害:台風')return '';
+  if(selectedDisasterId!=='台風')return '';
   const rule=resolveV39DisasterRule(selectedDisasterId);
   const maximum=Math.max(rule.radius,Number(rule.details?.maximumRadius)||0);
   const radius=Math.max(0,Math.min(maximum,selectedTyphoonRadius??rule.radius));
@@ -715,9 +715,9 @@ function panelHtml() {
   const cityLevel = text(document.getElementById("v39-test-city-level-key")?.value) || CITY_LEVEL_KEYS[0];
   const tileKey = selectedTileKey(tile);
   const testSkills = getV39TestSkillRows();
-  const disasters = (Array.isArray(disasterData) ? disasterData : []).filter(row => text(row?.ID) && text(row?.ID) !== "災害:火山噴火"&&!text(row.地形災害処理));
+  const disasters = (Array.isArray(disasterData) ? disasterData : []).filter(row => text(row?.ID) && text(row?.ID) !== "火山噴火"&&!text(row.地形災害処理));
   if (!disasters.some(row => text(row?.ID) === selectedDisasterId)) selectedDisasterId = text(disasters[0]?.ID);
-  const disasterOptions = disasters.map(row => `<option value="${escapeHtml(text(row.ID))}"${text(row.ID) === selectedDisasterId ? " selected" : ""}>${escapeHtml(text(row.カテゴリ名))}</option>`).join("");
+  const disasterOptions = disasters.map(row => `<option value="${escapeHtml(text(row.ID))}"${text(row.ID) === selectedDisasterId ? " selected" : ""}>${escapeHtml(text(row.表示名))}</option>`).join("");
   if (!testSkills.some(row => text(row?.名前) === selectedTestSkillName)) selectedTestSkillName = text(testSkills[0]?.名前);
   const assignedTestSkills = Array.isArray(unit?.testSkillNames) ? unit.testSkillNames.map(text).filter(Boolean) : [];
   const testSkillOptions = testSkills.map(row => {
@@ -864,7 +864,7 @@ function handleAction(action) {
     const id=document.getElementById('v39-test-disaster-fixture')?.value||selectedDisasterId;
     const comparison=action==='disaster-atmosphere-focus';
     if(comparison&&!map.disasterAtmosphereTestFixture)return;
-    const sample=comparison?disasterTest.atmosphere.samples[selectedAtmosphereSample]:map.hazardTestFixture?map.hazardZones.find(zone=>zone.disasterId===id):map.disasterExtendedTestFixture?state.worldEnvironment?.activeDisasters?.find(event=>event.disasterId===id)||disasterTest.extendedEvents.find(row=>row.id===id):[...disasterTest.events,{id:'災害:落雷嵐',...disasterTest.lightning}].find(row=>row.id===id);
+    const sample=comparison?disasterTest.atmosphere.samples[selectedAtmosphereSample]:map.hazardTestFixture?map.hazardZones.find(zone=>zone.disasterId===id):map.disasterExtendedTestFixture?state.worldEnvironment?.activeDisasters?.find(event=>event.disasterId===id)||disasterTest.extendedEvents.find(row=>row.id===id):[...disasterTest.events,{id:'落雷嵐',...disasterTest.lightning}].find(row=>row.id===id);
     const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];if(!sample||!scene)return;
     if(!comparison)selectedDisasterId=sample.disasterId||sample.id;
     const c=HEX_TILE_CONFIG;

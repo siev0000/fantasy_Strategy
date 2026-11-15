@@ -44,7 +44,7 @@ import {canV39UnitLeaveOrganicCorpse} from '../../lib/v39-corpse-types.js';
 import {v39HazardRecoveryMultiplier} from '../../lib/v39-hazard-zones.js';
 import {resolveV39CorpseLifetimeTurns} from '../../lib/v39-corpse-lifetime.js';
 import { placeV39SkillFog } from "../../lib/v39-fog-rules.js";
-import {applyV39AttackGroundDamage} from '../world/v39-terrain-destruction.js';
+import {applyV39AttackGroundDamage,applyV39AttackIgnition,commitV39AttackFacilityDamage,applyV39ForestHealing} from '../world/v39-terrain-destruction.js';
 import {applyV39DeathBlade} from "../../lib/v39-purification-rules.js";
 import {convertV39CorpsesInDeathFog,selectV39SkillUndeadTargets} from '../../lib/v39-corpse-undead-rules.js';
 import {inspectV39SoulCollection,collectV39Soul} from '../../lib/v39-soul-storage.js';
@@ -1439,11 +1439,16 @@ function performAttack(target, session = attackSession, options = {}) {
   }
   const stealthBreakTurn = currentV39TurnNumber(state);
   const exposesDirectTarget = resolveAreaType(session.skillRow) === "single" && resolveSplashSpec(session.skillRow).value <= 0;
-  const supportTargets = supportSkill
+  const forestRestoration=hasV39SkillEffect(session.skillRow,'森林再生');
+  const forestRestorationTarget=forestRestoration&&[...areaScale.keys()].some(key=>{
+    const cell=ctx.data.terrainDamage?.fireForestByTile?.[key];
+    return cell&&cell.hp<cell.maxHp;
+  });
+  const supportTargets = supportSkill&&!forestRestoration
     ? player.factionState.units.filter(unit => isV39UnitInWorld(unit,state.activeWorldId) && number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
     : [];
-  if (supportSkill && !supportTargets.length && !["壁", "結界"].includes(defenseKind)) {
-    showToast("対象位置に生存中の味方がいません");
+  if (supportSkill && !supportTargets.length && !forestRestorationTarget && !["壁", "結界"].includes(defenseKind)) {
+    showToast(forestRestoration?"対象位置に回復可能な森がありません":"対象位置に生存中の味方がいません");
     return false;
   }
   drawAttackArea(areaScale);
@@ -1642,6 +1647,9 @@ function performAttack(target, session = attackSession, options = {}) {
   applyV39DeathBlade(ctx.data,attacker,combatLog);
   commitVillageCombatState(withSkillForcedMovement(state,{ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies,neutralVillages:nextVillages },ctx.data,attacker,session.skillRow,combatLog,
     {support:supportSkill,supportTargetIds:[...supportTargetIds],wallEntries:combatWallLog,terrainReports:areaScale.achievementTerrainReports}), { reason:"combat-attack" });
+  commitV39AttackFacilityDamage(areaScale);
+  const forestHealingReports=applyV39ForestHealing(ctx.data,areaScale,attacker,session.skillRow);
+  if(!supportSkill)applyV39AttackIgnition(ctx.data,areaScale,attacker,session.skillRow,currentV39TurnNumber(state));
   for (const levelUp of expResult.levelUps) {
     window.dispatchEvent(new CustomEvent("v39:unit-level-up", { detail:levelUp }));
   }
@@ -1666,7 +1674,7 @@ function performAttack(target, session = attackSession, options = {}) {
     ? ` / LvUP ${expResult.levelUps.map(row => `${row.unitName} ${row.fromLevel}→${row.toLevel}`).join("・")}`
     : "";
   const summary = supportSkill
-    ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
+    ? `${text(attacker.name)}：${text(session.skillRow.名前)} / ${forestRestoration?`森HP+${forestHealingReports.reduce((sum,report)=>sum+report.healing,0)} (${forestHealingReports.length}マス)`:healing > 0 ? `回復${healing} × ${supportCount}` : grantedGuard > 0 ? `ガード+${grantedGuard} × ${supportCount}` : `効果付与 × ${supportCount}`} / AP-${apCost}`
     : `${text(attacker.name)}：${text(session.skillRow.名前)} / ${obstruction?.reason || `合計${total+(areaScale.groundDamageTotal||0)}${hits.length ? ` (対ユニット ${hits.join(",")})` : ""}`} / AP-${apCost}${expText}${levelUpText}${areaScale.groundSummary||''}`;
   window.dispatchEvent(new CustomEvent("v39:combat-log", {
     detail:{
@@ -1881,6 +1889,8 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   applyV39DeathBlade(ctx.data,attacker,combatLog);
   commitVillageCombatState(withSkillForcedMovement(state,{ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime },ctx.data,attacker,skillRow,combatLog,
     {terrainReports:areaScale.achievementTerrainReports}), { reason:"enemy-combat-attack" });
+  commitV39AttackFacilityDamage(areaScale);
+  applyV39AttackIgnition(ctx.data,areaScale,attacker,skillRow,currentV39TurnNumber(state));
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
   const hits = combatLog.flatMap((entry) => (entry.hitResults || []).map(row => row.hit ? row.damage : "Miss"));
   const summary = `${text(attacker.name)} Lv${integer(attacker.level, 1)}：${text(skillRow?.名前)} / 合計${total+(areaScale.groundDamageTotal||0)}${hits.length ? ` (対ユニット ${hits.join(",")})` : ""} / AP-${apCost}${areaScale.groundSummary||''}`;
@@ -1940,6 +1950,8 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, t
   applyV39DeathBlade(ctx.data,attacker,entries);
   commitVillageCombatState(withSkillForcedMovement(state,{...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages,players },ctx.data,attacker,skillRow,entries,
     {terrainReports:area.achievementTerrainReports}), { reason:"neutral-village-defense-attack" });
+  commitV39AttackFacilityDamage(area);
+  applyV39AttackIgnition(ctx.data,area,attacker,skillRow,currentV39TurnNumber(state));
   const total=entries.reduce((sum,entry)=>sum+entry.total,0);
   const hits = entries.flatMap(entry=>(entry.hitResults || []).map(hit => hit.hit ? hit.damage : "Miss"));
   window.dispatchEvent(new CustomEvent("v39:combat-log", { detail:{

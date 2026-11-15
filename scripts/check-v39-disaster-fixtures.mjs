@@ -22,18 +22,18 @@ try{
         observers:state.players[0].factionState.units.filter(u=>u.id.startsWith('disaster-observer-')).length,
         units:state.players[0].factionState.units.length};
     });
-    assert.deepEqual(new Set(initial.ids),new Set([...fixture.events.map(e=>e.id),'災害:落雷嵐']));
+    assert.deepEqual(new Set(initial.ids),new Set([...fixture.events.map(e=>e.id),'落雷嵐']));
     assert(initial.forced&&!initial.overlap);assert.equal(initial.observers,fixture.events.length-3);
     assert.equal(await page.locator('#v39-test-disaster-fixture option').count(),initial.ids.length);
-    for(const sample of [...fixture.events,{id:'災害:落雷嵐',...fixture.lightning}]){
+    for(const sample of [...fixture.events,{id:'落雷嵐',...fixture.lightning}]){
       await page.locator('#v39-test-disaster-fixture').selectOption(sample.id);
       await page.locator('[data-test-action="disaster-fixture-focus"]').click();
       assert.deepEqual(await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].v39SelectedTile),{x:sample.x,y:sample.y});
     }
-    await page.locator('#v39-test-disaster-fixture').selectOption('災害:瘴気');
+    await page.locator('#v39-test-disaster-fixture').selectOption('瘴気');
     await page.locator('[data-test-action="disaster-fixture-focus"]').click();
     await page.waitForTimeout(400);await page.screenshot({path:`${out}/miasma-${width}.png`});
-    await page.locator('#v39-test-disaster-id').selectOption('災害:聖光暴発');
+    await page.locator('#v39-test-disaster-id').selectOption('聖光暴発');
     await page.locator('[data-test-action="disaster-fixture-focus"]').click();
     assert.deepEqual(await page.evaluate(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].v39SelectedTile),{x:fixture.events[0].x,y:fixture.events[0].y});
     const retained=await page.evaluate(async()=>{
@@ -43,7 +43,7 @@ try{
     });assert(retained);
     await page.locator('[data-test-action="weather-turn"]').click();
     await page.waitForFunction(()=>window.getV39GameState().timeline.turnNumber===2&&!window.isV39MapInputLocked());
-    assert((await page.locator('#v39-test-disaster-fixture option[value="災害:地震"]').innerText()).includes('終了'));
+    assert((await page.locator('#v39-test-disaster-fixture option[value="地震"]').innerText()).includes('終了'));
     await page.locator('[data-test-action="disaster-natural-start"]').click();
     assert.equal(await page.locator('#v39-test-disaster-fixture').count(),0);
     assert.equal(await page.evaluate(()=>window.getV39GameState().worldEnvironment.activeDisasters.length),0);

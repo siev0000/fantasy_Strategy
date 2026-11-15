@@ -273,7 +273,8 @@ export function resolveV39MovementMultiplier(mapData) {
 }
 
 export function resolveV39BaseMoveApCost(movement = V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile, mapData = null) {
-  const moveValue = Math.max(1, Number(movement) || V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) * resolveV39MovementMultiplier(mapData);
+  const parsed=movement===null||movement===''?NaN:Number(movement);
+  const moveValue = Math.max(1, Number.isFinite(parsed)?parsed:V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) * resolveV39MovementMultiplier(mapData);
   return (V39_SQUAD_MOVEMENT_BALANCE.moveApMax * V39_SQUAD_MOVEMENT_BALANCE.moveStatPerTile) / moveValue;
 }
 
@@ -508,16 +509,7 @@ export const V39_CIVIC_BALANCE = Object.freeze({
   // 人口流出量。人口に掛ける割合。0.02 = 2%。
   civicOutflowPopulationRate:0.02,
   // 条件を満たした時の最低人口流出数。
-  civicOutflowMinimum:1,
-  // 反乱の発生数値は未確定。確定後はこの4項目だけを差し替える。
-  // 反乱を判定する不満度の境界値。
-  rebellionDissatisfactionThreshold:75,
-  // 反乱を判定する治安の境界値。
-  rebellionSecurityThreshold:25,
-  // 反乱ユニット数の元になる人口割合。0.1 = 10%。
-  rebellionPopulationRate:0.1,
-  // 同じ拠点で反乱を再発生させないターン数。
-  rebellionCooldownTurns:3
+  civicOutflowMinimum:1
 });
 
 // 都市.jsonに具体値が入るまで使用する暫定値。名称と選択条件は都市.jsonを正本にする。
@@ -592,38 +584,38 @@ export const V39_PROVISIONAL_DISASTER_BALANCE = Object.freeze({
   // 地形.jsonの既存災害相性列と災害IDの対応。未対応の災害は補正なし(1.0倍)で判定する。
   // 列値0.20は発生率を1.20倍、-0.10は0.90倍として扱う。
   terrainAffinityFieldByDisasterId:Object.freeze({
-    "災害:洪水":"洪水",
-    "災害:暴風":"台風",
-    "災害:地震":"地震",
-    "災害:落雷嵐":"雷嵐",
-    "災害:大寒波":"吹雪"
+    "洪水":"洪水",
+    "暴風":"台風",
+    "地震":"地震",
+    "落雷嵐":"雷嵐",
+    "大寒波":"吹雪"
   }),
   // JSONに数値列がない災害の仮定義。targetTerrainは地形名の部分一致。
   rulesById:Object.freeze({
-    "災害:山火事":Object.freeze({ icon:"火", chance:0.012, targetTerrain:["森林", "森"], radius:1, duration:2, yieldMultiplier:0.5, securityLoss:5, unitDamageRate:0.10 }),
-    "災害:洪水":Object.freeze({ icon:"水", chance:0.010, targetTerrain:["河川", "海", "湖", "湿地", "沼"], radius:1, duration:2, yieldMultiplier:0.5, securityLoss:4, unitDamageRate:0.06 }),
-    "災害:干ばつ":Object.freeze({ icon:"乾", chance:0.010, targetTerrain:["平地", "草原", "荒野", "砂漠"], radius:2, duration:3, yieldMultiplier:0.5, securityLoss:3 }),
-    "災害:暴風":Object.freeze({ icon:"風", chance:0.008, targetTerrain:[], radius:2, duration:2, yieldMultiplier:0.8, securityLoss:2 }),
-    "災害:地震":Object.freeze({ icon:"震", chance:0.006, targetTerrain:["山", "岩", "丘"], radius:1, duration:1, yieldMultiplier:0.7, securityLoss:7, unitDamageRate:0.12 }),
-    "災害:落雷嵐":Object.freeze({ icon:"雷", chance:0.006, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.9, securityLoss:3, unitDamageRate:0.15 }),
-    "災害:大寒波":Object.freeze({ icon:"冷", chance:0.006, targetTerrain:["雪", "氷", "山"], radius:2, duration:2, yieldMultiplier:0.7, securityLoss:3 }),
-    "災害:熱波":Object.freeze({ icon:"熱", chance:0.006, targetTerrain:["平地", "草原", "荒野", "砂漠"], radius:2, duration:2, yieldMultiplier:0.5, securityLoss:3 }),
-    "災害:土砂崩れ":Object.freeze({ icon:"崩", chance:0.008, targetTerrain:["山", "岩", "丘"], radius:1, duration:1, yieldMultiplier:0.6, securityLoss:5, unitDamageRate:0.08 }),
-    "災害:闇侵食":Object.freeze({ icon:"闇", chance:0.004, targetTerrain:["死の霧", "呪"], radius:1, duration:3, yieldMultiplier:0.7, securityLoss:5, undeadBonus:true }),
-    "災害:聖光暴発":Object.freeze({ icon:"聖", chance:0.003, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.9, securityLoss:2, unitDamageRate:0.10 }),
-    "災害:重力異常":Object.freeze({ icon:"重", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.8, securityLoss:2 }),
-    "災害:時間歪曲":Object.freeze({ icon:"時", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.9, securityLoss:1 }),
-    "災害:空間歪曲":Object.freeze({ icon:"空", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.9, securityLoss:1 }),
-    "災害:魂嵐":Object.freeze({ icon:"魂", chance:0.004, targetTerrain:["死の霧", "呪"], radius:1, duration:2, yieldMultiplier:0.8, securityLoss:4, unitDamageRate:0.10, undeadBonus:true }),
-    "災害:瘴気":Object.freeze({ icon:"瘴", chance:0.005, targetTerrain:["沼", "湿地", "死の霧"], radius:1, duration:2, yieldMultiplier:0.7, securityLoss:4, unitDamageRate:0.08 }),
-    "災害:疫病":Object.freeze({ icon:"病", chance:0.005, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.8, securityLoss:6 }),
-    "災害:反乱":Object.freeze({ icon:"乱", chance:0.003, targetMode:"settlement", radius:0, duration:2, yieldMultiplier:0.8, securityLoss:8 }),
-    "災害:飢饉":Object.freeze({ icon:"飢", chance:0.005, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.6, securityLoss:6 }),
-    "災害:資源枯渇":Object.freeze({ icon:"枯", chance:0.004, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.5, securityLoss:2 }),
-    "災害:信仰崩壊":Object.freeze({ icon:"信", chance:0.003, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.9, securityLoss:5 }),
-    "災害:経済恐慌":Object.freeze({ icon:"恐", chance:0.003, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.7, securityLoss:3 }),
-    "災害:魔獣暴走":Object.freeze({ icon:"獣", chance:0.004, targetTerrain:[], radius:1, duration:1, yieldMultiplier:1, securityLoss:4, spawnEnemy:true }),
-    "災害:流星落下":Object.freeze({ icon:"星", chance:0.002, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.5, securityLoss:8, unitDamageRate:0.25 })
+    "山火事":Object.freeze({ icon:"火", chance:0.012, targetTerrain:["森林", "森"], radius:1, duration:2, yieldMultiplier:0.5, securityLoss:5 }),
+    "洪水":Object.freeze({ icon:"水", chance:0.010, targetTerrain:["河川", "海", "湖", "湿地", "沼"], radius:1, duration:2, yieldMultiplier:0.5, securityLoss:4 }),
+    "干ばつ":Object.freeze({ icon:"乾", chance:0.010, targetTerrain:["平地", "草原", "荒野", "砂漠"], radius:2, duration:3, yieldMultiplier:0.5, securityLoss:3 }),
+    "暴風":Object.freeze({ icon:"風", chance:0.008, targetTerrain:[], radius:2, duration:2, yieldMultiplier:0.8, securityLoss:2 }),
+    "地震":Object.freeze({ icon:"震", chance:0.006, targetTerrain:["山", "岩", "丘"], radius:1, duration:1, yieldMultiplier:0.7, securityLoss:7 }),
+    "落雷嵐":Object.freeze({ icon:"雷", chance:0.006, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.9, securityLoss:3 }),
+    "大寒波":Object.freeze({ icon:"冷", chance:0.006, targetTerrain:["雪", "氷", "山"], radius:2, duration:2, yieldMultiplier:0.7, securityLoss:3 }),
+    "熱波":Object.freeze({ icon:"熱", chance:0.006, targetTerrain:["平地", "草原", "荒野", "砂漠"], radius:2, duration:2, yieldMultiplier:0.5, securityLoss:3 }),
+    "土砂崩れ":Object.freeze({ icon:"崩", chance:0.008, targetTerrain:["山", "岩", "丘"], radius:1, duration:1, yieldMultiplier:0.6, securityLoss:5 }),
+    "精神浸食":Object.freeze({ icon:"闇", chance:0.004, targetTerrain:["死の霧", "呪"], radius:1, duration:3, yieldMultiplier:0.7, securityLoss:5, undeadBonus:true }),
+    "聖光暴発":Object.freeze({ icon:"聖", chance:0.003, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.9, securityLoss:2 }),
+    "重力異常":Object.freeze({ icon:"重", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.8, securityLoss:2 }),
+    "時間歪曲":Object.freeze({ icon:"時", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.9, securityLoss:1 }),
+    "空間歪曲":Object.freeze({ icon:"空", chance:0.003, targetTerrain:[], radius:1, duration:2, yieldMultiplier:0.9, securityLoss:1 }),
+    "魂嵐":Object.freeze({ icon:"魂", chance:0.004, targetTerrain:["死の霧", "呪"], radius:1, duration:2, yieldMultiplier:0.8, securityLoss:4, undeadBonus:true }),
+    "瘴気":Object.freeze({ icon:"瘴", chance:0.005, targetTerrain:["沼", "湿地", "死の霧"], radius:1, duration:2, yieldMultiplier:0.7, securityLoss:4 }),
+    "疫病":Object.freeze({ icon:"病", chance:0.005, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.8, securityLoss:6 }),
+    "反乱":Object.freeze({ icon:"乱", chance:0.003, targetMode:"settlement", radius:0, duration:2, yieldMultiplier:0.8, securityLoss:8 }),
+    "飢饉":Object.freeze({ icon:"飢", chance:0.005, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.6, securityLoss:6 }),
+    "資源枯渇":Object.freeze({ icon:"枯", chance:0.004, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.5, securityLoss:2 }),
+    "信仰崩壊":Object.freeze({ icon:"信", chance:0.003, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.9, securityLoss:5 }),
+    "経済恐慌":Object.freeze({ icon:"恐", chance:0.003, targetMode:"settlement", radius:0, duration:3, yieldMultiplier:0.7, securityLoss:3 }),
+    "魔獣暴走":Object.freeze({ icon:"獣", chance:0.004, targetTerrain:[], radius:1, duration:1, yieldMultiplier:1, securityLoss:4, spawnEnemy:true }),
+    "流星落下":Object.freeze({ icon:"星", chance:0.002, targetTerrain:[], radius:1, duration:1, yieldMultiplier:0.5, securityLoss:8 })
   })
 });
 

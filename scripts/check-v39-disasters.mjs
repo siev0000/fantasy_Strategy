@@ -25,13 +25,13 @@ try{
       const first=f.units[0];
       window.updateV39ActiveFactionState({units:[...f.units,{...first,id:'other-world-probe',name:'地下の比較用',worldId:'cave:expedition-test:1',hp:200,currentHp:200,maxHp:200}]});
       const data=window.inspectV39NaturalEvents();
-      const custom=rule({ID:'災害:山火事',基本発生率:0,影響半径:0,効果継続ターン:1,周囲産出倍率:0,
-        最大HP割合ダメージ:0,敵生成:false,アンデッド発生補正:false,有効:false,同一マス待機ターン:0});
-      const blank=rule({ID:'災害:山火事',基本発生率:null});
+      const custom=rule({ID:'山火事',基本発生率:0,影響半径:0,効果継続ターン:1,周囲産出倍率:0,
+        敵生成:false,アンデッド発生補正:false,有効:false,同一マス待機ターン:0});
+      const blank=rule({ID:'山火事',基本発生率:null});
       const envBefore=JSON.stringify(state.worldEnvironment);
       const invalid=window.forceV39Disaster('invalid',{x:4,y:4});
-      const outside=window.forceV39Disaster('災害:山火事',{x:-1,y:4});
-      const repeat=window.forceV39Disaster('災害:山火事',{x:4,y:4});
+      const outside=window.forceV39Disaster('山火事',{x:-1,y:4});
+      const repeat=window.forceV39Disaster('山火事',{x:4,y:4});
       return {events:data.activeDisasters,rules:data.rules,custom,blank,invalid,outside,repeat,
         unchanged:envBefore===JSON.stringify(window.getV39GameState().worldEnvironment),
         fireYield:yieldAt(state,'4,4',1),floodYield:yieldAt(state,'10,5',1),
@@ -39,8 +39,8 @@ try{
     });
     assert.equal(initial.rules.length,24);assert(initial.rules.every(r=>r.enabled&&r.chance>=0&&r.duration>=1));
     assert.equal(initial.fireYield,0.5);assert.equal(initial.floodYield,0.5);
-    assert(initial.hp[0].hp<initial.hp[0].max);assert.equal(initial.events.find(e=>e.name==='山火事').damagePower,20);
-    for(const field of ['chance','radius','yieldMultiplier','unitDamageRate','cooldown'])assert.equal(initial.custom[field],0);
+    assert(initial.hp[0].hp<initial.hp[0].max);assert.equal(initial.events.find(e=>e.name==='山火事').damagePower,60);
+    for(const field of ['chance','radius','yieldMultiplier','cooldown'])assert.equal(initial.custom[field],0);
     assert.equal(initial.custom.enabled,false);assert.equal(initial.custom.spawnEnemy,false);assert(initial.blank.chance>0);
     assert(!initial.invalid.ok&&!initial.outside.ok&&!initial.repeat.ok&&initial.unchanged);
     const retained=await page.evaluate(()=>{
@@ -73,7 +73,7 @@ try{
       const rows=disasterData.filter(row=>row.画像番号>0);
       const result=rows.map(row=>({id:row.ID,slot:art({disasterId:row.ID})?.slot,expected:row.画像番号}));
       // All common disaster images must also reach actual Phaser frames.
-      const names=rows.filter(row=>row.ID!=='災害:火山噴火');
+      const names=rows.filter(row=>row.ID!=='火山噴火');
       for(const row of names){
         window.setV39GameState({worldEnvironment:{}},{reason:'disaster-icon-test'});window.forceV39Disaster(row.ID,{x:4,y:4});
         window.renderV39DisasterIcons();
@@ -83,7 +83,7 @@ try{
       }
       return result;
     });
-    assert.equal(slots.length,12);for(const row of slots){assert.equal(row.slot,row.expected);if(row.id!=='災害:火山噴火')assert.equal(row.nativeSlot,row.expected);}
+    assert.equal(slots.length,12);for(const row of slots){assert.equal(row.slot,row.expected);if(row.id!=='火山噴火')assert.equal(row.nativeSlot,row.expected);}
     // Verify current image marker and visibility refresh do not disclose hidden events.
     const visibility=await page.evaluate(async()=>{
       const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0];
@@ -101,7 +101,7 @@ try{
       const {disasterData}=await import('/src/lib/game-data-registry.js');
       const {runV39NaturalEvents:tick}=await import('/src/v39/world/v39-natural-events.js');
       const backup=disasterData.map(row=>({...row}));
-      const rows=disasterData.filter(row=>row.ID!=='災害:火山噴火'),fire=rows.find(row=>row.ID==='災害:山火事');
+      const rows=disasterData.filter(row=>row.ID!=='火山噴火'),fire=rows.find(row=>row.ID==='山火事');
       try{
         for(const row of rows)row.基本発生率=0;
         window.setV39GameState({worldEnvironment:{}},{reason:'disaster-zero-test'});
@@ -112,7 +112,7 @@ try{
         return {zero,certain:certain.map(e=>e.disasterId),disabled:disabled.reason};
       }finally{for(let i=0;i<disasterData.length;i++)Object.assign(disasterData[i],backup[i]);}
     });
-    assert.deepEqual(natural,{zero:0,certain:['災害:山火事'],disabled:'invalid-disaster'});
+    assert.deepEqual(natural,{zero:0,certain:['山火事'],disabled:'invalid-disaster'});
     assert.deepEqual(errors,[]);
     writeFileSync(`${out}/report-${width}.json`,JSON.stringify({initial,ticks,slots,visibility,natural},null,2));
     console.log(`${width}: native fixture, sheet rules/zeros, HP/yield, isolated worlds, save, expiry, icons and hidden visibility passed`);

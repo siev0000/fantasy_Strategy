@@ -3,7 +3,7 @@ import fixture from '../config/v39-disaster-test.json' with {type:'json'};
 import {mkdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {chromium} from 'file:///C:/Users/skkt3/.codex/skills/develop-web-game/node_modules/playwright/index.mjs';
 const out='output/web-game/disaster-natural';mkdirSync(out,{recursive:true});
-const baseRates=Object.fromEntries(JSON.parse(readFileSync('data/source/export/json/災害.json','utf8')).map(row=>[row.ID,row.基本発生率]));
+const baseRates=Object.fromEntries(JSON.parse(readFileSync('data/source/export/json/災害.json','utf8')).map(row=>[row.表示名,row.基本発生率]));
 const browser=await chromium.launch();
 try{
   for(const width of [390,1100]){
@@ -15,7 +15,7 @@ try{
     await page.locator('[data-test-action="disaster-natural-start"]').click();
     await page.waitForFunction(()=>window.__v39FieldRuntime.mapData.disasterNaturalTestFixture);
     const initial=await page.evaluate(()=>({events:window.getV39GameState().worldEnvironment.activeDisasters.length,rules:window.inspectV39NaturalEvents().rules}));
-    assert.equal(initial.events,0);assert.equal(initial.rules.find(r=>r.id==='災害:山火事').chance,baseRates['災害:山火事']);
+    assert.equal(initial.events,0);assert.equal(initial.rules.find(r=>r.id==='山火事').chance,baseRates['山火事']);
     await page.evaluate(async()=>{await window.advanceV39Turn({skipUnactedFocus:true});await window.waitForV39MapRenderSettled();});
     const report=await page.evaluate(()=>window.getV39GameState().worldEnvironment.disasterDiagnostics);
     assert.equal(report.turn,2);assert(report.attempts.some(r=>r.rolled!==undefined));

@@ -77,7 +77,7 @@ window.startV39DisasterTest=(options={})=>{
   window.updateV39FieldData?.({...map},{silent:true});
   if(!natural){
     for(const event of events)window.forceV39Disaster(event.id,{x:event.x,y:event.y});
-    if(!extended)window.forceV39Disaster('災害:落雷嵐',{x,y});
+    if(!extended)window.forceV39Disaster('落雷嵐',{x,y});
   }
   if(atmosphere){
     const turn=state.timeline.turnNumber;
@@ -94,14 +94,14 @@ window.startV39DisasterTest=(options={})=>{
   const env=window.getV39GameState().worldEnvironment;
   const atmosphereIds=new Set(fixture.atmosphere.samples.flatMap(sample=>sample.disasters));
   window.setV39GameState({worldEnvironment:{...env,activeDisasters:env.activeDisasters.map(event=>{
-    const duration=!natural&&event.disasterId==='災害:落雷嵐'?durationTurns:atmosphere&&atmosphereIds.has(event.disasterId)?fixture.atmosphere.durationTurns:null;
+    const duration=!natural&&event.disasterId==='落雷嵐'?durationTurns:atmosphere&&atmosphereIds.has(event.disasterId)?fixture.atmosphere.durationTurns:null;
     return duration?{...event,expiresAtTurn:state.timeline.turnNumber+duration-1}:event;
   })}},{reason:'disaster-test-duration'});
   window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();window.renderV39DisasterIcons?.();
   window.showV39TurnBanner?.(atmosphere?`災害＋霧・重なり比較：テスト操作の環境欄で比較地点を選び「比較地点へ」。霧と対象災害は検証用${fixture.atmosphere.durationTurns}ターン。`:natural?'自然発生テスト：災害なしで開始。通常確率のまま「1T経過」で抽選し、環境欄に結果を表示します。':`災害テスト: ${events.length+1}種類を配置。環境欄で災害を選び「発生地点へ」で比較できます。落雷は観察者7体・持続${durationTurns}ターン。`);
   window.activateV39FooterTab?.('test');
   window.dispatchEvent(new CustomEvent('v39:disaster-test-ready',{detail:{x:events[0].x,y:events[0].y}}));
-  return {ok:true,natural,events:natural?[]:[...events.map(event=>({...event})),{id:'災害:落雷嵐',x,y}]};
+  return {ok:true,natural,events:natural?[]:[...events.map(event=>({...event})),{id:'落雷嵐',x,y}]};
 };
 
 window.startV39HazardTest=()=>{

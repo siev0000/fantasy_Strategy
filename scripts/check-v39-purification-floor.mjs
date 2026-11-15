@@ -16,7 +16,7 @@ try{
     window.__v39FieldRuntime.mapData.purificationByTile['4,4']=-80;
     window.importV39SaveJson(window.exportV39SaveJson());await window.waitForV39MapRenderSettled();
     const saved={...window.__v39FieldRuntime.mapData.purificationByTile};
-    const event=window.forceV39Disaster('災害:干ばつ',{x:4,y:4});
+    const event=window.forceV39Disaster('干ばつ',{x:4,y:4});
     return {updated,saved,eventOk:event.ok};
   });
   assert.deepEqual(result.updated,{'4,4':-20,'5,4':-19,'6,4':30});assert.deepEqual(result.saved,result.updated);assert(result.eventOk);

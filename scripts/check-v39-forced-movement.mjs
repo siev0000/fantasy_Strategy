@@ -45,7 +45,7 @@ assert.deepEqual(m.applyV39SkillForcedMovement({...world,enemies:[immune]},map,c
 const half=m.applyV39SkillForcedMovement(world,map,caster,skill,[{...hit[0],detail:{scale:.5}}],()=>.5);assert.deepEqual(half.enemies[0].position,[9,8],'65 force rounds 1.3 tiles to one');
 const collisionWorld={...world,enemies:[target,unit('blocker',9,8)]};
 const collision=m.applyV39SkillForcedMovement(collisionWorld,map,caster,skill,hit,()=>.5);assert.equal(collision.damageEntries.length,2);assert.ok(collision.damageEntries.every(e=>e.collisionPower===130));
-const disaster={id:'storm',disasterId:'災害:竜巻',name:'竜巻',x:4,y:8,damagePower:130,damageTickTurn:1,damageTileKeys:['8,8']};
+const disaster={id:'storm',disasterId:'竜巻',name:'竜巻',x:4,y:8,damagePower:130,damageTickTurn:1,damageTileKeys:['8,8']};
 assert.deepEqual(m.applyV39DisasterKnockback(collisionWorld,map,[disaster],()=>.5).enemies,collision.enemies,'skill and disaster use identical movement/collision machinery');
 const original={...world,players:[{id:'p',factionState:{units:[target],combatRuntime:{pendingActionsByUnitId:{target:{aimAfterCast:true,origin:{x:8,y:8,worldId:'surface'}}}}}}],enemies:[caster]};
 const shifted=m.applyV39ForcedMovement(original,map,[req],()=>.5);

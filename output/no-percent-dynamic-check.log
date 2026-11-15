@@ -1,0 +1,7 @@
+PASS: power/defense/distance-based storm movement, double flight impact, common AP/height handling, overlap and save/expiry with no HP or defense mutation. No browser.
+PASS: manual typhoon radius 0-4, fixed/growing, actual footprints/render data, save/turn continuation, bounds and unchanged defaults.
+PASS: five events, weather/magic lightning power, deterministic save ticks, typhoon growth 1..4 and visible-mask placement, penalties and terrain. No browser.
+PASS: typhoon land/cold-sea decay, warm-sea regrowth, lake exclusion, radius-zero dissipation, actual turn expiry and field cleanup. No browser.
+PASS: weather wind persistence and gradual clockwise hex steering, save determinism and legacy wind fallback. No browser.
+PASS: real tsunami facility HP damage, destruction/normal repair, city defenses/immunity, overlap, world, same-turn and player/neutral settlement state. No browser.
+Existing registry warning batches: 1 (not disaster conversion errors).

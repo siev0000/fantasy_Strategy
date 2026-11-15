@@ -2,6 +2,9 @@ import {getHexOffsetNeighbors,getHexDistance,turnV39HexDirectionToward} from './
 import {resolveV39WindDirectionAt} from './v39-weather.js';
 import {isV39ProtectedGround} from './v39-terrain-destruction.js';
 import {resolveV39RainConditions} from './v39-rain-rules.js';
+import {resolveV39StormPower} from './v39-storm-effects.js';
+import {resolveV39ClimateDisasterPower} from './v39-disaster-power.js';
+import {resolveV39GravityPower} from './v39-gravity-effects.js';
 
 const key=p=>`${p.x},${p.y}`;
 const height=(map,p)=>Number(map.heightLevelMap?.[p.y]?.[p.x])||0;
@@ -10,7 +13,7 @@ const water=(map,p)=>/海|湖/.test(String(map.grid?.[p.y]?.[p.x]));
 
 // Explicit spawn options never mutate spreadsheet defaults or existing events.
 export function withV39TyphoonSpawnRadius(rule, options) {
-  if(rule.id!=='災害:台風'||options?.radius==null||options.radius==='')return rule;
+  if(rule.id!=='台風'||options?.radius==null||options.radius==='')return rule;
   const requested=Number(options.radius);
   if(!Number.isFinite(requested))return rule;
   const maximum=Math.max(rule.radius,Number(rule.details?.maximumRadius)||0);
@@ -24,7 +27,7 @@ export function isV39DynamicDisasterAnchor(rule,map,point,events=[]){
   if(detail.movement==='downhill'&&!getHexOffsetNeighbors(point.x,point.y).some(p=>inside(map,p)&&height(map,p)<height(map,point)))return false;
   if(detail.minimumClimateTemperature!==undefined&&(!map.climateProfile||Number(map.climateProfile.regions?.[`${Math.floor(point.x/map.climateProfile.regionSize)},${Math.floor(point.y/map.climateProfile.regionSize)}`]?.temperature??-Infinity)<detail.minimumClimateTemperature))return false;
   if(detail.movement==='coast'&&!getHexOffsetNeighbors(point.x,point.y).some(p=>inside(map,p)&&!water(map,p)&&height(map,p)<=(detail.maximumHeight??Infinity)))return false;
-  if(detail.triggerDisaster&&!events.some(event=>event.disasterId===detail.triggerDisaster&&getHexDistance(point,event)<=(detail.triggerRadius??0)))return false;
+  if(detail.triggerDisaster&&!events.some(event=>event.disasterId===String(detail.triggerDisaster).replace(/^災害:/u,'')&&getHexDistance(point,event)<=(detail.triggerRadius??0)))return false;
   return true;
 }
 function area(map,point,radius){
@@ -90,7 +93,10 @@ export function advanceV39DynamicDisaster(source,map,turn,state={}){
 }
 export function projectV39DynamicDisasterFields(map,weather,events,turn){
   const active=events.filter(event=>event.expiresAtTurn>=turn&&event.startsAtTurn<=turn);
-  map.disasterFields=active.filter(event=>event.details&&(event.details.movementImpediment||event.details.fogPenalty||event.details.visionPenalty||event.details.scoutPenalty||event.details.rangedAccuracyMultiplier!==undefined)).map(event=>({tileKeys:event.tileKeys,...event.details,x:event.x,y:event.y,radius:event.radius,disasterId:event.disasterId}));
+  map.disasterFields=active.filter(event=>['暴風','大寒波','重力異常'].includes(event.disasterId)||event.details&&(event.details.movementImpediment||event.details.fogPenalty||event.details.visionPenalty||event.details.scoutPenalty||event.details.rangedAccuracyMultiplier!==undefined)).map(event=>({tileKeys:event.tileKeys,...event.details,x:event.x,y:event.y,radius:event.radius,disasterId:event.disasterId,
+    ...(event.disasterId==='暴風'?{stormPower:resolveV39StormPower(event)}:{}),
+    ...(event.disasterId==='大寒波'?{coldPower:resolveV39ClimateDisasterPower(event,map,weather)}:{}),
+    ...(event.disasterId==='重力異常'?{gravityPower:resolveV39GravityPower(event)}:{})}));
   const next=weather?{...weather,disasterAreas:active.filter(event=>event.details?.weather).map(event=>({disasterId:event.disasterId,tileKeys:event.tileKeys,weather:event.details.weather,humidity:event.details.weatherHumidity,startedAtTurn:event.startsAtTurn}))}:weather;
   map.rainConditions=resolveV39RainConditions(map,next);
   return next;

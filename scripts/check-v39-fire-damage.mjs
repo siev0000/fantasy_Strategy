@@ -13,7 +13,7 @@ try{
       const {applyEnemyPlanToSimulation:ai}=await import('/src/lib/v39-enemy-ai-planner.js');
       const {applyV39SquadMovement:squadMove}=await import('/src/lib/v39-squad-movement-rules.js');
       const originalRandom=Math.random;Math.random=()=>0.5;
-      const event={disasterId:'災害:山火事',startsAtTurn:1,expiresAtTurn:2,unitDamageRate:0.1,tileKeys:['2,1','3,1']};
+      const event={disasterId:'山火事',startsAtTurn:1,expiresAtTurn:2,tileKeys:['2,1','3,1']};
       const state={activeWorldId:'surface',timeline:{turnNumber:1},worldEnvironment:{activeDisasters:[event]}};
       const unit={id:'probe',name:'probe',worldId:'surface',x:1,y:1,hp:100,currentHp:100,maxHp:100,ap:100};
       const path=[{x:1,y:1},{x:2,y:1},{x:3,y:1},{x:4,y:1}];
@@ -28,8 +28,7 @@ try{
         resistance:damage({...unit,level:1,status:{炎耐性:50}},fire,1).entry.damage,
         immune:damage({...unit,status:{炎耐性:100}},fire,1).unit.hp,
         barrier:damage({...unit,barrier:{remaining:20}},fire,1),
-        shield:damage({...unit,shield:{remaining:10}},fire,1),
-        legacy:damage(unit,0.1,1).entry.damage
+        shield:damage({...unit,shield:{remaining:10}},fire,1)
       };
       const overlapping=move(unit,path,{...state,worldEnvironment:{activeDisasters:[event,event]}});
       let simulation={...state,enemies:[unit],players:[],neutralVillages:[],enemyCombatRuntime:{}};
@@ -51,7 +50,6 @@ try{
     assert.equal(checks.mitigation.resistance,10);assert.equal(checks.mitigation.immune,100);
     assert.equal(checks.mitigation.barrier.unit.hp,100);assert.equal(checks.mitigation.barrier.unit.barrier.remaining,0);
     assert.equal(checks.mitigation.shield.unit.hp,83);assert.equal(checks.mitigation.shield.unit.shield.remaining,0);
-    assert.equal(checks.mitigation.legacy,10);
     const original=await page.evaluate(async()=>{
       window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39DisasterTest();
       const s=window.getV39GameState(),p=s.players[0],map=window.__v39FieldRuntime.mapData;
@@ -59,8 +57,8 @@ try{
       map.specialMap=[];map.reliefMap=[];map.lavaMap=[];map.wallMap=[];
       const unit={...p.factionState.units[0],x:3,y:10,position:[3,10],squadId:'solo',movementHold:false,
         hp:p.factionState.units[0].maxHp,currentHp:p.factionState.units[0].maxHp,ap:100,currentAp:100,actionPoint:100};
-      const event={id:'fire-path-test',disasterId:'災害:山火事',name:'山火事',startsAtTurn:1,expiresAtTurn:2,
-        unitDamageRate:0.1,movementDamageRate:0.1,stationaryDamageMultiplier:3,tileKeys:['4,10'],lastTickTurn:1};
+      const event={id:'fire-path-test',disasterId:'山火事',name:'山火事',startsAtTurn:1,expiresAtTurn:2,
+        tileKeys:['4,10'],lastTickTurn:1};
       window.setV39GameState({enemies:[],enemySquads:[],neutralVillages:[],players:[{...p,factionState:{...p.factionState,units:[unit],squads:[],selectedUnitId:unit.id,moveCommandUnitId:'',villagePlacementMode:false}}],worldEnvironment:{activeDisasters:[event],lastNaturalEventTurn:1}},{reason:'fire-movement-test',trackUnitDeaths:false});
       window.activateV39FooterTab('squad');window.refreshV39SquadDerivedUI();await window.waitForV39MapRenderSettled();
       const {applyV39DisasterDamage,resolveV39DisasterDamage}=await import('/src/lib/v39-disaster-damage.js');

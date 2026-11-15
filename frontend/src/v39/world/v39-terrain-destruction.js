@@ -1,20 +1,46 @@
 import {damageV39Ground,damageV39CaveEntrances,advanceV39GroundCollapses,clearV39Rubble,V39_TERRAIN_DESTRUCTION_RULES as rules} from '../../lib/v39-terrain-destruction.js';
 import {isV39SurfaceCaveEntrance} from '../../lib/v39-cave-entrance-rules.js';
-import {resolveV39TerrainAttackPower,computeAttackDamage} from '../../lib/v39-combat-engine.js';
+import {resolveV39TerrainAttackPower,computeAttackDamage,resolveSkillHealing} from '../../lib/v39-combat-engine.js';
 import {applyV39TerrainModifiers} from '../../lib/v39-terrain-modifiers.js';
 import {getHexDistance} from '../../lib/hex-grid.js';
 import {isV39UnitWaiting} from '../../lib/v39-unit-action-rules.js';
 import {applyTerritoryHazardDamage} from '../map/v39-volcano-system.js';
+import {hasV39SkillEffect} from '../../lib/v39-combat-ray.js';
+import {igniteV39FireTiles} from '../../lib/v39-fire-ignition.js';
+import {createV39FacilityGroundAbsorber,applyV39PlannedFacilityDamage} from '../../lib/v39-facility-ground-absorption.js';
+import {getFactionSettlements} from '../../lib/settlement-state.js';
+import {healV39Forest} from '../../lib/v39-forest-fire.js';
 const key=p=>`${p.x},${p.y}`;
+export function applyV39AttackIgnition(map,area,attacker,row,turn){
+  if(!hasV39SkillEffect(row,'燃焼')||!area?.size)return [];
+  const adjusted=applyV39TerrainModifiers(attacker,map);
+  const power=Math.max(resolveV39TerrainAttackPower(row,adjusted,{damageTypes:['炎']}),
+    resolveV39TerrainAttackPower(row,adjusted,{damageTypes:['雷']}));
+  if(power<=0)return [];
+  const state=window.getV39GameState({includeWorlds:false});
+  const active=state.worldEnvironment?.activeDisasters||[];
+  const fires=igniteV39FireTiles(map,active,area.keys(),power,turn,`attack:${attacker.id}:${row.ID||row.名前}:${active.length}`);
+  if(fires.length)window.setV39GameState({worldEnvironment:{...state.worldEnvironment,activeDisasters:[...active,...fires],
+    lastDisasterEvents:[...(state.worldEnvironment?.lastDisasterEvents||[]),...fires].slice(-120)}},{reason:'combat-ignition'});
+  return fires;
+}
 function commitMap(map){
   if(window.__v39BackgroundWorldTurn)window.__v39FieldRuntime.mapData=map;
   else window.updateV39FieldData?.(map,{reason:'terrain-destruction'});
   if(!window.__v39BackgroundWorldTurn)window.refreshV39MapEntities?.();
 }
+export function applyV39ForestHealing(map,area,attacker,row){
+  if(!hasV39SkillEffect(row,'森林再生'))return [];
+  const healing=resolveSkillHealing(row,applyV39TerrainModifiers(attacker,map));
+  const reports=healV39Forest(map,area.keys(),healing);
+  if(reports.length)commitMap(map);
+  return reports;
+}
 export function applyV39AttackGroundDamage(map,area,attacker,row,turn,state){
   area.groundSummary='';
   area.groundDamageTotal=0;
   area.achievementTerrainReports=[];
+  area.facilityDamagePlans=[];
   if(!rules.enabled||![...area.keys()].some(k=>{
     const [x,y]=k.split(',').map(Number);
     const broken=map.terrainDamage?.cells?.[k]?.broken;
@@ -29,16 +55,31 @@ export function applyV39AttackGroundDamage(map,area,attacker,row,turn,state){
   };
   const structureTiles=new Set((map.defenseStructures||[]).filter(s=>area.blockingStructures?.has(s.id)).flatMap(s=>s.edge?[key(s.edge.from),key(s.edge.to)]:(s.tiles||[]).map(key)));
   const targets=new Map([...area].filter(([k])=>!structureTiles.has(k)));
-  const ground=damageV39Ground(map,targets,power,turn,state);
+  const absorber=createV39FacilityGroundAbsorber(state,turn,row?.名前||'攻撃');
+  const ground=damageV39Ground(map,targets,power,turn,state,{...rules,absorbGroundDamage:absorber.absorb});
+  area.facilityDamagePlans=absorber.plans;
   const entrance=damageV39CaveEntrances(ground.map,targets,power);
   const reports=[...ground.reports,...entrance.reports],result={map:entrance.map,reports};
   area.achievementTerrainReports=reports;
+  const facilityDamage=absorber.plans.reduce((sum,plan)=>sum+plan.damage,0);
+  if(facilityDamage)area.groundSummary=` / 施設: ${facilityDamage}dmg`;
+  area.groundDamageTotal=facilityDamage;
   if(result.map===map)return;
-  area.groundDamageTotal=reports.reduce((sum,report)=>sum+report.damage,0);
-  area.groundSummary=` / 地形・瓦礫: ${reports.slice(0,3).map(r=>`${r.kind.startsWith('rubble')?'瓦礫':r.kind.startsWith('entrance')?'入口':'地形'}(${r.x},${r.y}) 威${r.power}/${r.damage}dmg 残${r.hp}`).join('・')}${reports.length>3?' ほか':''}`;
+  area.groundDamageTotal+=reports.reduce((sum,report)=>sum+report.damage,0);
+  area.groundSummary+=` / 地形・瓦礫: ${reports.slice(0,3).map(r=>`${r.kind.startsWith('rubble')?'瓦礫':r.kind.startsWith('entrance')?'入口':'地形'}(${r.x},${r.y}) 威${r.power}/${r.damage}dmg 残${r.hp}`).join('・')}${reports.length>3?' ほか':''}`;
   // Combat still holds this map reference for its final commit.
   Object.assign(map,result.map);commitMap(map);
   if(!window.__v39BackgroundWorldTurn)for(const report of result.reports.filter(r=>r.kind==='ground-broken'||r.kind==='rubble-cleared'))window.showV39TurnBanner?.(`${report.kind==='ground-broken'?`地形崩壊・${map.isUnderground?'落石':'土砂崩れ'}予告`:'瓦礫を除去'} (${report.x},${report.y})`,false,{actorId:attacker.id});
+}
+export function commitV39AttackFacilityDamage(area){
+  if(!area?.facilityDamagePlans?.length)return;
+  const state=window.getV39GameState({includeWorlds:false});
+  const result=applyV39PlannedFacilityDamage(state,area.facilityDamagePlans);
+  const byId=new Map([...result.players.flatMap(player=>getFactionSettlements(player.factionState)),...result.neutralVillages]
+    .map(base=>[String(base.settlementId||base.id),base]));
+  window.setV39GameState({players:result.players,neutralVillages:result.neutralVillages,
+    settlements:(state.settlements||[]).map(base=>byId.get(String(base.settlementId||base.id))||base)},
+  {reason:'combat-facility-damage'});
 }
 export function resolveV39GroundCollapses(turn){
   const map=window.__v39FieldRuntime?.mapData;

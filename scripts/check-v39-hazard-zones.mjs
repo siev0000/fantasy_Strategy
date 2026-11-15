@@ -86,7 +86,7 @@ try{
  assert(turns.every(row=>row.ok&&row.zones===6&&row.persistent===6));
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.locator('#v39-test-disaster-fixture option').count(),6);
- await page.locator('#v39-test-disaster-fixture').selectOption('危険地帯:常霧の谷');
+ await page.locator('#v39-test-disaster-fixture').selectOption('常霧の谷');
  await page.locator('[data-test-action="disaster-fixture-focus"]').click();
  await page.screenshot({path:`${out}/field-390.png`});assert.deepEqual(errors,[]);console.log('Hazards: six kinds, actual generation, tick, movement, resistance, poison, cold AP, fog suppression, save/load passed');
 }finally{await browser.close();}

@@ -85,13 +85,13 @@ class TerrainDisasterValidation(unittest.TestCase):
 
     def test_valid_and_invalid_definitions(self):
         row = {"ID": "test", "地形災害処理": "地形破壊", "発生方法": "攻撃",
-               "攻撃発生属性": "物理/打撃", "威力軽減": 50, "地形耐久": 100,
+               "攻撃発生属性": "物理/打撃",
                "地形被害倍率": 1, "高度低下": 1, "対象地形": "丘陵", "有効": True}
         result = SimpleNamespace(records=[row], errors=[])
         validate_terrain_disasters(result)
         self.assertEqual(result.errors, [])
-        for key, value in (("地形耐久", 0), ("高度低下", 0.5), ("発生方法", "自然"),
-                           ("地形災害処理", "typo"), ("威力軽減", "")):
+        for key, value in (("高度低下", 0.5), ("発生方法", "自然"),
+                           ("地形災害処理", "typo"), ("地形被害倍率", "")):
             result = SimpleNamespace(records=[{**row, key: value}], errors=[])
             validate_terrain_disasters(result)
             self.assertTrue(result.errors, key)

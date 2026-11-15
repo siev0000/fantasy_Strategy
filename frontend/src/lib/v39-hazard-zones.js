@@ -1,10 +1,16 @@
 import {getGameDataRows} from './game-data-registry.js';
 import {getHexNeighborCoords,getHexDistance} from './hex-grid.js';
 
-const definitions=getGameDataRows('地形').filter(row=>row.危険地帯設定?.disasterId).map(row=>({...row.危険地帯設定,name:row.地形}));
-const rules=new Map(getGameDataRows('災害').filter(row=>row.常設危険地帯===true&&row.有効!==false).map(row=>[row.ID,row]));
+const terrainHazards=getGameDataRows('地形').filter(row=>row.危険地帯設定?.disasterId&&row.危険地帯設定.rule?.有効!==false&&row.危険地帯設定.rule);
+const definitions=terrainHazards.map(row=>{
+  const {rule,...placement}=row.危険地帯設定;
+  return {...placement,name:row.地形};
+});
+const rules=new Map(terrainHazards.map(row=>[row.危険地帯設定.disasterId,{
+  ...row.危険地帯設定.rule,表示名:row.地形
+}]));
 export const getV39HazardDefinitions=()=>definitions;
-export const getV39HazardRule=id=>rules.get(id);
+export const getV39HazardRule=id=>rules.get(id)??rules.get(`危険地帯:${id}`);
 const indexes=new WeakMap();
 const terms=(map,x,y)=>[map.grid?.[y]?.[x],map.specialMap?.[y]?.[x],map.reliefMap?.[y]?.[x]].filter(Boolean);
 const matches=(names,values)=>names?.some(name=>values.some(value=>String(value).includes(name)));
@@ -96,7 +102,7 @@ export function projectV39HazardEvents(map,turn){
     const tileKeys=zone.tileKeys.filter(key=>Number(zone.suppressedUntilByTile?.[key]||0)<=turn);
     if(!tileKeys.length)return [];
     return [{...zone,tileKeys,persistentHazard:true,anchorKey:`${zone.x},${zone.y}`,icon:rule.アイコン,
-      startsAtTurn:1,expiresAtTurn:Number.MAX_SAFE_INTEGER,damagePower:0,unitDamageRate:0,
+      startsAtTurn:1,expiresAtTurn:Number.MAX_SAFE_INTEGER,damagePower:0,
       movementDamagePower:Number(rule.移動時ダメージ威力)||0,damageElement:rule.ダメージ属性,
       yieldMultiplier:1,securityLoss:0}];
   });

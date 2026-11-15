@@ -1,5 +1,6 @@
 import {recoverAbilityDamage,reduceV39BlockedHealing} from '../../lib/v39-ability-damage.js';
 import {applyV39ControlTurnAp,resolveV39MaxAp,readV39NumericStatus} from '../../lib/v39-control-status.js';
+import {resolveV39TimeDistortionPercent} from '../../lib/v39-time-distortion.js';
 import {reduceV39Bleeding} from '../../lib/v39-bleeding.js';
 import {usesV39OperationPhases,isV39TerritoryPhase,normalizeV39OperationTimeline,advanceV39OperationCycle,finishV39TerritoryPlanning} from '../../lib/v39-operation-phases.js';
 import {resolveV39TurnPhaseDisplay} from '../ui/v39-turn-phase-display.js';
@@ -71,16 +72,25 @@ function normalizeTimeline(value = {}, players = [], fallbackActivePlayerId = ""
   };
 }
 
-function restoreUnitForTurn(unit, applyParalysis=false) {
+function restoreUnitForTurn(unit, applyParalysis=false, state=null, recoveryTurn=0, apTurn=recoveryTurn) {
   unit = finishV39RecoveryWait(unit);
   if (!unit || isDead(unit)) return { ...unit };
-  const {sustainApPaid=0,...restoredUnit}=unit;
-  const configuredMaxAp = resolveV39MaxAp(unit);
+  const {sustainApPaid=0,timeDistortionAp:previousDistortion,...restoredUnit}=unit;
+  const baseMaxAp = Math.max(0,number(previousDistortion?.baseMaxAp,number(unit.maxAp??unit.maxActionPoint,100)));
+  const configuredMaxAp = resolveV39MaxAp(restoredUnit,baseMaxAp);
   const starvationCap = Math.max(0, Math.floor(number(unit?.starvationApCap)));
-  const maxAp = starvationCap > 0 ? Math.min(configuredMaxAp, starvationCap) : configuredMaxAp;
+  const naturalMaxAp = starvationCap > 0 ? Math.min(configuredMaxAp, starvationCap) : configuredMaxAp;
+  const unitWorld=unit.worldId||'surface';
+  const contextWorld=state?.activeWorldId||'surface';
+  const percent=unitWorld===contextWorld
+    ?resolveV39TimeDistortionPercent(unit,state?.worldEnvironment?.activeDisasters,recoveryTurn)
+    :100;
+  const maxAp = Math.floor(naturalMaxAp*percent/100);
   const ap=Math.max(0,maxAp-(applyParalysis?readV39NumericStatus(unit,'麻痺'):0)-sustainApPaid);
   return {
     ...restoredUnit,
+    maxAp:percent===100?baseMaxAp:maxAp,
+    ...(percent===100?{}:{timeDistortionAp:{baseMaxAp,starvationCap,percent,turn:apTurn}}),
     waitTurnNumber:0,
     ap,
     currentAp: ap,
@@ -409,14 +419,14 @@ export async function advanceTurn(options = {}) {
       return true;
     }
     const activeTurn = before.turnNumber;
-    const restoreEnemyForTurn = unit => applyV39ControlTurnAp(restoreUnitForTurn(clearExpiredGuard(unit,activeTurn)),activeTurn,{restored:true});
+    const restoreEnemyForTurn = (unit,context) => applyV39ControlTurnAp(restoreUnitForTurn(clearExpiredGuard(unit,activeTurn),false,context,activeTurn,activeTurn),activeTurn,{restored:true});
     inputToken = window.beginV39MapInputLock?.("turn-resolution");
     showV39TurnLoading("敵AI処理中…");
     await paintV39TurnLoading();
     const enemyTimeline = setTurnPhase({
       ...state,
       enemies:(Array.isArray(state.enemies) ? state.enemies : [])
-        .map(restoreEnemyForTurn)
+        .map(unit=>restoreEnemyForTurn(unit,state))
     }, before, V39_TURN_PHASE.ENEMY, "enemy-turn-start");
     showBanner(`エネミーターン ${activeTurn}`);
     const worldIds=v39TurnWorldIds(),visibleWorldId=state.activeWorldId||"surface";
@@ -425,13 +435,13 @@ export async function advanceTurn(options = {}) {
     if(mineOperations)for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
       await withV39WorldContext(worldId,()=>{
         const current=window.getV39GameState({includeWorlds:false});
-        window.setV39GameState({enemies:current.enemies.map(restoreEnemyForTurn)},{returnState:false});
+        window.setV39GameState({enemies:current.enemies.map(unit=>restoreEnemyForTurn(unit,current))},{returnState:false});
       });
     }
     if(mineOperations)window.advanceV39CaveIntrusions?.(activeTurn);
     for(const worldId of worldIds.length?worldIds:[visibleWorldId]){
       await withV39WorldContext(worldId,async()=>{
-        if(!mineOperations){const current=window.getV39GameState({includeWorlds:false});window.setV39GameState({enemies:current.enemies.map(restoreEnemyForTurn)},{returnState:false});}
+        if(!mineOperations){const current=window.getV39GameState({includeWorlds:false});window.setV39GameState({enemies:current.enemies.map(unit=>restoreEnemyForTurn(unit,current))},{returnState:false});}
         timings.enemy[worldId]=await window.runV39EnemyTurn?.(activeTurn,{presentation:presentation&&worldId===visibleWorldId});
       });
     }
@@ -510,10 +520,9 @@ export async function advanceTurn(options = {}) {
             .map(unit => {
               const worldId=unit.worldId||"surface";
               const spatial=worldId===visibleWorldId?resolved:resolved.explorationWorlds?.[worldId]?.spatial;
-              return recoverUnitHp(unit,worldId==="surface"?player.factionState:null,player.id,spatial||{},activeTurn);
+              const recovered=recoverUnitHp(unit,worldId==="surface"?player.factionState:null,player.id,spatial||{},activeTurn);
+              return restoreUnitForTurn(clearExpiredGuard(recovered,nextTurn),true,{...spatial,activeWorldId:worldId},activeTurn,nextTurn);
             })
-            .map(unit => clearExpiredGuard(unit, nextTurn))
-            .map(unit=>restoreUnitForTurn(unit,true))
       };
       return { ...player, factionState:restoreV39SquadMovementForTurn(factionState) };
     });

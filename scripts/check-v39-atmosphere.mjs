@@ -18,16 +18,16 @@ try{
     });
     assert(initial.meta.combinations.includes('miasma'));assert(initial.meta.combinations.includes('heat'));assert(initial.meta.combinations.includes('cold'));assert.equal(initial.coldImages,0);
     assert.equal(initial.icons,2);assert(initial.alpha.every(a=>a===.75));
-    await page.evaluate(()=>{window.forceV39Disaster('災害:熱波',{x:4,y:14});window.renderV39Visibility();});
+    await page.evaluate(()=>{window.forceV39Disaster('熱波',{x:4,y:14});window.renderV39Visibility();});
     await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.getByName('v39-atmosphere-fog-layer').getData('atmosphere').combinations.includes('miasma|heat'));
-    await page.locator('#v39-test-disaster-fixture').selectOption('災害:瘴気');
+    await page.locator('#v39-test-disaster-fixture').selectOption('瘴気');
     await page.locator('[data-test-action="disaster-fixture-focus"]').click();
     await page.waitForTimeout(500);await page.screenshot({path:`${out}/two-${width}.png`});
     const mixed=await page.evaluate(async()=>{
       const map=window.__v39FieldRuntime.mapData;map.fogMap||=[];map.fogMap[14]||=[];
       for(const x of [4,8])map.fogMap[14][x]={source:'skill',expiresAtTurn:7};
       for(const x of [5,9])map.fogMap[14][x]={kind:'death',source:'skill',expiresAtTurn:8};
-      window.forceV39Disaster('災害:大寒波',{x:4,y:14});window.renderV39Visibility();await window.waitForV39MapRenderSettled();
+      window.forceV39Disaster('大寒波',{x:4,y:14});window.renderV39Visibility();await window.waitForV39MapRenderSettled();
       const scene=window.__v39FieldRuntime.game.scene.getScenes(true)[0],layer=scene.children.getByName('v39-atmosphere-fog-layer');
       const meta=layer.getData('atmosphere'),before=JSON.stringify(map.fogMap);
       const texture=scene.textures.get(scene.v39AtmosphereTextureKeys[0]);
@@ -72,7 +72,7 @@ try{
     const lifecycle=await page.evaluate(async()=>{
       const runtime=window.__v39FieldRuntime,scene=runtime.game.scene.getScenes(true)[0];
       const base=runtime.mapData,s=window.getV39GameState(),turn=s.timeline.turnNumber;
-      window.setV39GameState({worldEnvironment:{...s.worldEnvironment,activeDisasters:[{id:'atmosphere-isolation',disasterId:'災害:熱波',name:'熱波',x:4,y:14,anchorKey:'4,14',tileKeys:['4,14'],startsAtTurn:turn,expiresAtTurn:turn+5}]}});
+      window.setV39GameState({worldEnvironment:{...s.worldEnvironment,activeDisasters:[{id:'atmosphere-isolation',disasterId:'熱波',name:'熱波',x:4,y:14,anchorKey:'4,14',tileKeys:['4,14'],startsAtTurn:turn,expiresAtTurn:turn+5}]}});
       const fogMap=[];fogMap[14]=[];fogMap[14][4]={source:'skill',expiresAtTurn:turn+5};
       window.updateV39FieldData({...base,isUnderground:false,fogMap},{silent:true});
       window.renderV39Visibility();await window.waitForV39MapRenderSettled();

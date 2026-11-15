@@ -56,14 +56,14 @@ try{
       try{
         for(const row of disasterData)row.基本発生率=0;
         for(const [turn,name,weather,expected] of [[2,'山火事','晴れ',true],[3,'山火事','雨',false],[4,'落雷嵐','雷雨',true],[5,'反乱','雷雨',false]]){
-          const row=disasterData.find(row=>row.カテゴリ名===name);row.基本発生率=1;
+          const row=disasterData.find(row=>row.表示名===name);row.基本発生率=1;
           const s=window.getV39GameState(),w=s.worldEnvironment.weather;
           const regions=Object.fromEntries(Object.entries(w.regions).map(([id,r])=>[id,{...r,weather,weatherStartedTurn:1,weatherUntilTurn:100,humidity:weather==='晴れ'?20:90,dryness:weather==='晴れ'?80:20,dryTurns:weather==='晴れ'?4:0,wetTurns:weather==='晴れ'?0:3}]));
           window.setV39GameState({timeline:{...s.timeline,turnNumber:turn},worldEnvironment:{...s.worldEnvironment,weather:{...w,lastTurn:turn-1,regions},activeDisasters:[],lastDisasterEvents:[],lastNaturalEventTurn:turn-1}});
           const result=tick({turnNumber:turn});results.push({name,weather,expected,created:result.disasters.map(e=>e.name),weather:window.getV39GameState().worldEnvironment.weather.lastTurn});
           row.基本発生率=0;
         }
-        const forced=window.forceV39Disaster('災害:落雷嵐',{x:4,y:4});
+        const forced=window.forceV39Disaster('落雷嵐',{x:4,y:4});
         const weatherNow=window.getV39GameState().worldEnvironment.weather;
         const repeated=tick({turnNumber:5,force:true,skipNaturalDisasters:true});
         return {same,results,forced:forced.ok,repeatedWeather:JSON.stringify(weatherNow)===JSON.stringify(window.getV39GameState().worldEnvironment.weather),

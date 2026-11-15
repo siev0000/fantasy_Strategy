@@ -17,7 +17,7 @@ try{
       window.dispatchEvent(new CustomEvent('v39:turn-stage-world',{detail:{turnNumber:turn}}));
     };
     const start=point=>{
-      const result=window.forceV39Disaster('災害:干ばつ',point);
+      const result=window.forceV39Disaster('干ばつ',point);
       if(!result.ok||!result.disasters.length)throw new Error('could not create fixture disaster');
       const event=result.disasters[0],s=window.getV39GameState();
       window.setV39GameState({worldEnvironment:{...s.worldEnvironment,activeDisasters:s.worldEnvironment.activeDisasters.map(row=>row.id===event.id?{...row,expiresAtTurn:s.timeline.turnNumber+1}:row)}});
@@ -29,7 +29,7 @@ try{
       if(!key)throw new Error('normal mode has no vision');
       const [x,y]=key.split(',').map(Number),visible=start({x,y}),turn=window.getV39GameState().timeline.turnNumber;
       const phases=[logs(visible.id).map(row=>row.detail.disasterPhase)];
-      const repeat=window.forceV39Disaster('災害:干ばつ',{x,y});
+      const repeat=window.forceV39Disaster('干ばつ',{x,y});
       tick(turn);phases.push(logs(visible.id).map(row=>row.detail.disasterPhase));
       tick(turn+1);phases.push(logs(visible.id).map(row=>row.detail.disasterPhase));
       window.importV39SaveJson(window.exportV39SaveJson());
@@ -60,7 +60,7 @@ try{
   assert.equal(report.foreignLeak,false);assert.deepEqual(report.hiddenLogs,[]);
   assert.deepEqual(report.globalLogs,['started','ended']);assert.equal(report.globalVisible,2);assert.equal(report.hiddenAfterToggle,0);
   assert.deepEqual(report.edgeLogs,['started','ended']);assert.deepEqual(report.backgroundLogs,[]);
-  await page.evaluate(async()=>{await window.setV39TestMode(true);window.startV39DisasterTest({natural:true});window.forceV39Disaster('災害:干ばつ',{x:4,y:4});window.activateV39FooterTab('squad');await window.waitForV39MapRenderSettled();});
+  await page.evaluate(async()=>{await window.setV39TestMode(true);window.startV39DisasterTest({natural:true});window.forceV39Disaster('干ばつ',{x:4,y:4});window.activateV39FooterTab('squad');await window.waitForV39MapRenderSettled();});
   if(await page.locator('#v39-side-log.collapsed').count())await page.locator('.v39-side-log-collapse').click();
   assert((await page.locator('#v39-side-log').innerText()).includes('干ばつ 発生中'));
   await page.screenshot({path:`${out}/started-390.png`});

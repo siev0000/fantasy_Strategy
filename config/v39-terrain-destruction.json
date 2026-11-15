@@ -1,5 +1,6 @@
 {
   "caveEntrance": {"maxHp":500,"rubbleDurability":350},
+  "forestFire": {"maxHp":100},
   "landslide": {
     "baseVolumeByTerrain": {"丘陵":350,"山岳":700,"岩場":700},
     "maxFlowTiles":3,

@@ -28,7 +28,7 @@ try{
     const result=await page.evaluate(async kind=>{
       const map=window.__v39FieldRuntime.mapData;
       map.fogMap=map.grid.map(row=>row.map(()=>({kind:kind==='death'?'death':'normal',expiresAtTurn:99})));
-      map.hazardZones=kind==='miasma'?[{id:'cave-miasma',name:'瘴気地帯',disasterId:'危険地帯:瘴気地帯',x:6,y:6,
+      map.hazardZones=kind==='miasma'?[{id:'cave-miasma',name:'瘴気地帯',disasterId:'瘴気地帯',x:6,y:6,
         tileKeys:map.grid.flatMap((row,y)=>row.map((_,x)=>`${x},${y}`))}]:[];
       const s=window.getV39GameState();
       window.setV39GameState({players:s.players.map(p=>({...p,factionState:{...p.factionState,visibility:{exploredTileKeys:[]}}}))});

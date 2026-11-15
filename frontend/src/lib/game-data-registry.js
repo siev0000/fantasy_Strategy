@@ -50,7 +50,7 @@ const TABLE_KEY_FIELDS = Object.freeze({
   特産品:["名前"],
   クラス:["名前"], テストクラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"], テストゲーム状態:["activePlayerId"],
   外交姿勢:["項目カテゴリ", "項目名"], 研究:["技術対象", "Lv", "項目名"], 効果:["追加効果"],
-  災害:["カテゴリ名"], 施設:["施設名"], 種族:["key"], 種族分類:["種類"], 種族幸福度仮:["名前"],
+  災害:["表示名"], 施設:["施設名"], 種族:["key"], 種族分類:["種類"], 種族幸福度仮:["名前"],
   出現敵:["出現地形", "種族名", "Lv_Min", "Lv_Max", "編成人数"], 消費量:["種別", "Lv"],
   勢力:["種族"], 説明:["技能名"], 技能:["技能参照キー"], 組織:["項目名"], 装備:["装備名"],
   体制:["項目カテゴリ", "項目名"], 地形:["地形"], 都市:["項目名", "レア度"],
@@ -64,7 +64,7 @@ const RUNTIME_ROW_KEY_FIELDS = Object.freeze({
   特産品:["名前"],
   クラス:["名前"], テストクラス:["名前"], スキル一覧:["名前"], テストスキル:["名前"],
   種族:["key"], 勢力:["種族"], 説明:["技能名"], 技能:["技能参照キー"], 範囲:["範囲タイプ"], 効果:["追加効果"],
-  地形:["地形"], 出現敵:["ID"], 災害:["ID"], 都市:["項目名"], 外交姿勢:["項目カテゴリ", "項目名"],
+  地形:["地形"], 出現敵:["ID"], 災害:["表示名"], 都市:["項目名"], 外交姿勢:["項目カテゴリ", "項目名"],
   組織:["項目名"], 体制:["項目カテゴリ", "項目名"], 施設:["施設名"], 研究:["ID"],
   付与:["付与能力", "Lv"], 消費量:["Lv", "種別"], 装備:["装備名"], 勝利対象土地:["ID"]
 });
@@ -75,7 +75,7 @@ const REQUIRED_FIELDS = Object.freeze({
   特産品:["名前", "出現地形", "分類"],
   クラス:["名前", "種類"], テストクラス:["名前", "種類", "テスト専用"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
-  研究:["ID", "項目名", "技術対象", "Lv", "必要ユニットLv"], 災害:["ID", "カテゴリ名", "効果"],
+  研究:["ID", "項目名", "技術対象", "Lv", "必要ユニットLv"], 災害:["表示名", "効果"],
   種族:["key", "name", "className"], 種族分類:["種類", "説明"], 勢力:["種族", "カナ", "マーカー文字", "マーカー色"], 範囲:["範囲タイプ", "処理タイプ"],
   勝利対象土地:["ID", "名称", "配置地形", "発見方法"]
 });
@@ -123,7 +123,7 @@ function isHeaderRecord(name, row) {
   if (!fields.length) return false;
   if (fields.some(field => asText(row[field]) === field)) return true;
   if (name === "出現敵" && Number(row?.出現地形) === 1 && Number(row?.種族名) === 2) return true;
-  return name === "災害" && asText(row.カテゴリ名) === "災害種別";
+  return name === "災害" && asText(row.表示名) === "災害種別";
 }
 
 function getLegacyGameDataRecordId(name, row) {
@@ -175,7 +175,8 @@ export function getGameDataRows(name) {
   if (!Array.isArray(value)) return [];
   const keyFields = RUNTIME_ROW_KEY_FIELDS[normalizedName];
   if (!keyFields?.length) return value;
-  return value.filter(row => keyFields.every(field => asText(row?.[field])));
+  return value.filter(row => keyFields.every(field => asText(row?.[field])))
+    .map(row => normalizedName === "災害" ? {...row, ID:row.表示名} : row);
 }
 
 export function findGameDataRow(name, field, value) {

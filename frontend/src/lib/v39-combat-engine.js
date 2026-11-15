@@ -20,10 +20,23 @@ import { resolveV39BodyWeaponAttackRows } from "./v39-body-weapon-rules.js";
 import { DAMAGE_TYPE_FIELDS, TIMED_EFFECT_FIELDS, SKILL_LEVEL_FIELDS, RESISTANCE_FIELDS } from "../constants/unitCommon.js";
 import {V39_TERRAIN_DESTRUCTION_RULES} from './v39-terrain-destruction.js';
 import {getV39DisasterFieldAt} from './v39-disaster-dynamics.js';
+import {resolveV39StormShotPowerLoss,resolveV39ColdWaveShotPowerLoss} from './v39-storm-effects.js';
 import { resolveV39RangeTiles, V39_SQUAD_MOVEMENT_BALANCE, V39_CAVE_BALANCE, V39_HIT_RATE_MAX, V39_HIT_RATE_MIN } from "./v39-gameplay-balance.js";
+import {resolveV39SpatialDistortionPercent} from './v39-spatial-distortion.js';
+import {getV39ConditionEventRules,getV39ConditionEffect} from './v39-condition-event-rules.js';
 
 const NATURAL_COUNTER_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "針"]);
 const RANGED_WEAPON_NAMES = /弓|銃|砲|ボウ|ライフル|ピストル/;
+const diseaseCombatScale=(unit,state)=>{
+  if(!Number.isFinite(Number(unit?.x))||!Number.isFinite(Number(unit?.y))
+    ||(unit.worldId||'surface')!==(state?.activeWorldId||'surface'))return 1;
+  const tile=`${Math.floor(Number(unit.x))},${Math.floor(Number(unit.y))}`;
+  return (state?.worldEnvironment?.activeDisasters||[]).reduce((scale,event)=>{
+    if(!(event.tileKeys||[]).includes(tile))return scale;
+    const rule=getV39ConditionEventRules('combatMultiplier').find(rule=>rule.id===event.disasterId);
+    return scale*(getV39ConditionEffect(rule,'combatMultiplier')?.multiplier??1);
+  },1);
+};
 
 
 
@@ -309,7 +322,10 @@ function skillRangeBonus(row) {
 
 function effectiveRangeValue(skillRow, unit, mapData) {
   const raw=resolveAttackRawRange(skillRow,unit);
-  return raw > 0 && mapData?.isUnderground ? raw*V39_CAVE_BALANCE.attackRangeMultiplier : raw;
+  if(raw<=0)return raw;
+  const caveRange=mapData?.isUnderground?raw*V39_CAVE_BALANCE.attackRangeMultiplier:raw;
+  const state=globalThis.window?.getV39GameState?.({includeWorlds:false});
+  return caveRange*(resolveV39SpatialDistortionPercent(unit,state)??100)/100;
 }
 
 export function resolveAttackRange(skillRow, unit, mapData = null) {
@@ -482,6 +498,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
   const periodicOnly=!damageType&&(Number(skillRow?.毒)>0||Number(skillRow?.燃焼)>0)&&resolveSkillBasePower({...skillRow,毒:0})<=0;
   if(!damageType&&Number(skillRow?.毒)>0)skillRow={...skillRow,毒:0};
   const state=globalThis.window?.getV39GameState?.({includeWorlds:false});
+  const attackerDiseaseScale=diseaseCombatScale(attacker,state),targetDiseaseScale=diseaseCombatScale(target,state);
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, { isCounter });
   adjusted.attacker=applyV39RestraintPenalties(adjusted.attacker,state);
   target=resolveV39PassiveContext(target,passiveActionContext(target,skillRow),{isCounter:false}).unit;
@@ -490,10 +507,15 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
   const attackType=[...DAMAGE_SUM_KEYS,'精神'].includes(damageType)?damageType:strongestDamageType(adjusted.skillRow);
   const forceField=attackType==='力場';
   const areaScale=runtime?.mapData?.hegemonyInterior?hegemonyLightMultiplier(runtime.mapData,attacker,attackType,globalThis.window?.getV39GameState?.({includeWorlds:false})?.activeWorldId):1;
-  const power = abilityDamageTarget(adjusted.skillRow)||periodicOnly?0:resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[],timedWeaponEnhancements:[] },{damageType,unrounded:true})*areaScale*powerScale;
+  const ranged=attackType==='射撃'||['弓','銃'].includes(text(adjusted.skillRow?.攻撃手段))||number(adjusted.skillRow?.射撃)>0;
+  const fieldMap=globalThis.window?.__v39FieldRuntime?.mapData;
+  const stormShotPowerLoss=ranged?resolveV39StormShotPowerLoss(fieldMap,adjusted.attacker,target):0;
+  const coldWaveShotPowerLoss=ranged?resolveV39ColdWaveShotPowerLoss(fieldMap,adjusted.attacker,target):0;
+  const basePower=abilityDamageTarget(adjusted.skillRow)||periodicOnly?0:resolveAttackPower(adjusted.skillRow, { ...adjusted.attacker, techniques:[],timedWeaponEnhancements:[] },{damageType,unrounded:true})*areaScale*powerScale;
+  const power=Math.max(0,basePower-stormShotPowerLoss-coldWaveShotPowerLoss)*attackerDiseaseScale;
   const magicalJudge = text(adjusted.skillRow?.判定).includes("魔");
   const defenseKey = magicalJudge || forceField ? "精神" : "防御";
-  const defense = Math.max(0, number(target?.status?.[defenseKey], 0));
+  const defense = Math.max(0, number(target?.status?.[defenseKey], 0))*targetDiseaseScale;
   const resistanceKey = forceField?'':normalizeV39ReductionKey(`${attackType}耐性`);
   const resistance = forceField?0:Math.max(0, number(readV39UnitResistance(target,resistanceKey)));
   const resistancePenetration = Math.max(0, number(adjusted.attacker?.status?.耐性貫通, 0));
@@ -512,11 +534,9 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
     +number(adjusted.attacker?.status?.Cr威力)+number(adjusted.skillRow?.Cr威力)
     -number(target?.status?.Cr威力耐性,number(target?.resistances?.Cr威力耐性)))/100);
   const accuracyKey = magicalAttack ? "精神" : "命中";
-  const ranged=['弓','銃'].includes(text(adjusted.skillRow?.攻撃手段))||number(adjusted.skillRow?.射撃)>0;
-  const fieldMap=globalThis.window?.__v39FieldRuntime?.mapData;
   const weatherAccuracy=ranged?Math.min(getV39DisasterFieldAt(fieldMap,attacker?.x,attacker?.y).rangedAccuracyMultiplier,getV39DisasterFieldAt(fieldMap,target?.x,target?.y).rangedAccuracyMultiplier):1;
-  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey])-(magicalAttack?0:resolveV39PerceptionDamage(adjusted.attacker)))*weatherAccuracy*(magicalAttack?(adjusted.attacker.restraintAppliedMultiplier||1):1);
-  const evasion = Math.max(1, number(target?.status?.速度, 1) * (target?.knockedDown ? 0.75 : 1));
+  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey])-(magicalAttack?0:resolveV39PerceptionDamage(adjusted.attacker)))*weatherAccuracy*(magicalAttack?(adjusted.attacker.restraintAppliedMultiplier||1):1)*attackerDiseaseScale;
+  const evasion = Math.max(1, number(target?.status?.速度, 1) * (target?.knockedDown ? 0.75 : 1)*targetDiseaseScale);
   const guaranteedHit=hasV39SkillEffect(skillRow,"必中");
   const hitRate = guaranteedHit ? 1 : Math.max(V39_HIT_RATE_MIN, Math.min(V39_HIT_RATE_MAX, (accuracy / evasion) * 0.75));
   const hits = [];
@@ -557,7 +577,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
     missCount:hitResults.filter(row => !row.hit).length,
     criticalCount:hitResults.filter(row=>row.critical).length,
     detail:{
-      power, damageType:attackType, defenseKey, defense, resistanceKey, resistance, resistancePenetration, effectiveResistance, resistanceRate, targetLevel,
+      power, basePower, stormShotPowerLoss, coldWaveShotPowerLoss, damageType:attackType, defenseKey, defense, resistanceKey, resistance, resistancePenetration, effectiveResistance, resistanceRate, targetLevel,
       levelReduction, reducedPower, attackCount, scale, friendly, damageMultiplier, accuracyKey, accuracy, evasion, hitRate,criticalRate,criticalMultiplier,
       appliedPassiveSkillNames:adjusted.appliedPassiveSkillNames,
       passiveDiagnostics:adjusted.passiveDiagnostics,

@@ -233,7 +233,7 @@ UNIQUE_KEYS = {
     "効果": ("追加効果",),
     "地形": ("地形",),
     "出現敵": ("ID",),
-    "災害": ("ID",),
+    "災害": ("表示名",),
     "都市": ("項目名",),
     "外交姿勢": ("項目カテゴリ", "項目名"),
     "組織": ("項目名",),
@@ -511,6 +511,9 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         if is_repeated_header_row(pairs):
             result.skipped_repeated_header_rows += 1
             continue
+        if sheet_name == "災害" and record.get("表示名") == "災害種別":
+            result.skipped_repeated_header_rows += 1
+            continue
         # 一意キーがない行は、同じシート内の説明表・集計・区切りとしてJSONへ出力しない。
         required_keys = UNIQUE_KEYS.get(sheet_name, ())
         if required_keys and not all(key in record and not is_blank(record[key]) for key in required_keys):
@@ -594,6 +597,8 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
 
 def validate_dynamic_disasters(result):
     for record in result.records:
+        if "地形被害ON" in record and type(record["地形被害ON"]) is not bool:
+            result.errors.append({"type": "invalid_ground_damage_flag", "id": record.get("ID")})
         detail = record.get("災害詳細設定")
         if detail is None:
             continue
@@ -602,10 +607,51 @@ def validate_dynamic_disasters(result):
         if not isinstance(detail, dict):
             error("災害詳細設定はJSONオブジェクトで指定してください")
             continue
-        numeric = ("stepsPerTurn", "minimumHeight", "maximumHeight", "rubbleDurability", "triggerRadius", "visionPenalty", "scoutPenalty", "weatherHumidity", "rangedAccuracyMultiplier", "maximumRadius", "radiusGrowthPerTurn", "radiusDecayPerTurn", "windTurnSteps", "magicPower", "facilityDamageMultiplier")
-        allowed = set(numeric) | {"movement", "minimumClimateTemperature", "weather", "triggerDisaster", "powerRange", "damageComponents", "knockback", "fogPenalty", "movementImpediment", "followWind"}
+        numeric = ("stepsPerTurn", "minimumHeight", "maximumHeight", "rubbleDurability", "rubblePowerReduction", "triggerRadius", "visionPenalty", "scoutPenalty", "weatherHumidity", "rangedAccuracyMultiplier", "maximumRadius", "radiusGrowthPerTurn", "radiusDecayPerTurn", "windTurnSteps", "magicPower", "facilityDamageMultiplier")
+        allowed = set(numeric) | {"movement", "minimumClimateTemperature", "weather", "triggerDisaster", "powerRange", "randomPowerRange", "damageComponents", "knockback", "fogPenalty", "movementImpediment", "followWind", "conditionEvent"}
         if set(detail) - allowed:
             error(f"未対応の災害詳細設定: {sorted(set(detail) - allowed)}")
+        condition_event = detail.get("conditionEvent")
+        if condition_event is not None:
+            effect_types = {"populationLoss", "combatMultiplier", "spawnRebels"}
+            expression = str(record.get("発生条件", ""))
+            match = re.fullmatch(r"([0-9]+)/([0-9]+)\s*:\s*(.+)", expression)
+            conditions = []
+            terms = {
+                "食料不足段階>=1": "foodShortage",
+                "人口過密ペナルティ<0": "overcrowding",
+                "(領土内瘴気|領土1マス以内死体>=100)": "corpsesOrMiasma",
+            }
+            if match:
+                for term in re.sub(r"\s+", "", match[3]).split(","):
+                    threshold = re.fullmatch(r"(幸福度|治安)<=([0-9]+)", term)
+                    if term in terms:
+                        conditions.append({"type": terms[term]})
+                    elif threshold and int(threshold[2]) <= 100:
+                        conditions.append({"type": "happinessAtMost" if threshold[1] == "幸福度" else "securityAtMost", "value": int(threshold[2])})
+                    else:
+                        break
+                if (len(conditions) != len(match[3].split(",")) or len(conditions) != int(match[2])
+                    or not 1 <= int(match[1]) <= len(conditions)
+                    or len({condition["type"] for condition in conditions}) != len(conditions)):
+                    match = None
+            if not match:
+                error("発生条件は成立数/条件数: 条件, 条件 の形式で、対応する条件を指定してください")
+            if (not isinstance(condition_event, dict) or set(condition_event) != {"effects"}
+                or not isinstance(condition_event.get("effects"), list) or not condition_event["effects"]):
+                error("conditionEventにはeffectsを指定してください")
+            else:
+                if match:
+                    condition_event.update(conditions=conditions, minimumMatches=int(match[1]))
+                for effect in condition_event["effects"]:
+                    kind = effect.get("type") if isinstance(effect, dict) else None
+                    field = {"populationLoss": "rate", "combatMultiplier": "multiplier", "spawnRebels": "populationRate"}.get(kind)
+                    if kind not in effect_types or set(effect) != {"type", field} or type(effect[field]) not in (int, float) or not math.isfinite(effect[field]) or not 0 <= effect[field] <= 1:
+                        error("conditionEventに未対応または範囲外の効果があります")
+        if "randomPowerRange" in detail:
+            power_range = detail["randomPowerRange"]
+            if not isinstance(power_range, dict) or set(power_range) != {"minimum", "maximum"} or any(type(power_range.get(key)) is not int for key in ("minimum", "maximum")) or power_range["minimum"] < 0 or power_range["maximum"] < power_range["minimum"]:
+                error("randomPowerRangeは0以上の整数minimum/maximumを昇順で指定してください")
         if "fogPenalty" in detail and type(detail["fogPenalty"]) is not bool:
             error("fogPenaltyは真偽値で指定してください")
         if "followWind" in detail and type(detail["followWind"]) is not bool:
@@ -672,9 +718,9 @@ def validate_terrain_disasters(result):
     seen_terrain = set()
     seen_special = set()
     requirements = {
-        "地形破壊": {"威力軽減": 0, "地形耐久": 1, "地形被害倍率": 0, "高度低下": 0},
+        "地形破壊": { "地形被害倍率": 0, "高度低下": 0},
         "落石": {"ダメージ威力": 0, "発生猶予ターン": 1},
-        "瓦礫": {"威力軽減": 0, "地形耐久": 1, "地形被害倍率": 0, "撤去AP": 0},
+        "瓦礫": { "地形被害倍率": 0, "撤去AP": 0},
     }
     for record in result.records:
         kind = record.get("地形災害処理")
@@ -693,6 +739,12 @@ def validate_terrain_disasters(result):
                 error(f"{header}は{minimum}以上の数値が必要です")
             elif header in ("高度低下", "発生猶予ターン") and not float(value).is_integer():
                 error(f"{header}は整数が必要です")
+        if kind == "瓦礫":
+            details = record.get("災害詳細設定")
+            for key, minimum in (("rubbleDurability", 1), ("rubblePowerReduction", 0)):
+                value = details.get(key) if isinstance(details, dict) else None
+                if type(value) not in (int, float) or not math.isfinite(value) or value < minimum:
+                    error(f"瓦礫の災害詳細設定には{minimum}以上の{key}が必要です")
         if kind != "落石" and not record.get("攻撃発生属性"):
             error("攻撃発生属性が必要です")
         if kind == "落石" and not record.get("ダメージ属性"):

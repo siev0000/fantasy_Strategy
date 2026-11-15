@@ -7,8 +7,11 @@ import { v39WallStepHeight } from "./v39-defense-rules.js";
 import {resolveV39FriendlyWallMovePercent} from './v39-wall-effects.js';
 import {getV39Rubble} from './v39-terrain-destruction.js';
 import { resolveV39BaseMoveApCost, V39_SQUAD_MOVEMENT_BALANCE, V39_FLIGHT_BALANCE } from "./v39-gameplay-balance.js";
+import {resolveV39SpatialDistortionPercent} from './v39-spatial-distortion.js';
 import { canV39EnterFactionTerritory,hasV39ActiveTreaty } from "./v39-diplomacy-rules.js";
 import {resolveV39DisasterMovementPenalty} from './v39-disaster-movement.js';
+import {resolveV39StormFlightLoss,resolveV39ColdWaveMovementLoss} from './v39-storm-effects.js';
+import {resolveV39GravityMovementEffect} from './v39-gravity-effects.js';
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -96,8 +99,13 @@ function resolveV39UnitFlightValue(unit) {
 export function resolveV39UnitWeatherMovement(unit,map,points=[unit]){
   const penalty=resolveV39DisasterMovementPenalty(map,unit,points);
   const flight=resolveV39UnitFlightValue(unit);
+  const stormFlightLoss=flight>0?resolveV39StormFlightLoss(map,unit,points):0;
+  const coldWaveLoss=resolveV39ColdWaveMovementLoss(map,unit,points);
+  const gravity=resolveV39GravityMovementEffect(map,points);
   const reduction=flight>0?penalty.flightReduction:penalty.movementReduction;
-  return {movement:resolveV39UnitMovementValue(unit)*(1-reduction),flight:flight*(1-penalty.flightReduction),...penalty};
+  return {movement:Math.max(0,resolveV39UnitMovementValue(unit)*(1-reduction)-coldWaveLoss-gravity.movementLoss),
+    flight:gravity.flightBlocked?0:Math.max(0,flight*(1-penalty.flightReduction)-stormFlightLoss-coldWaveLoss),
+    ...penalty,stormFlightLoss,coldWaveLoss,gravityMovementLoss:gravity.movementLoss,gravityFlightBlocked:gravity.flightBlocked};
 }
 
 // 1ヘックス移動の共通AP。高低差、飛行、地形移動コストをここで一元判定する。
@@ -119,7 +127,7 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   }
   if(unit)unit=applyV39CityAura({...unit,x:fromXValue,y:fromYValue},state,resolveV39TileTerrainName(mapData,fromXValue,fromYValue));
   const weatherMovement=resolveV39UnitWeatherMovement(unit,mapData,[{x:fromXValue,y:fromYValue},{x:toXValue,y:toYValue}]);
-  if(unit&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0))unit={...unit,飛行:weatherMovement.flight,
+  if(unit&&(weatherMovement.movementReduction>0||weatherMovement.flightReduction>0||weatherMovement.stormFlightLoss>0||weatherMovement.coldWaveLoss>0||weatherMovement.gravityMovementLoss>0||weatherMovement.gravityFlightBlocked))unit={...unit,飛行:weatherMovement.flight,
     skillLevels:{...unit.skillLevels,飛行:weatherMovement.flight},status:{...unit.status,移動:weatherMovement.movement,飛行:weatherMovement.flight}};
   if (!canUnitEnterV39Tile(mapData, toXValue, toYValue, unit)) return Number.POSITIVE_INFINITY;
 
@@ -141,7 +149,8 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
   const cargoSpeed=Number.isFinite(Number(unit?.cargoSpeedMultiplier))?Math.max(0,Math.min(1,Number(unit.cargoSpeedMultiplier))):1;
   const wallMultiplier=1+resolveV39FriendlyWallMovePercent(mapData,{x:fromXValue,y:fromYValue},{x:toXValue,y:toYValue},
     {ownerId,isFriendlyOwner:other=>!!state&&hasV39ActiveTreaty(state,ownerId,other,'alliance')})/100;
-  return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * v39HazardMovementMultiplier(mapData,unit,toXValue,toYValue) * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit),mapData)/cargoSpeed*wallMultiplier));
+  const spatialPercent=resolveV39SpatialDistortionPercent(unit,state,{x:fromXValue,y:fromYValue})??100;
+  return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * v39HazardMovementMultiplier(mapData,unit,toXValue,toYValue) * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit),mapData)/cargoSpeed*wallMultiplier*spatialPercent/100));
 }
 
 export function resolveV39TerrainMoveCost(unit, terrainName, additionalPenaltyPoints = 0) {

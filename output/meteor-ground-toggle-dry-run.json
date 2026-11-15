@@ -1,0 +1,37 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-meteor-ground-toggle-2026-11-15.xlsx",
+  "output_dir": "data\\source\\export\\json",
+  "dry_run": true,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "災害"
+  ],
+  "source_sheets": {
+    "災害": "災害"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 1,
+    "records": 41,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "災害",
+      "output": "災害.json",
+      "input_rows": 999,
+      "records": 41,
+      "skipped_blank_rows": 6,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 952,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

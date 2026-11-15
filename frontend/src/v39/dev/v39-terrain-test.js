@@ -88,9 +88,9 @@ window.startV39TerrainTest=async()=>{
         fogMap[ty]||=[];fogMap[ty][tx]={kind:definition.kinds.includes('death')?'death':'normal',source:'terrain-test'};
       }
     }
-    if(definition.kinds.includes('miasma'))atmosphereEvents.push({id:`terrain-atmosphere-${index}`,disasterId:'災害:瘴気',name:'瘴気',
+    if(definition.kinds.includes('miasma'))atmosphereEvents.push({id:`terrain-atmosphere-${index}`,disasterId:'瘴気',name:'瘴気',
       x:x+1,y:y+1,anchorKey:`${x+1},${y+1}`,tileKeys,startsAtTurn:1,expiresAtTurn:Number.MAX_SAFE_INTEGER,
-      damagePower:0,unitDamageRate:0,yieldMultiplier:1,securityLoss:0,terrainTestAtmosphere:true});
+      damagePower:0,yieldMultiplier:1,securityLoss:0,terrainTestAtmosphere:true});
     return {index,name:definition.name,x,y,base:'平地',mode:'霧画像・濃さ比較'};
   });
   grid[0][0]='平地';

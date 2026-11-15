@@ -1,0 +1,6 @@
+{
+  "requiredConditionCount": 2,
+  "requiredConditionTurns": 2,
+  "populationLossRate": 0.01,
+  "combatScale": 0.9
+}

@@ -2,6 +2,7 @@ import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abiliti
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { getIconSrcByName } from "../../lib/icon-library.js";
 import { resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
+import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
 import {formatV39SkillCombatValues,resolveSkillBaseState} from '../../lib/skill-power.js';
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
 import { inspectV39Passive } from "../../lib/v39-passive-rules.js";
@@ -105,8 +106,9 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const powerValue = action === "A"
             ? resolveAttackPower(source, adjustedUnit)
             : num(source?.威力 ?? row?.power, null);
+          const spatialPercent=resolveV39SpatialDistortionPercent(adjustedUnit,globalThis.window?.getV39GameState?.({includeWorlds:false}))??100;
           const rangeValue = action === "A"
-            ? resolveAttackRawRange(source, adjustedUnit)
+            ? Math.round(resolveAttackRawRange(source, adjustedUnit)*spatialPercent/100*10)/10
             : source?.射程補正 !== undefined
               ? `${num(source.射程補正,0) >= 0 ? "+" : ""}${num(source.射程補正,0)}`
               : num(row?.range ?? source?.射程, null);

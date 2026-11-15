@@ -69,8 +69,8 @@ try {for(const width of [390,1100]){
    ok(rules.resolveV39CityAtTile(full,'8,4').modifiers.purification===0,'scope leaked');
    const damage=rules.resolveV39CityTerritoryDamage(full,'4,4',100,{skillRow:{炎:100}});
    ok(damage<100&&damage>0&&rules.resolveV39CityTerritoryDamage(full,'8,4',100,{skillRow:{炎:100}})===100,'attack resistance scope');
-   ok(rules.resolveV39CityDisasterMultiplier(full,'4,4','災害:山火事')===.5,'disaster resistance');
-   ok(rules.resolveV39CityDisasterMultiplier(full,'4,4','災害:落雷嵐')===1.2,'disaster weakness');
+   ok(rules.resolveV39CityDisasterMultiplier(full,'4,4','山火事')===.5,'disaster resistance');
+   ok(rules.resolveV39CityDisasterMultiplier(full,'4,4','落雷嵐')===1.2,'disaster weakness');
    advanceV39Purification(map,full,10,()=>1);ok(map.purificationByTile['4,4']===1&&!map.purificationByTile['8,4'],'purification minus impurity');
    advanceV39Purification(map,full,10,()=>1);ok(map.purificationByTile['4,4']===1,'double purification');
    const caps=(s,mode)=>inspectV39UnitCreation(s,s.players[0],{mode,className:'ファイター'}).cap;
@@ -91,7 +91,7 @@ try {for(const width of [390,1100]){
    window.setV39GameState(developed);
    const once=applyV39TerrainModifiers(unit,map),twice=applyV39TerrainModifiers(once,map);
    ok(once.status.精神===twice.status.精神&&once.status.精神===10+skillValue,'shared terrain aura idempotency');
-   const hazard={...full,worldEnvironment:{activeTerrainEffects:[{disasterId:'災害:山火事',startsAtTurn:1,expiresAtTurn:20,tileKeys:['4,4','8,4'],yieldMultiplier:.5}]}};
+   const hazard={...full,worldEnvironment:{activeTerrainEffects:[{disasterId:'山火事',startsAtTurn:1,expiresAtTurn:20,tileKeys:['4,4','8,4'],yieldMultiplier:.5}]}};
    ok(resolveV39HazardYieldMultiplier(hazard,'4,4')===.75&&resolveV39HazardYieldMultiplier(hazard,'8,4')===.5,'disaster production loss');
    const eruption=applyTerritoryHazardDamage(full,map,[{type:'eruption',key:'4,4',x:4,y:4,sourceHeightLevel:1}],10);
    ok(eruption.entries[0].damage<50&&eruption.territoryStateByTile['4,4'].hp>50,'real volcano damage resistance');

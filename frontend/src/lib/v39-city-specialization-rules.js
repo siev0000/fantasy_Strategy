@@ -207,6 +207,12 @@ export function resolveV39SettlementDisasterMultiplier(base,tileKey,disasterId,w
   return Math.max(0,1-number(modifiers.disasterResistances[disasterId])/100);
 }
 
+export function resolveV39SettlementDisasterTileDamage(base,tileKey,power,disasterId,element,worldId='surface'){
+  if(power<=0)return 0;
+  const reduced=resolveV39SettlementTerritoryDamage(base,tileKey,power,{skillRow:{[element]:power},worldId});
+  return Math.max(0,Math.round(reduced*resolveV39SettlementDisasterMultiplier(base,tileKey,disasterId,worldId)));
+}
+
 export function selectV39CitySpecialization(state, playerId, settlementId, specializationId, mapData=globalThis.window?.__v39FieldRuntime?.mapData) {
   const player = state?.players?.find(row => text(row?.id) === text(playerId));
   const settlements = player?.factionState?.settlements || [];

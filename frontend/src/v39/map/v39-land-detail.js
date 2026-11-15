@@ -419,9 +419,11 @@ function renderLandDetail(selected) {
   }
 
   selectedCoord = { x: detail.x, y: detail.y };
-  setField('v39-land-heading',`${detail.hiddenCave&&detail.terrain==='洞窟'?'土地':detail.terrain} (${detail.x}, ${detail.y})`);
+  const forestFire=window.__v39FieldRuntime?.mapData?.terrainDamage?.fireForestByTile?.[`${detail.x},${detail.y}`];
+  const terrainLabel=forestFire?.hp===0?'枯れ森':detail.hiddenCave&&detail.terrain==='洞窟'?'土地':detail.terrain;
+  setField('v39-land-heading',`${terrainLabel} (${detail.x}, ${detail.y})`);
   setField('v39-land-heading-owner',detail.owner);
-  setField("v39-land-terrain", formatTerrain(detail));
+  setField("v39-land-terrain",forestFire?.hp===0?'枯れ森（荒野と同じ性能）':formatTerrain(detail));
   setField("v39-land-owner", detail.owner);
   setField("v39-land-danger", detail.danger);
   setField("v39-land-height", formatHeight(detail));
@@ -445,6 +447,7 @@ function renderLandDetail(selected) {
   const ground=window.__v39FieldRuntime?.mapData?.terrainDamage||{},groundKey=`${detail.x},${detail.y}`;
   const groundCell=ground.cells?.[groundKey],pending=ground.pendingByTile?.[groundKey],rubble=ground.rubbleByTile?.[groundKey];
   setField('v39-land-ground-damage',[
+    forestFire?`森HP ${forestFire.hp}/${forestFire.maxHp}${forestFire.hp===0?'・枯れ森':''}`:'',
     groundCell?`地形耐久 ${groundCell.hp}/${groundCell.maxHp} 崩壊${groundCell.collapseCount||Number(groundCell.broken)}回${groundCell.broken?'・下限':''}`:'',
     pending&&!pending.hiddenWarning?`${pending.kind==='landslide'?'土砂崩れ':'落石'}予告 T${pending.resolvesAtTurn} 威力${pending.power} 土砂${pending.rubbleDurability}`:'',
     rubble?`瓦礫 ${rubble.hp}/${rubble.maxHp}`:''

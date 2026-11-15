@@ -29,6 +29,8 @@ const ATMOSPHERE_SOURCE_URL=resolveBundledAtmosphereAsset(V39_FOG_BALANCE.normal
 export function v39AtmosphereArtworkVersion(scene){return scene.textures.exists(SOURCE)?1:0;}
 
 function clear(scene){
+  scene.v39AtmosphereColorTimer?.remove();
+  scene.v39AtmosphereColorTimer=null;
   scene.children.list.find(child=>child.name===LAYER)?.destroy();
   scene.children.list.find(child=>child.name===SAND_LAYER)?.destroy();
   for(const key of scene.v39AtmosphereTextureKeys||[])scene.textures.remove(key);
@@ -68,43 +70,75 @@ export function drawV39AtmosphereLayer(scene,data,state,vision,testMode){
   const source=ready?scene.textures.get(SOURCE).getSourceImage():null;
   const variants=new Map(),chunks=new Map(),scale=config.resolution,size=config.chunkSize;
   const worldW=Math.ceil((data.w*hex.width+hex.oddRowOffsetX)*scale),worldH=Math.ceil(((data.h-1)*hex.rowStep+hex.height)*scale);
+  const colors=new Map(palette.map(kind=>[kind.id,parseInt(kind.color.slice(1),16)]));
+  function imageFor(color,opacity){
+    const id=`${color}:${opacity}`;
+    if(variants.has(id))return variants.get(id);
+    const image=document.createElement('canvas');image.width=hex.width;image.height=hex.height;
+    const ctx=image.getContext('2d');
+    if(source)ctx.drawImage(source,0,0,image.width,image.height);
+    else{ctx.fillStyle='#ffffff';ctx.fillRect(0,0,image.width,image.height);}
+
+    const channels=[color>>16,(color>>8)&255,color&255];
+    const pixels=ctx.getImageData(0,0,image.width,image.height);
+    for(let i=0;i<pixels.data.length;i+=4){
+      const alpha=pixels.data[i+3]/255;
+      const luminance=255*(1-alpha)+(pixels.data[i]+pixels.data[i+1]+pixels.data[i+2])/3*alpha;
+      for(let c=0;c<3;c++)pixels.data[i+c]=Math.round(luminance*channels[c]/255);
+      pixels.data[i+3]=Math.round(255*(config.textureAlphaFloor+(1-config.textureAlphaFloor)*alpha)*opacity/maxAlpha);
+    }
+    ctx.putImageData(pixels,0,0);variants.set(id,image);
+    return image;
+  }
   for(const tile of tiles){
     const sandOnly=tile.kinds.every(id=>id==='sandstorm');
-    const id=tile.kinds.join('|');let image=variants.get(id);
-    if(!image){
-      image=document.createElement('canvas');image.width=hex.width;image.height=hex.height;
-      const ctx=image.getContext('2d');
-      if(source)ctx.drawImage(source,0,0,image.width,image.height);else{ctx.fillStyle='#ffffff';ctx.fillRect(0,0,image.width,image.height);}
-      // Multiply one ordered colour ramp into the fog's luminance; alpha is applied once below.
-      const ramp=document.createElement('canvas');ramp.width=image.width;ramp.height=1;
-      const r=ramp.getContext('2d'),gradient=r.createLinearGradient(0,0,ramp.width,0);
-      tile.kinds.forEach((kind,index)=>gradient.addColorStop(tile.kinds.length===1?0:index/(tile.kinds.length-1),palette.find(row=>row.id===kind).color));
-      r.fillStyle=gradient;r.fillRect(0,0,ramp.width,1);
-      const colors=r.getImageData(0,0,ramp.width,1).data,pixels=ctx.getImageData(0,0,image.width,image.height);
-      const opacityRatio=maxAlpha>0?opacityFor(tile)/maxAlpha:0;
-      for(let i=0;i<pixels.data.length;i+=4){
-        const column=(i/4)%image.width,alpha=pixels.data[i+3]/255;
-        const luminance=255*(1-alpha)+(pixels.data[i]+pixels.data[i+1]+pixels.data[i+2])/3*alpha;
-        for(let c=0;c<3;c++)pixels.data[i+c]=Math.round(luminance*colors[column*4+c]/255);
-        pixels.data[i+3]=Math.round(255*(config.textureAlphaFloor+(1-config.textureAlphaFloor)*alpha)*opacityRatio);
-      }
-      ctx.putImageData(pixels,0,0);variants.set(id,image);
-    }
     const left=tile.x*hex.width+(tile.y%2?hex.oddRowOffsetX:0),top=tile.y*hex.rowStep;
     for(let cy=Math.floor(top*scale/size);cy<=Math.floor((top+hex.height)*scale/size);cy++)for(let cx=Math.floor(left*scale/size);cx<=Math.floor((left+hex.width)*scale/size);cx++){
       if(cx*size>=worldW||cy*size>=worldH)continue;
-      const key=`v39-atmosphere-chunk-${scene.sys.settings.key}-${sandOnly?'sand':'fog'}-${cx}-${cy}`;let chunk=chunks.get(key);
-      if(!chunk){
-        chunk=scene.textures.createCanvas(key,Math.min(size,worldW-cx*size),Math.min(size,worldH-cy*size));chunks.set(key,chunk);scene.v39AtmosphereTextureKeys.push(key);
+      const key=`v39-atmosphere-chunk-${scene.sys.settings.key}-${sandOnly?'sand':'fog'}-${cx}-${cy}`;let entry=chunks.get(key);
+      if(!entry){
+        const chunk=scene.textures.createCanvas(key,Math.min(size,worldW-cx*size),Math.min(size,worldH-cy*size));chunks.set(key,{texture:chunk,draws:[],animated:false});scene.v39AtmosphereTextureKeys.push(key);
         (sandOnly?sand:layer).add(scene.add.image(cx*size/scale,cy*size/scale,key).setOrigin(0).setScale(1/scale).setAlpha(maxAlpha));
       }
-      const ctx=chunk.context;ctx.save();ctx.translate(-cx*size,-cy*size);ctx.scale(scale,scale);
+      entry=chunks.get(key);
+      entry.animated ||= tile.kinds.length>1;
+      const opacity=opacityFor(tile);
+      entry.draws.push(phase=>{
+      const index=Math.floor(phase)%tile.kinds.length;
+      const blend=phase%1;
+      const from=colors.get(tile.kinds[index]);
+      const to=colors.get(tile.kinds[(index+1)%tile.kinds.length]);
+      const color=[16,8,0].reduce((rgb,shift)=>{
+        const start=(from>>shift)&255,end=(to>>shift)&255;
+        return rgb|(Math.round(start+(end-start)*blend)<<shift);
+      },0);
+      const image=imageFor(color,opacity);
+      const ctx=entry.texture.context;ctx.save();ctx.translate(-cx*size,-cy*size);ctx.scale(scale,scale);
       ctx.beginPath();ctx.moveTo(left+hex.width/2,top);ctx.lineTo(left+hex.width,top+hex.height-hex.rowStep);
       ctx.lineTo(left+hex.width,top+hex.rowStep);ctx.lineTo(left+hex.width/2,top+hex.height);
       ctx.lineTo(left,top+hex.rowStep);ctx.lineTo(left,top+hex.height-hex.rowStep);ctx.closePath();ctx.clip();
       ctx.drawImage(image,left,top);ctx.restore();
+      });
     }
   }
-  for(const chunk of chunks.values())chunk.refresh();
+  function paint(entry,phase){
+    entry.texture.clear();
+    for(const draw of entry.draws)draw(phase);
+    entry.texture.refresh();
+  }
+  for(const entry of chunks.values())paint(entry,0);
+  const animated=[...chunks.values()].filter(entry=>entry.animated);
+  if(animated.length){
+    const steps=20;
+    let step=0;
+    scene.v39AtmosphereColorTimer=scene.time.addEvent({
+      delay:config.fogColorSwitchMilliseconds/steps,loop:true,
+      callback:()=>{
+        step++;
+        for(const entry of animated)paint(entry,step/steps);
+        scene.game.v39InvalidateRender?.();
+      }
+    });
+  }
   scene.game.v39InvalidateRender?.();
 }

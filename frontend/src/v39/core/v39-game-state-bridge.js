@@ -108,9 +108,15 @@ function normalizeWorldEnvironment(value = {}) {
     lastTerrainEvents:cloneJson(value?.lastTerrainEvents, []),
     activeTerrainEffects:cloneJson(value?.activeTerrainEffects, []),
     siteConcealmentEffects:cloneJson(value?.siteConcealmentEffects, []),
-    lastDisasterEvents:cloneJson(value?.lastDisasterEvents, []),
+    lastDisasterEvents:cloneJson(value?.lastDisasterEvents, []).map(event => {
+      const legacy = /^(?:災害|地形災害|危険地帯):(.+)$/.exec(event?.disasterId);
+      return legacy ? {...event, disasterId:legacy[1] === '闇侵食' ? '精神浸食' : legacy[1]} : event;
+    }),
     disasterDiagnostics:cloneJson(value?.disasterDiagnostics, null),
-    activeDisasters:cloneJson(value?.activeDisasters, []),
+    activeDisasters:cloneJson(value?.activeDisasters, []).map(event => {
+      const legacy = /^(?:災害|地形災害|危険地帯):(.+)$/.exec(event?.disasterId);
+      return legacy ? {...event, disasterId:legacy[1] === '闇侵食' ? '精神浸食' : legacy[1]} : event;
+    }),
     lastNaturalEventTurn:Math.max(0, Math.floor(Number(value?.lastNaturalEventTurn) || 0)),
     lastCorpseConversionTurn:Math.max(0, Math.floor(Number(value?.lastCorpseConversionTurn) || 0))
   };

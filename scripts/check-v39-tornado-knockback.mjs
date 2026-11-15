@@ -12,7 +12,7 @@ const warn=console.warn;let m;try{console.warn=()=>{};m=await import(`data:text/
 const map=()=>({w:16,h:16,grid:Array.from({length:16},()=>Array(16).fill('平地')),heightLevelMap:[],specialMap:[],fogMap:[],hazardZones:[],riverData:[],terrainDamage:{}});
 const unit=(id='u',x=5,y=5)=>({id,name:id,x,y,position:[x,y],worldId:'surface',hp:1000,currentHp:1000,maxHp:1000,ap:100,level:10,status:{HP:1000,防御:0,精神:0,怯み耐性:0},techniques:[]});
 const state=()=>({activePlayerId:'p',activeWorldId:'surface',timeline:{turnNumber:1},players:[],enemies:[],neutralVillages:[],settlements:[],groundLootByTile:{},worldEnvironment:{activeDisasters:[]}});
-const rule=m.resolveV39DisasterRule('災害:竜巻');
+const rule=m.resolveV39DisasterRule('竜巻');
 assert.deepEqual(rule.details.damageComponents,[{element:'打撃',weight:1},{element:'切断',weight:1}]);
 assert.equal(rule.details.knockback.resistanceKey,'怯み耐性');
 const event={...rule,disasterId:rule.id,id:'wind',x:4,y:5,damagePower:140,damageTileKeys:['5,5']};
@@ -23,7 +23,7 @@ assert.equal(m.inspectV39DisasterKnockback({...base,status:{...base.status,怯�
 const spec=m.resolveV39DisasterDamage(event);
 const hit=m.applyV39DisasterDamage(base,spec,1,'竜巻',()=>.5);
 assert.equal(hit.entry.detail.components.length,2);
-assert.equal(hit.entry.source,'竜巻');assert.equal(hit.entry.disasterId,'災害:竜巻');
+assert.equal(hit.entry.source,'竜巻');assert.equal(hit.entry.disasterId,'竜巻');
 assert.deepEqual(hit.entry.detail.components.map(c=>c.power),[70,70],'logged powers are split, not doubled');
 const bluntImmune={...base,status:{...base.status,打撃耐性:100}};
 const half=m.applyV39DisasterDamage(bluntImmune,spec,1,'竜巻',()=>.5);
@@ -69,7 +69,7 @@ assert.equal(m.applyV39DisasterKnockback({...state(),enemies:[base]},cave,[event
 assert.equal(m.applyV39DisasterKnockback({...state(),enemies:[{...base,hp:0,state:'死亡'}]},map(),[event]).entries.length,0);
 const edge=unit('edge',15,5);assert.equal(m.applyV39DisasterKnockback({...state(),enemies:[edge]},map(),[{...event,x:14,damageTileKeys:['15,5']}]).entries.length,0);
 const world=map(),seed={...state(),players:[{id:'p',factionState:{units:[unit('player')],squads:[]}}]};
-const first=m.applyNaturalEvents({state:seed,mapData:world,turn:1,forceDisasterId:'災害:竜巻',forceDisasterAt:{x:5,y:5}});
+const first=m.applyNaturalEvents({state:seed,mapData:world,turn:1,forceDisasterId:'竜巻',forceDisasterAt:{x:5,y:5}});
 assert.equal(first.knockbackEntries.length,1);assert.ok(first.damageEntries[0].damage>0);
 assert.equal(m.getHexDistance({x:5,y:5},first.players[0].factionState.units[0]),3);
 const saved=JSON.parse(JSON.stringify({...seed,...first}));
@@ -79,9 +79,9 @@ assert.deepEqual(repeated.players[0].factionState.units[0].position,saved.player
 const village=m.applyV39DisasterKnockback({...state(),neutralVillages:[{id:'v',defenseUnits:[base]}]},map(),[event]);
 assert.deepEqual(village.neutralVillages[0].defenseUnits[0].position,[8,5]);
 const other={...base,worldId:'cave:1'};assert.equal(m.applyV39DisasterKnockback({...state(),enemies:[other]},map(),[event]).entries.length,0);
-const center=first.worldEnvironment.activeDisasters.find(e=>e.disasterId==='災害:竜巻');
+const center=first.worldEnvironment.activeDisasters.find(e=>e.disasterId==='竜巻');
 const collisionSeed={...state(),players:[{id:'p',factionState:{units:[unit('p1'),...m.getHexOffsetNeighbors(5,5).map((neighbor,i)=>unit(`p2-${i}`,neighbor.x,neighbor.y))],squads:[]}}]};
-const collisionTurn=m.applyNaturalEvents({state:collisionSeed,mapData:map(),turn:1,forceDisasterId:'災害:竜巻',forceDisasterAt:{x:5,y:5}});
+const collisionTurn=m.applyNaturalEvents({state:collisionSeed,mapData:map(),turn:1,forceDisasterId:'竜巻',forceDisasterAt:{x:5,y:5}});
 assert.ok(collisionTurn.damageEntries.filter(e=>e.source==='吹き飛ばし衝突').length>=2,'collision HP feedback is part of the actual turn result');
 const collisionSaved=JSON.parse(JSON.stringify({...collisionSeed,...collisionTurn}));
 const collisionRepeat=m.applyNaturalEvents({state:collisionSaved,mapData:map(),turn:1,skipNaturalDisasters:true});

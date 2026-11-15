@@ -22,7 +22,7 @@ try{
   const textures=new Map(),images=[];
   const manager={game:{renderer:{}},exists:key=>textures.has(key),get:key=>textures.get(key),addImage(key,image){textures.set(key,{getSourceImage:()=>image});}};
   const game={textures:manager,v39InvalidateRender(){invalidates++;}},scene={game,sys:{game},textures:manager,events:new EventEmitter(),cameras:{main:{worldView:{x:0,y:0,width:1000,height:1000}}},make:{graphics:()=>({fillStyle(){},fillPoints(){},createGeometryMask:()=>({destroy(){}}),destroy(){}})},add:{image(){const image={scene,frame:{data:{}},setOrigin(){},setScale(x,y){this.scaleX=x;this.scaleY=y;},setDepth(){},setAngle(){},setAlpha(){},setBlendMode(){},setName(){},clearTint(){},setCrop(x){this.cropX=x;},setPosition(){},setMask(mask){this.mask=mask;},clearMask(){this.mask=null;},destroy(){this.scene=null;}};images.push(image);return image;}}};
-  const event={id:'tornado',disasterId:'災害:竜巻',x:3,y:3,radius:1,tileKeys:['3,3','4,3'],startsAtTurn:1,expiresAtTurn:4};
+  const event={id:'tornado',disasterId:'竜巻',x:3,y:3,radius:1,tileKeys:['3,3','4,3'],startsAtTurn:1,expiresAtTurn:4};
   const state={timeline:{turnNumber:1},worldEnvironment:{activeDisasters:[event]}};
   assert.equal(m.collectV39TornadoFields({isUnderground:true},state,null,true).length,0);
   assert.equal(m.collectV39TornadoFields({},state,new Set()).length,0);

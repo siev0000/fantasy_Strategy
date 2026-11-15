@@ -24,6 +24,13 @@ export function resolveV39FatigueApLoss(unit) {
 }
 
 export function resolveV39MaxAp(unit,base=Number(unit?.maxAp??unit?.maxActionPoint??100)||0) {
+  if(unit?.timeDistortionAp){
+    const effect=unit.timeDistortionAp;
+    const natural=Math.max(0,(Number(effect.baseMaxAp)||0)-resolveV39FatigueApLoss(unit));
+    const starvation=Math.max(0,Number(effect.starvationCap)||0);
+    const capped=starvation>0?Math.min(natural,starvation):natural;
+    return Math.max(0,Math.floor(capped*Math.max(0,Number(effect.percent)||0)/100));
+  }
   return Math.max(0,base-resolveV39FatigueApLoss(unit));
 }
 

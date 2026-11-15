@@ -21,7 +21,7 @@ export function parseV39CityEffectSettings(row={}) {
   }
   for(const entry of splitV39CityEffects(row.災害耐性)) {
     const parts=entry.match(/^(.+?)[=＝]([+-]?\d+(?:\.\d+)?)%?$/);
-    const disaster=parts&&getGameDataRows('災害').find(item=>[item.ID,item.カテゴリ名].includes(parts[1].trim()));
+    const disaster=parts&&getGameDataRows('災害').find(item=>[item.ID,item.表示名].includes(parts[1].trim()));
     if(!disaster){diagnostics.push(`不正な災害耐性: ${entry}`);continue;}
     disasterResistances[disaster.ID]=(disasterResistances[disaster.ID]||0)+Number(parts[2]);
   }

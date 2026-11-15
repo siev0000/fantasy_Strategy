@@ -12,7 +12,7 @@ const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39
 const m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 const hex={width:62,height:74,rowStep:56,oddRowOffsetX:31};
 const map={w:4,h:4,grid:Array.from({length:4},()=>Array(4).fill('平地')),climateProfile:{id:'test',regionSize:2}};
-const state={timeline:{turnNumber:1},worldEnvironment:{weather:{profileId:'test',regions:{'0,0':{weather:'雨'},'1,0':{weather:'豪雨'},'0,1':{weather:'雪'},'1,1':{weather:'晴れ'}},disasterAreas:[{disasterId:'災害:台風',weather:'豪雨',tileKeys:['3,3']}]},activeDisasters:[{disasterId:'災害:砂嵐',startsAtTurn:1,expiresAtTurn:3,tileKeys:['1,1']} ]}};
+const state={timeline:{turnNumber:1},worldEnvironment:{weather:{profileId:'test',regions:{'0,0':{weather:'雨'},'1,0':{weather:'豪雨'},'0,1':{weather:'雪'},'1,1':{weather:'晴れ'}},disasterAreas:[{disasterId:'台風',weather:'豪雨',tileKeys:['3,3']}]},activeDisasters:[{disasterId:'砂嵐',startsAtTurn:1,expiresAtTurn:3,tileKeys:['1,1']} ]}};
 const tiles=m.collectV39RainTiles(map,state);
 assert.equal(tiles.length,13);assert.equal(tiles.find(t=>t.key==='3,3').type,'豪雨');
 assert.equal(tiles.find(t=>t.key==='0,3').strength,'snow');
@@ -39,7 +39,7 @@ assert.deepEqual(m.collectV39RainTiles({...map,climateProfile:{...map.climatePro
 const sand=m.collectV39AtmosphereTiles(map,state).find(tile=>tile.key==='1,1');
 assert.ok(sand.kinds.includes('sandstorm'));
 assert.equal(m.v39AtmospherePalette().find(kind=>kind.id==='sandstorm').color,'#C79A61');
-assert.equal(m.isV39AtmosphereDisaster('災害:砂嵐'),true);
+assert.equal(m.isV39AtmosphereDisaster('砂嵐'),true);
 assert.equal(m.collectV39AtmosphereTiles(map,{...state,timeline:{turnNumber:4}}).length,0);
 const streaks=m.buildV39RainStreaks(tiles,100,hex);
 assert.ok(streaks.some(streak=>streak.kind==='snow'));

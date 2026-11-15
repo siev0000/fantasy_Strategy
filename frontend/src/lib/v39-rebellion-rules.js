@@ -1,6 +1,7 @@
 import { applyV39DerivedCharacterData } from "../v39/unit/v39-character-derived-rules.js";
 import { getGameDataRows } from "./game-data-registry.js";
 import { V39_CIVIC_BALANCE } from "./v39-gameplay-balance.js";
+import {getV39ConditionEventRules,getV39ConditionEffect,matchesV39SettlementConditions} from './v39-condition-event-rules.js';
 import { rescaleV39PopulationGrowthForPopulationChange } from "./v39-population-economy.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
@@ -78,9 +79,16 @@ function createRebel(player, settlement, race, population, turnNumber, sequence)
 function shouldStartRebellion(settlement, turnNumber) {
   const civic = settlement?.civicState || {};
   const lastTurn = Math.max(0, integer(civic?.lastRebellionTurn));
-  return number(civic?.dissatisfaction) >= V39_CIVIC_BALANCE.rebellionDissatisfactionThreshold
-    && number(civic?.security, 100) <= V39_CIVIC_BALANCE.rebellionSecurityThreshold
-    && turnNumber-lastTurn >= V39_CIVIC_BALANCE.rebellionCooldownTurns;
+  return getV39ConditionEventRules('spawnRebels').some(rule=>
+    matchesV39SettlementConditions(rule,settlement)
+    &&turnNumber-lastTurn>=rule.cooldown
+    &&conditionEventRoll(`${rule.id}:${settlement?.settlementId||settlement?.id}:${turnNumber}`)<rule.chance);
+}
+
+function conditionEventRoll(value){
+  let hash=2166136261;
+  for(const char of String(value)){hash^=char.charCodeAt(0);hash=Math.imul(hash,16777619);}
+  return (hash>>>0)/4294967296;
 }
 
 function shouldStartCivicOutflow(settlement) {
@@ -89,7 +97,7 @@ function shouldStartCivicOutflow(settlement) {
     && number(civic?.security, 100) <= V39_CIVIC_BALANCE.civicOutflowSecurityThreshold;
 }
 
-function reducePopulationByRatio(populationByRace = {}, requestedLoss = 0) {
+export function reducePopulationByRatio(populationByRace = {}, requestedLoss = 0) {
   const rows = Object.entries(populationByRace)
     .map(([race, population]) => ({ race:text(race), population:Math.max(0, integer(population)) }))
     .filter(row => row.race && row.population > 0)
@@ -144,9 +152,11 @@ export function advanceV39Rebellions(state, turnNumber = 1) {
       if (!rebellionStarts) return settlement;
       const selectedRace = rebellionRace(settlement?.populationByRace);
       if (!selectedRace) return settlement;
+      const rebellionRule=getV39ConditionEventRules('spawnRebels').find(rule=>matchesV39SettlementConditions(rule,settlement)
+        &&conditionEventRoll(`${rule.id}:${settlement?.settlementId||settlement?.id}:${turn}`)<rule.chance);
       const rebelPopulation = Math.min(
         selectedRace.population,
-        Math.max(1, Math.floor(selectedRace.population * V39_CIVIC_BALANCE.rebellionPopulationRate))
+        Math.max(1, Math.floor(selectedRace.population * (getV39ConditionEffect(rebellionRule,'spawnRebels')?.populationRate||0)))
       );
       sequence += 1;
       const rebel = createRebel(player, settlement, selectedRace.race, rebelPopulation, turn, sequence);

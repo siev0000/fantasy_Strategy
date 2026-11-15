@@ -24,7 +24,7 @@ function landslidePath(map,height,tile,state,settings){
   return path;
 }
 export function applyV39NaturalLandslide(map,event,state={},settings=rules){
-  if(event?.disasterId!=='災害:土砂崩れ'||!settings.landslide||!map||map.isUnderground)return event;
+  if(event?.disasterId!=='土砂崩れ'||!settings.landslide||!map||map.isUnderground)return event;
   const {x,y}=event,terrain=String(map.specialMap?.[y]?.[x]||map.grid?.[y]?.[x]||map.reliefMap?.[y]?.[x]||'');
   const category=/山|岩/.test(terrain)?'山岳':/丘/.test(terrain)?'丘陵':terrain;
   const volume=Math.max(0,Math.round(number(settings.landslide.baseVolumeByTerrain?.[category])));
@@ -70,13 +70,13 @@ export function damageV39CaveEntrances(map,area,power,settings=rules){
   }
   return {map:reports.length?{...map,terrainDamage:{...previous,cells,rubbleByTile:rubble}}:map,reports};
 }
-export function isV39ProtectedGround(map,tile,state={}){
+export function isV39ProtectedGround(map,tile,state={},options={}){
   const {x,y}=tile,k=key(tile);
   if(x<=0||y<=0||x>=map.w-1||y>=map.h-1||!map.grid?.[y]?.[x])return true;
   const points=[...(map.entrances||[]),map.stairsDown,map.stairsUp,map.caveEventNpc,map.entryTarget,...(map.caveSites||[]).filter(p=>p.important||/event|exit|stairs/i.test(p.kind||''))];
   if(points.some(p=>p&&p.x===x&&p.y===y)||(map.protectedTileKeys||[]).includes(k))return true;
-  return !!state.victoryLandmarksByTile?.[k]||!!state.facilitiesByTile?.[k]?.length
-    ||[...(state.settlements||[]),...(state.neutralVillages||[]),...(state.players||[]).flatMap(p=>p.factionState?.settlements||[])].some(p=>p.x===x&&p.y===y);
+  return !!state.victoryLandmarksByTile?.[k]||!options.ignoreFacilities&&!!state.facilitiesByTile?.[k]?.length
+    ||!options.ignoreSettlementCenter&&[...(state.settlements||[]),...(state.neutralVillages||[]),...(state.players||[]).flatMap(p=>p.factionState?.settlements||[])].some(p=>p.x===x&&p.y===y);
 }
 // Returns a new map; callers commit only after the attack's old geometry has resolved.
 export function damageV39Ground(map,area,power,turn,state={},settings=rules){
@@ -88,7 +88,11 @@ export function damageV39Ground(map,area,power,turn,state={},settings=rules){
     const [x,y]=k.split(',').map(Number),tile={x,y};
     const terrain=String(map.specialMap?.[y]?.[x]||map.grid?.[y]?.[x]||'');
     const groundRule=rules.terrainRulesByName[terrain],rubbleRule=rubble[k]?rules.rubble:null;
-    if((!groundRule&&!rubbleRule)||isV39ProtectedGround(map,tile,state))continue;
+    const hasFacility=!!state.facilitiesByTile?.[k]?.length||[...(state.neutralVillages||[]),...(state.players||[]).flatMap(p=>p.factionState?.settlements||[])]
+      .some(base=>base.tileFacilityMap?.[k]?.length);
+    if((!groundRule&&!rubbleRule)||isV39ProtectedGround(map,tile,state,
+      {ignoreFacilities:hasFacility&&typeof settings.absorbGroundDamage==='function',
+        ignoreSettlementCenter:hasFacility&&typeof settings.absorbGroundDamage==='function'}))continue;
     const hit=rule=>Math.floor(Math.max(0,number(typeof power==='function'?power(rule):power))*Math.max(0,number(scale)));
     if(rubble[k]&&!settings.skipRubbleDamage){
       const attackPower=hit(rubbleRule),beforeHp=rubble[k].hp;
@@ -104,7 +108,9 @@ export function damageV39Ground(map,area,power,turn,state={},settings=rules){
     const canReopenOldCell=oldBroken&&!map.isUnderground&&!map.hegemonyInterior&&number(height?.[y]?.[x])>0;
     if(!max||oldBroken&&!canReopenOldCell)continue;
     const attackPower=hit(groundRule),beforeHp=canReopenOldCell?max:cells[k]?.hp??max;
-    const damage=settings.groundDamageMode==='direct'?attackPower:Math.floor(Math.max(0,attackPower-groundRule.powerThreshold)*groundRule.damageMultiplier);if(!damage)continue;
+    let damage=settings.groundDamageMode==='direct'?attackPower:Math.floor(Math.max(0,attackPower-groundRule.powerThreshold)*groundRule.damageMultiplier);
+    if(damage&&typeof settings.absorbGroundDamage==='function')damage=settings.absorbGroundDamage(k,damage);
+    if(!damage)continue;
     const hp=Math.max(0,beforeHp-damage);changed=true;
     cells[k]={hp,maxHp:max,terrain,broken:false,collapseCount:cells[k]?.collapseCount||0};
     reports.push({kind:hp?'ground-damaged':'ground-broken',x,y,power:attackPower,damage:beforeHp-hp,hp});
@@ -149,9 +155,18 @@ export function damageV39Ground(map,area,power,turn,state={},settings=rules){
   return {map:changed?{...map,grid,heightLevelMap:height,terrainDamage:{...previous,cells,rubbleByTile:rubble,pendingByTile:pending}}:map,reports};
 }
 export function damageV39EarthquakeGround(map,event,turn,state={},settings=rules){
-  if(event?.disasterId!=='災害:地震'||!map||map.isUnderground)return {map,reports:[]};
+  if(event?.disasterId!=='地震'||event.groundDamageEnabled===false||!map||map.isUnderground)return {map,reports:[]};
   const area=new Map((event.tileKeys||[]).map(tileKey=>[tileKey,1]));
   return damageV39Ground(map,area,event.damagePower,turn,state,{...settings,groundDamageMode:'direct',skipRubbleDamage:true,noReactionDelay:true});
+}
+export function damageV39DisasterGround(map,event,power,turn,state={},settings=rules){
+  const enabled=event?.groundDamageEnabled===true||event?.disasterId==='地震'&&event.groundDamageEnabled!==false;
+  if(!enabled||!map||map.isUnderground)return {map,reports:[]};
+  if(event.disasterId==='地震')return damageV39EarthquakeGround(map,event,turn,state,settings);
+  const area=new Map((event.damageTileKeys||event.tileKeys||[]).map(tileKey=>[tileKey,1]));
+  const ground=damageV39Ground(map,area,power,turn,state,{...settings,noReactionDelay:true});
+  const entrances=damageV39CaveEntrances(ground.map,area,power,settings);
+  return {map:entrances.map,reports:[...ground.reports,...entrances.reports]};
 }
 export function advanceV39GroundCollapses(map,turn,state={}){
   const old=map?.terrainDamage;if(!old)return {map,impacts:[]};

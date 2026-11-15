@@ -14,11 +14,11 @@ export function tickV39HazardEffects(state,map,turn){
       const adjusted=applyV39CityAura(unit,state,map.grid?.[unit.y]?.[unit.x]);
       const effect=rule.危険地帯効果||{},resist=Number(adjusted.status?.毒耐性??adjusted.resistances?.毒耐性)||0;
       if(effect.poisonPower>0&&resist<100)poison={power:Math.max(Number(poison?.power)||0,effect.poisonPower),
-        expiresAtTurn:turn+effect.poisonTurns,source:rule.カテゴリ名};
+        expiresAtTurn:turn+effect.poisonTurns,source:rule.表示名};
     }
     const specs=hazards.filter(({rule})=>rule.ダメージ威力>0).map(({rule})=>({power:rule.ダメージ威力,element:rule.ダメージ属性}));
     if(poison?.expiresAtTurn>turn)specs.push({power:poison.power,element:'毒'});else poison=null;
-    const source=[...new Set(hazards.map(({rule})=>rule.カテゴリ名).concat(poison?'環境毒':[]))].join('・')||'危険地帯';
+    const source=[...new Set(hazards.map(({rule})=>rule.表示名).concat(poison?'環境毒':[]))].join('・')||'危険地帯';
     const result=applyV39DisasterDamage(unit,specs,turn,source);
     if(result.entry)entries.push({...result.entry,...(playerId?{playerId}:{})});
     return {...result.unit,environmentPoison:poison,lastHazardTickTurn:turn};

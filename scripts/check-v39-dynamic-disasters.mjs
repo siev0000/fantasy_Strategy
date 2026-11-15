@@ -13,8 +13,8 @@ const warnings=[],warn=console.warn;console.warn=(...args)=>warnings.push(args[0
 const m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 console.warn=warn;
 const rows=JSON.parse(readFileSync('data/source/export/json/災害.json','utf8'));
-const ids=['砂嵐','雪崩','竜巻','台風','津波'].map(name=>`災害:${name}`);
-for(const id of ids)assert.ok(rows.find(row=>row.ID===id)?.災害詳細設定);
+const ids=['砂嵐','雪崩','竜巻','台風','津波'];
+for(const id of ids)assert.ok(rows.find(row=>row.表示名===id)?.災害詳細設定);
 const map=()=>({w:12,h:12,grid:Array.from({length:12},()=>Array(12).fill('平地')),specialMap:[],heightLevelMap:Array.from({length:12},()=>Array(12).fill(0)),hazardZones:[],riverData:[],fogMap:[],terrainDamage:{}});
 const state=()=>({timeline:{turnNumber:1},activeWorldId:'surface',players:[],enemies:[],neutralVillages:[],settlements:[],groundLootByTile:{},worldEnvironment:{activeDisasters:[]}});
 function warmSea(world){
@@ -23,7 +23,7 @@ function warmSea(world){
   return world;
 }
 // A fog-like disaster uses the same per-tile penalties, without adding fog art or counting overlaps twice.
-const cycloneRule=rows.find(row=>row.ID==='災害:台風');
+const cycloneRule=rows.find(row=>row.表示名==='台風');
 const stormMovementMap=map();
 const stormUnit={id:'storm-walker',name:'walker',x:5,y:5,hp:100,currentHp:100,maxHp:100,level:10,status:{防御:100,移動:100,飛行:0},barrier:{remaining:10},shield:{remaining:10}};
 const savedStormUnit=JSON.stringify(stormUnit);
@@ -60,7 +60,7 @@ stormMovementMap.disasterFields.push({...stormMovementMap.disasterFields[0]});
 assert.deepEqual(m.resolveV39DisasterMovementPenalty(stormMovementMap,stormUnit),central,'overlapping storms use strongest instead of stacking');
 assert.equal(JSON.stringify(stormUnit),savedStormUnit,'planning neither damages HP nor consumes defenses or alters permanent status');
 const actualWorld=map();
-const actualStorm=m.applyNaturalEvents({state:state(),mapData:actualWorld,turn:1,forceDisasterId:'災害:台風',forceDisasterAt:{x:5,y:5,radius:2}});
+const actualStorm=m.applyNaturalEvents({state:state(),mapData:actualWorld,turn:1,forceDisasterId:'台風',forceDisasterAt:{x:5,y:5,radius:2}});
 assert.equal(m.resolveV39UnitWeatherMovement(stormUnit,actualWorld).movement,75,'actual spawned event projects the effect');
 const savedState=JSON.parse(JSON.stringify({...state(),...actualStorm}));
 const afterStorm=m.applyNaturalEvents({state:savedState,mapData:actualWorld,turn:20,skipNaturalDisasters:true});
@@ -80,23 +80,23 @@ m.projectV39DynamicDisasterFields(cycloneMap,null,[{tileKeys:keys,startsAtTurn:1
 cycloneMap.fogMap=[];
 assert.deepEqual(m.resolveV39FogPenalty(cycloneMap,{x:4,y:5},{x:7,y:5}),{tiles:0,scout:0,vision:0});
 for(const id of ids){
-  const world=map();if(id==='災害:雪崩'){world.grid[5][5]='雪山';world.heightLevelMap[5][5]=3;}
-  if(['災害:台風','災害:津波'].includes(id)){for(let y=0;y<12;y++)for(let x=0;x<=5;x++)world.grid[y][x]='海';}
+  const world=map();if(id==='雪崩'){world.grid[5][5]='雪山';world.heightLevelMap[5][5]=3;}
+  if(['台風','津波'].includes(id)){for(let y=0;y<12;y++)for(let x=0;x<=5;x++)world.grid[y][x]='海';}
   const seed={...state(),enemies:[{id:'observer',name:'observer',x:5,y:5,hp:1000,currentHp:1000,maxHp:1000,level:10,status:{HP:1000,防御:50,精神:50},worldId:'surface'}]};
   const first=m.applyNaturalEvents({state:seed,mapData:world,turn:1,forceDisasterId:id,forceDisasterAt:{x:5,y:5}});
   assert.equal(first.created.length,1,id);assert.equal(first.worldEnvironment.activeDisasters[0].disasterId,id);
-  if(rows.find(row=>row.ID===id).ダメージ威力>0)assert.ok(first.enemies[0].hp<1000,`${id} must damage a real target`);
+  if(rows.find(row=>row.表示名===id).ダメージ威力>0)assert.ok(first.enemies[0].hp<1000,`${id} must damage a real target`);
   const saved=JSON.parse(JSON.stringify(first.worldEnvironment));
   const next=m.applyNaturalEvents({state:{...state(),...first,worldEnvironment:saved},mapData:world,turn:2,skipNaturalDisasters:true});
   const event=next.worldEnvironment.activeDisasters.find(event=>event.disasterId===id);
-  assert.ok(event,id);assert.equal(event.lastTickTurn,rows.find(row=>row.ID===id).ダメージ威力?2:event.lastTickTurn);
-  if(id==='災害:砂嵐'){assert.ok(m.resolveV39FogPenalty(world,{x:4,y:5},{x:6,y:5}).scout>=25);assert.equal(m.getV39DisasterFieldAt(world,5,5).rangedAccuracyMultiplier,.75);}
-  if(id==='災害:台風'){
+  assert.ok(event,id);assert.equal(event.lastTickTurn,rows.find(row=>row.表示名===id).ダメージ威力?2:event.lastTickTurn);
+  if(id==='砂嵐'){assert.ok(m.resolveV39FogPenalty(world,{x:4,y:5},{x:6,y:5}).scout>=25);assert.equal(m.getV39DisasterFieldAt(world,5,5).rangedAccuracyMultiplier,.75);}
+  if(id==='台風'){
     assert.equal(m.inspectV39WeatherAt(world,next.worldEnvironment.weather,event.x,event.y).weather,'豪雨');
     assert.ok(m.resolveV39FogPenalty(world,{x:event.x,y:event.y},{x:event.x,y:event.y}).vision>0,'saved/moved typhoon keeps fog penalty');
   }
-  if(id==='災害:雪崩')assert.ok(Object.keys(world.terrainDamage.rubbleByTile||{}).length>=2);
-  if(id!=='災害:砂嵐')assert.notDeepEqual([event.x,event.y],[5,5],`${id} must move`);
+  if(id==='雪崩')assert.ok(Object.keys(world.terrainDamage.rubbleByTile||{}).length>=2);
+  if(id!=='砂嵐')assert.notDeepEqual([event.x,event.y],[5,5],`${id} must move`);
   const repeated=m.applyNaturalEvents({state:{...state(),...next},mapData:world,turn:2,skipNaturalDisasters:true});
   assert.deepEqual(repeated.worldEnvironment.activeDisasters,next.worldEnvironment.activeDisasters,'same turn must not move/damage twice');
   const expired=m.applyNaturalEvents({state:{...state(),...next},mapData:world,turn:20,skipNaturalDisasters:true});
@@ -106,8 +106,8 @@ for(const id of ids){
 // Manual radius uses the same event creation, projection, turn and save paths.
 for(const radius of [0,1,2,3,4])for(const autoGrow of [false,true]){
   const world=warmSea(map());
-  const first=m.applyNaturalEvents({state:state(),mapData:world,turn:1,forceDisasterId:'災害:台風',forceDisasterAt:{x:5,y:5,radius,autoGrow}});
-  const event=first.worldEnvironment.activeDisasters.find(event=>event.disasterId==='災害:台風');
+  const first=m.applyNaturalEvents({state:state(),mapData:world,turn:1,forceDisasterId:'台風',forceDisasterAt:{x:5,y:5,radius,autoGrow}});
+  const event=first.worldEnvironment.activeDisasters.find(event=>event.disasterId==='台風');
   assert.equal(event.radius,radius,'specified initial radius');
   assert.equal(event.tileKeys.length,1+3*radius*(radius+1),'actual hex footprint matches specified radius');
   const saved=JSON.parse(JSON.stringify({...state(),...first}));
@@ -116,20 +116,20 @@ for(const radius of [0,1,2,3,4])for(const autoGrow of [false,true]){
   assert.equal(continued.radius,autoGrow?Math.min(4,radius+1):radius,'fixed/growing mode survives saving');
   assert.equal(m.collectV39VortexFields(world,{timeline:{turnNumber:2},worldEnvironment:next.worldEnvironment},null,true)[0].radius,continued.radius,'rendering uses actual radius');
 }
-const sourceRule={id:'災害:台風',radius:1,details:{maximumRadius:4,radiusGrowthPerTurn:1}};
+const sourceRule={id:'台風',radius:1,details:{maximumRadius:4,radiusGrowthPerTurn:1}};
 assert.equal(m.withV39TyphoonSpawnRadius(sourceRule,{radius:999}).radius,4);
 assert.equal(m.withV39TyphoonSpawnRadius(sourceRule,{radius:-5}).radius,0);
 assert.equal(m.withV39TyphoonSpawnRadius(sourceRule,{radius:NaN}),sourceRule);
 assert.equal(m.withV39TyphoonSpawnRadius(sourceRule,{}),sourceRule);
 assert.deepEqual(sourceRule.details,{maximumRadius:4,radiusGrowthPerTurn:1},'spreadsheet defaults are not mutated');
-const unrelated={...sourceRule,id:'災害:竜巻'};
+const unrelated={...sourceRule,id:'竜巻'};
 assert.equal(m.withV39TyphoonSpawnRadius(unrelated,{radius:4,autoGrow:false}),unrelated);
 console.log('PASS: manual typhoon radius 0-4, fixed/growing, actual footprints/render data, save/turn continuation, bounds and unchanged defaults.');
 const world=map();world.grid[5][5]='海';
-const tsunami={details:rows.find(row=>row.ID==='災害:津波').災害詳細設定};
+const tsunami={details:rows.find(row=>row.表示名==='津波').災害詳細設定};
 assert.equal(m.isV39DynamicDisasterAnchor(tsunami,world,{x:5,y:5},[]),false);
-assert.equal(m.isV39DynamicDisasterAnchor(tsunami,world,{x:5,y:5},[{disasterId:'災害:地震',x:6,y:5}]),true);
-const blocked={id:'wave',disasterId:'災害:津波',x:5,y:5,radius:1,startsAtTurn:1,expiresAtTurn:4,direction:1,details:tsunami.details,lastMovementTurn:1};
+assert.equal(m.isV39DynamicDisasterAnchor(tsunami,world,{x:5,y:5},[{disasterId:'地震',x:6,y:5}]),true);
+const blocked={id:'wave',disasterId:'津波',x:5,y:5,radius:1,startsAtTurn:1,expiresAtTurn:4,direction:1,details:tsunami.details,lastMovementTurn:1};
 world.heightLevelMap[5][6]=3;
 assert.ok(m.advanceV39DynamicDisaster(blocked,world,2).expiresAtTurn<2,'high ground must stop tsunami');
 const avalanche={...blocked,id:'snow',details:{movement:'downhill',stepsPerTurn:1,rubbleDurability:100},radius:0};
@@ -150,7 +150,7 @@ rainWeather=m.setV39WeatherAt(weatherMap,rainWeather,1,5,5,'豪雨');
 assert.equal(m.resolveV39FogPenalty(weatherMap,{x:5,y:5},{x:6,y:5}).scout,40);
 rainWeather=m.setV39WeatherAt(weatherMap,rainWeather,1,5,5,'晴れ');
 assert.equal(m.resolveV39FogPenalty(weatherMap,{x:5,y:5},{x:6,y:5}).scout,0);
-const cyclone={disasterId:'災害:台風',tileKeys:['5,5'],startsAtTurn:1,expiresAtTurn:1,details:{weather:'豪雨',weatherHumidity:100}};
+const cyclone={disasterId:'台風',tileKeys:['5,5'],startsAtTurn:1,expiresAtTurn:1,details:{weather:'豪雨',weatherHumidity:100}};
 m.projectV39DynamicDisasterFields(weatherMap,rainWeather,[cyclone],1);
 assert.equal(m.resolveV39FogPenalty(weatherMap,{x:5,y:5},{x:6,y:5}).scout,60,'typhoon uses storm strength');
 m.projectV39DynamicDisasterFields(weatherMap,rainWeather,[],2);
@@ -159,9 +159,9 @@ for(const [humidity,expected]of [[40,140],[65,140],[82.5,195],[100,250]]){
   const world=map();let weather=m.setV39WeatherAt(world,null,1,5,5,'雷雨');
   weather={...weather,regions:Object.fromEntries(Object.entries(weather.regions).map(([key,row])=>[key,{...row,humidity}]))};
   const seed={...state(),worldEnvironment:{weather,activeDisasters:[]}};
-  const natural=m.applyNaturalEvents({state:seed,mapData:world,turn:1,forceDisasterId:'災害:落雷嵐',forceDisasterAt:{x:5,y:5},disasterSource:'natural'});
+  const natural=m.applyNaturalEvents({state:seed,mapData:world,turn:1,forceDisasterId:'落雷嵐',forceDisasterAt:{x:5,y:5},disasterSource:'natural'});
   assert.equal(natural.worldEnvironment.activeDisasters[0].damagePower,expected,'weather-dependent real damage event');
-  const magic=m.applyNaturalEvents({state:seed,mapData:world,turn:1,forceDisasterId:'災害:落雷嵐',forceDisasterAt:{x:5,y:5},disasterSource:'magic'});
+  const magic=m.applyNaturalEvents({state:seed,mapData:world,turn:1,forceDisasterId:'落雷嵐',forceDisasterAt:{x:5,y:5},disasterSource:'magic'});
   assert.equal(magic.worldEnvironment.activeDisasters[0].damagePower,200);
   assert.equal(magic.worldEnvironment.activeDisasters[0].origin,'magic');
   const repeated=m.applyNaturalEvents({state:{...seed,...magic},mapData:world,turn:1,skipNaturalDisasters:true});
@@ -169,7 +169,7 @@ for(const [humidity,expected]of [[40,140],[65,140],[82.5,195],[100,250]]){
 }
 const big={...map(),w:30,h:30,grid:Array.from({length:30},()=>Array(30).fill('海')),heightLevelMap:Array.from({length:30},()=>Array(30).fill(0))};
 warmSea(big);
-let growing={id:'grow',disasterId:'災害:台風',x:15,y:15,radius:1,startsAtTurn:1,expiresAtTurn:5,details:{...rows.find(row=>row.ID==='災害:台風').災害詳細設定,followWind:false}};
+let growing={id:'grow',disasterId:'台風',x:15,y:15,radius:1,startsAtTurn:1,expiresAtTurn:5,details:{...rows.find(row=>row.表示名==='台風').災害詳細設定,followWind:false}};
 for(const [turn,radius,count]of [[1,1,7],[2,2,19],[3,3,37],[4,4,61],[5,4,61]]){
   growing=m.advanceV39DynamicDisaster(JSON.parse(JSON.stringify(growing)),big,turn);
   assert.equal(growing.radius,radius);assert.equal(growing.tileKeys.length,count);
@@ -187,7 +187,7 @@ const landed=m.advanceV39DynamicDisaster({id:'landing',x:5,y:5,radius:3,startsAt
 assert.notDeepEqual([landed.x,landed.y],[5,5]);assert.equal(landed.radius,2,'decay uses destination after landing');
 const faster=m.advanceV39DynamicDisaster({id:'faster',x:5,y:5,radius:3,startsAtTurn:1,expiresAtTurn:20,details:{...detail,stepsPerTurn:0,radiusDecayPerTurn:2}},map(),2);
 assert.equal(faster.radius,1,'spreadsheet decay amount is honored');
-let decaying={id:'decay',disasterId:'災害:台風',x:5,y:5,radius:3,startsAtTurn:1,expiresAtTurn:20,details:{...detail,stepsPerTurn:0}};
+let decaying={id:'decay',disasterId:'台風',x:5,y:5,radius:3,startsAtTurn:1,expiresAtTurn:20,details:{...detail,stepsPerTurn:0}};
 decaying=m.advanceV39DynamicDisaster(decaying,coast,1);
 coast.grid[5][5]='平地';
 decaying=m.advanceV39DynamicDisaster(JSON.parse(JSON.stringify(decaying)),coast,2);
@@ -209,7 +209,7 @@ assert.equal(decaying.expiresAtTurn,6);assert.deepEqual(decaying.tileKeys,[]);
 m.projectV39DynamicDisasterFields(coast,null,[decaying],7);
 assert.deepEqual(coast.disasterFields,[]);assert.deepEqual(coast.rainConditions?.disasterAreas||[],[]);
 const integrationMap=warmSea(map());
-const firstDecay=m.applyNaturalEvents({state:state(),mapData:integrationMap,turn:1,forceDisasterId:'災害:台風',forceDisasterAt:{x:5,y:5,radius:0}});
+const firstDecay=m.applyNaturalEvents({state:state(),mapData:integrationMap,turn:1,forceDisasterId:'台風',forceDisasterAt:{x:5,y:5,radius:0}});
 const decayEvent=firstDecay.worldEnvironment.activeDisasters[0];
 decayEvent.details.stepsPerTurn=0;integrationMap.grid[5][5]='平地';
 const afterDecay=m.applyNaturalEvents({state:JSON.parse(JSON.stringify({...state(),...firstDecay})),mapData:integrationMap,turn:2,skipNaturalDisasters:true});
@@ -243,7 +243,7 @@ const facilityBase={id:'coast-base',settlementId:'coast-base',name:'沿岸拠点
 const facilityState={...state(),players:[{id:'p1',factionState:{units:[],settlements:[facilityBase],selectedSettlementId:'coast-base'}}],
   territoryOwnerByTile:{'5,5':'p1','10,10':'p1'},territoryStateByTile:{'5,5':{settlementId:'coast-base',hp:100,maxHp:100}},settlements:[facilityBase]};
 const facilityWorld=map();
-const hit=m.applyNaturalEvents({state:facilityState,mapData:facilityWorld,turn:1,forceDisasterId:'災害:津波',forceDisasterAt:{x:5,y:5}});
+const hit=m.applyNaturalEvents({state:facilityState,mapData:facilityWorld,turn:1,forceDisasterId:'津波',forceDisasterAt:{x:5,y:5}});
 const hitBase=m.getFactionSettlementById(hit.players[0].factionState,'coast-base');
 assert.equal(hitBase.facilityStateByTile['5,5'].農場.hp,300,'tsunami power 200 damages facility HP');
 assert.equal(hitBase.facilityStateByTile['10,10'].伐採場.hp,100,'unaffected facility is unchanged');
@@ -252,7 +252,7 @@ assert.ok(hit.damageEntries.some(entry=>entry.targetType==='facility'&&entry.nam
 assert.equal(hit.settlements.find(base=>base.id==='coast-base').facilityStateByTile['5,5'].農場.hp,300,'world settlement mirror is synced');
 const same=m.applyNaturalEvents({state:JSON.parse(JSON.stringify({...facilityState,...hit})),mapData:facilityWorld,turn:1,skipNaturalDisasters:true});
 assert.equal(m.getFactionSettlementById(same.players[0].factionState,'coast-base').facilityStateByTile['5,5'].農場.hp,300,'same event cannot damage twice in one turn');
-const event=hit.worldEnvironment.activeDisasters.find(event=>event.disasterId==='災害:津波');
+const event=hit.worldEnvironment.activeDisasters.find(event=>event.disasterId==='津波');
 const damaged=m.applyV39FacilityDisasterDamage(facilityState,[{...event,damagePower:600}],2);
 assert.equal(m.getFactionSettlementById(damaged.players[0].factionState,'coast-base').facilityStateByTile['5,5'].農場.status,'損壊');
 const repaired=m.applyV39TerritoryRepair({...facilityState,players:damaged.players},'p1','coast-base',3);
@@ -279,5 +279,15 @@ try{
   const immune=m.applyV39FacilityDisasterDamage({...facilityState,players:[{...facilityState.players[0],factionState:{...facilityState.players[0].factionState,settlements:[defensive]}}]},[event],2);
   assert.equal(immune.entries.length,0,'complete disaster immunity prevents damage');
 }finally{for(const key of Object.keys(defenseCity))delete defenseCity[key];Object.assign(defenseCity,cityBefore);}
+const meteorWorld=map();meteorWorld.grid[5][5]='丘陵';meteorWorld.heightLevelMap[5][5]=2;
+const meteorBase={...facilityBase,facilityStateByTile:{...facilityBase.facilityStateByTile,
+  '5,5':{農場:{hp:100,maxHp:100}}}};
+const meteorState={...facilityState,players:[{...facilityState.players[0],factionState:{
+  ...facilityState.players[0].factionState,settlements:[meteorBase]}}],settlements:[meteorBase],
+  facilitiesByTile:{'5,5':['農場']}};
+const meteorHit=m.applyNaturalEvents({state:meteorState,mapData:meteorWorld,turn:1,
+  forceDisasterId:'流星落下',forceDisasterAt:{x:5,y:5},disasterSource:'magic',forceDisasterPower:320});
+assert.equal(m.getFactionSettlementById(meteorHit.players[0].factionState,'coast-base').facilityStateByTile['5,5'].農場.hp,0);
+assert.equal(meteorWorld.terrainDamage.cells['5,5'].hp,480,'meteor overflow reaches ground after facility');
 console.log('PASS: real tsunami facility HP damage, destruction/normal repair, city defenses/immunity, overlap, world, same-turn and player/neutral settlement state. No browser.');
 if(warnings.length)console.log(`Existing registry warning batches: ${warnings.length} (not disaster conversion errors).`);

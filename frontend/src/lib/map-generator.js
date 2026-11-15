@@ -15,7 +15,7 @@ function jsonNumber(row, key, fallback) {
 }
 
 const 火山噴火データ = getGameDataRows("災害")
-  .find(row => String(row?.ID ?? "").trim() === "災害:火山噴火") || {};
+  .find(row => String(row?.表示名 ?? "").trim() === "火山噴火") || {};
 const 山岳地形データ = getGameDataRows("地形")
   .find(row => String(row?.地形 ?? "").trim() === "山岳") || {};
 const 噴火基本率 = Math.max(0, Math.min(1, jsonNumber(火山噴火データ, "基本発生率", 0.01)));
@@ -25,18 +25,17 @@ const 火山化設定 = Object.freeze({
   噴火率毎ターン:Math.max(0, Math.min(1, 噴火基本率 * Math.max(0, 1 + 噴火地形補正))),
   噴火基本率,
   噴火地形補正,
-  初期噴火判定ターン数:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "初期判定ターン数", 1))),
+  初期噴火判定ターン数:Math.max(0, Math.floor(jsonNumber(generationFeatures.volcano, "initialEruptionChecks", 1))),
   溶岩流:{
-    最大進行マス:Math.max(1, Math.floor(jsonNumber(火山噴火データ, "溶岩最大進行マス", 3))),
-    停止確率:Math.max(0, Math.min(1, jsonNumber(火山噴火データ, "溶岩停止率", 0.35))),
-    方向維持角度度:Math.max(0, jsonNumber(火山噴火データ, "溶岩方向維持角度", 38))
+    最大進行マス:Math.max(1, Math.floor(jsonNumber(火山噴火データ, "最大進行マス", 3))),
+    停止確率:Math.max(0, Math.min(1, jsonNumber(火山噴火データ, "停止率", 0.35))),
+    方向維持角度度:Math.max(0, jsonNumber(火山噴火データ, "維持角度", 38))
   },
   噴火影響:{
     影響半径:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "影響半径", 1))),
     周囲産出倍率:Math.max(0, jsonNumber(火山噴火データ, "周囲産出倍率", 0.5)),
     継続ターン:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "効果継続ターン", 2))),
-    人口減少最小:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "人口減少最小", 1))),
-    人口減少最大:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "人口減少最大", 3))),
+    人口減少値:Math.max(0, Math.floor(jsonNumber(火山噴火データ, "人口減少値", 0))),
     治安減少:Math.max(0, jsonNumber(火山噴火データ, "治安減少", 10))
   }
 });
@@ -760,14 +759,13 @@ function collectVolcanoAffectedCoords(w, h, x, y, radius = 1) {
 
 function resolveVolcanoEventEffects(volcanoRule) {
   const effects = volcanoRule?.噴火影響 || {};
-  const populationLossMin = Number.isFinite(effects.人口減少最小) ? effects.人口減少最小 : 1;
-  const populationLossMax = Number.isFinite(effects.人口減少最大) ? effects.人口減少最大 : 3;
+  const populationLoss = Math.max(0, Math.floor(jsonNumber(effects, "人口減少値", 0)));
   return {
     radius:Number.isFinite(effects.影響半径) ? Math.max(0, Math.floor(effects.影響半径)) : 1,
     yieldMultiplier:Number.isFinite(effects.周囲産出倍率) ? effects.周囲産出倍率 : 0.5,
     durationTurns:Number.isFinite(effects.継続ターン) ? effects.継続ターン : 2,
-    populationLossMin,
-    populationLossMax,
+    populationLossMin:Math.max(0, populationLoss - 1),
+    populationLossMax:populationLoss > 0 ? populationLoss + 1 : 0,
     securityLoss:Number.isFinite(effects.治安減少) ? effects.治安減少 : 10
   };
 }
@@ -5258,7 +5256,7 @@ function createTerrainMapData({ w, h, patternId = "balanced", mountainMode = "ra
     eruptionTerrainModifier:Number(地形生成設定.火山化?.噴火地形補正) || 0,
     eruptionEffects:{ ...(地形生成設定.火山化?.噴火影響 || {}) },
     lavaFlowSettings:{ ...(地形生成設定.火山化?.溶岩流 || {}) },
-    ruleSourceId:"災害:火山噴火",
+    ruleSourceId:"火山噴火",
     initialTurnChecks: Math.max(0, Math.floor(Number(地形生成設定.火山化?.初期噴火判定ターン数) || 0)),
     dormantMap: dormantVolcanoData.map,
     dormantCount: dormantVolcanoData.dormantSet.size,

@@ -27,7 +27,7 @@ try{
       const {resolveV39DisasterDamageTiles:tiles}=await import('/src/lib/v39-disaster-strikes.js');
       const {resolveV39DisasterRule:rule}=await import('/src/lib/v39-disaster-rules.js');
       const {applyV39DisasterDamage:damage,resolveV39DisasterDamage:spec,applyV39DisasterMovementDamage:move}=await import('/src/lib/v39-disaster-damage.js');
-      const s=window.getV39GameState(),event=s.worldEnvironment.activeDisasters.find(e=>e.disasterId==='災害:落雷嵐'),unit={id:'probe',hp:1000,maxHp:1000,x:12,y:10,status:{},worldId:'surface'};
+      const s=window.getV39GameState(),event=s.worldEnvironment.activeDisasters.find(e=>e.disasterId==='落雷嵐'),unit={id:'probe',hp:1000,maxHp:1000,x:12,y:10,status:{},worldId:'surface'};
       const bins=Object.fromEntries(event.tileKeys.map(key=>[key,0]));
       for(let i=0;i<1000;i++)for(const key of tiles({...event,damageTickTurn:0,id:`sample-${i}`},2))bins[key]++;
       const density=[1,2,3,7,8,19,37].map(size=>{
@@ -44,7 +44,7 @@ try{
         multi:tiles({...event,damageTickTurn:0,randomDamageTilesPerHit:0,randomDamageTileCount:3},2),zero:tiles({...event,damageTickTurn:0,randomDamageTilesPerHit:0,randomDamageTileCount:0},2),
         deterministic:JSON.stringify(tiles({...event,damageTickTurn:0},2))===JSON.stringify(tiles({...event,damageTickTurn:0},2)),
         immune:damage({...unit,status:{雷耐性:100}},spec(event),1).unit.hp,
-        mental:damage({...unit,status:{精神耐性:100}},spec({disasterId:'災害:魂嵐'}),1).unit.hp,
+        mental:damage({...unit,status:{精神耐性:100}},spec({disasterId:'魂嵐'}),1).unit.hp,
         move:move(unit,[{x:13,y:10}],s).unit.hp};
     });
     assert.equal(first.event.damagePower,100);assert.equal(first.event.damagePattern,'ランダム');assert.equal(first.event.randomDamageTilesPerHit,3);
@@ -54,7 +54,7 @@ try{
     assert(Object.values(first.bins).every(count=>count>280&&count<390));assert(first.deterministic);
     for(const d of first.density){assert.equal(d.min,Math.floor(d.size/3));assert.equal(d.max,Math.ceil(d.size/3));assert(Math.abs(d.mean-d.size/3)<.05,JSON.stringify(d));}
     assert.equal(new Set(first.multi).size,3);assert.deepEqual(first.zero,[]);assert.equal(first.immune,1000);assert.equal(first.mental,1000);assert.equal(first.move,1000);
-    for(const p of first.powers){assert.equal(p.rule.unitDamageRate,0);assert(p.rule.damagePower>0&&p.damage>0,p.name);}
+    for(const p of first.powers){assert(p.rule.damagePower>0&&p.damage>0,p.name);}
     await page.waitForFunction(()=>window.__v39FieldRuntime.game.scene.getScenes(true)[0].children.list.find(c=>c.name==='v39-disaster-strike-overlay')?.list.some(c=>c.name?.startsWith('v39-disaster-strike:')));
     await page.screenshot({path:`${out}/strike-${width}.png`});
     await page.locator('#v39-turn-toggle').click();await page.locator('#v39-turn-test-next').click();
@@ -62,15 +62,15 @@ try{
     const later=await page.evaluate(async()=>{
       const {runV39NaturalEvents:tick}=await import('/src/v39/world/v39-natural-events.js');
       const {resolveV39DisasterDamageTiles:tiles}=await import('/src/lib/v39-disaster-strikes.js');
-      let s=window.getV39GameState(),event=s.worldEnvironment.activeDisasters.find(e=>e.disasterId==='災害:落雷嵐');
+      let s=window.getV39GameState(),event=s.worldEnvironment.activeDisasters.find(e=>e.disasterId==='落雷嵐');
       const second={turn:event.damageTickTurn,keys:[...event.damageTileKeys]};
       window.importV39SaveJson(window.exportV39SaveJson());
-      const loaded=window.getV39GameState().worldEnvironment.activeDisasters.find(e=>e.disasterId==='災害:落雷嵐');
+      const loaded=window.getV39GameState().worldEnvironment.activeDisasters.find(e=>e.disasterId==='落雷嵐');
       const repeated=tick({turnNumber:2,force:true,skipNaturalDisasters:true});
       s=window.getV39GameState();const nextKeys=tiles({...event,damageTickTurn:0},3);
       const f=window.getV39ActiveFactionState();window.updateV39ActiveFactionState({units:f.units.filter(u=>!nextKeys.includes(`${u.x},${u.y}`))});
       window.setV39GameState({timeline:{...s.timeline,turnNumber:3}});
-      const empty=tick({turnNumber:3,skipNaturalDisasters:true}),emptyEvent=window.getV39GameState().worldEnvironment.activeDisasters.find(e=>e.disasterId==='災害:落雷嵐');
+      const empty=tick({turnNumber:3,skipNaturalDisasters:true}),emptyEvent=window.getV39GameState().worldEnvironment.activeDisasters.find(e=>e.disasterId==='落雷嵐');
       s=window.getV39GameState();window.setV39GameState({timeline:{...s.timeline,turnNumber:6}});
       tick({turnNumber:6,skipNaturalDisasters:true});
       return {second,loaded:loaded.damageTileKeys,repeated:repeated.damageEntries.length,empty:empty.damageEntries.length,
