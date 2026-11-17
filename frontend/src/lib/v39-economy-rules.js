@@ -1,3 +1,4 @@
+import {usesV39OperationPhases,isV39TerritoryPhase} from './v39-operation-phases.js';
 import {roundV39FoodStock} from './v39-preserved-food-rules.js';
 import {advanceV39OperationPlans} from './v39-operation-plans.js';
 import { getGameDataRows } from "./game-data-registry.js";
@@ -116,17 +117,19 @@ const CLASS_ROW_BY_NAME = new Map(getGameDataRows("クラス")
   .filter(([name]) => name));
 
 function disasterCivicPenaltyForSettlement(state, settlementId) {
+  const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
   let penalty = 0;
   for (const event of state?.worldEnvironment?.lastTerrainEvents || []) {
+    if (number(state?.worldEnvironment?.processedTurn, -1) !== turn) continue;
     const securityLoss = Math.max(0, number(event?.effects?.securityLoss));
     if (securityLoss <= 0) continue;
     const affectedKeys = (event?.affectedCoords || []).map(point => text(point?.key) || coordKey(point?.x, point?.y));
     for(const key of affectedKeys)if(territorySettlementId(state?.territoryStateByTile?.[key])===settlementId)
       penalty=Math.max(penalty,securityLoss*resolveV39CityDisasterMultiplier(state,key,event.disasterId||'火山噴火'));
   }
-  const turn = Math.max(1, Math.floor(number(state?.timeline?.turnNumber, 1)));
+
   for (const effect of state?.worldEnvironment?.activeTerrainEffects || []) {
-    if (turn < number(effect?.startsAtTurn, turn) || turn > number(effect?.expiresAtTurn, turn)) continue;
+    if (turn !== number(effect?.startsAtTurn, -1)) continue;
     const securityLoss = Math.max(0, number(effect?.securityLoss));
     if (securityLoss <= 0) continue;
     for(const key of effect?.tileKeys||[])if(territorySettlementId(state?.territoryStateByTile?.[text(key)])===settlementId)
@@ -1435,6 +1438,62 @@ export function resolveV39ConstructionWorkKind(village){
   ].filter(([,item])=>item).sort((a,b)=>number(a[1].startedTurn,1)-number(b[1].startedTurn,1))[0]?.[0]||null;
 }
 
+function advanceSettlementBuildingWork(village,player,mapData,currentTurn,facilitiesByTile,completed,developmentCompleted){
+  const settlementId=text(village.settlementId||village.id);
+  const constructionWorkKind=resolveV39ConstructionWorkKind(village);
+  const development = constructionWorkKind==='development' ? advanceV39SettlementDevelopment(village) : {village,completed:false};
+  village = normalizeV39Village(development.village, player.race);
+  if (development.completed) {
+    developmentCompleted.push({
+      playerId:player.id,
+      settlementId,
+      settlementName:text(village.name) || settlementId,
+      scaleKey:development.target.key,
+      scaleLevel:development.target.level,
+      scaleName:development.target.name
+    });
+  }
+  const construction = constructionWorkKind==='construction' ? advanceConstruction(village) : {village,completed:[]};
+  village = normalizeV39Village(construction.village, player.race);
+  const walls=constructionWorkKind==='wall' ? advanceV39WallConstruction(village,mapData,player.id,currentTurn) : {village,completed:[]};
+  village=normalizeV39Village(walls.village,player.race);
+  completed.push(...walls.completed);
+  for (const item of construction.completed) {
+    facilitiesByTile[item.tileKey] = [...(village.tileFacilityMap[item.tileKey]||[])];
+    const wallRule = V39_DEFENSE_BALANCE.facilityWalls[item.facilityName];
+    if (wallRule) {
+      const [x,y] = item.tileKey.split(",").map(Number);
+      const structure = createV39DefenseStructure(mapData, {x,y},
+        { 名前:item.facilityName, 効果:"壁", ガード:wallRule.hp, 範囲:"単体" },
+        { id:item.id, ownerPlayerId:player.id }, currentTurn);
+      if (structure) mapData.defenseStructures = [...(mapData.defenseStructures || []),
+        { ...structure, height:wallRule.height, facilityName:item.facilityName, settlementId }];
+    }
+    completed.push({ ...item, playerId:player.id, settlementId });
+  }
+  return village;
+}
+
+const operationStarters={construction:startV39Construction,expansion:startV39LandExpansion,wall:startV39WallConstruction,development:startV39SettlementDevelopment};
+
+export function advanceV39TerritoryBuildingPhase(state,mapData){
+  if(!isV39TerritoryPhase(state)||!mapData?.grid)return state;
+  state=advanceV39OperationPlans(state,mapData,operationStarters);
+  const facilitiesByTile={...state.facilitiesByTile},completed=[],developmentCompleted=[];
+  const players=state.players.map(player=>{
+    if(player.isPlayer===false)return player;
+    let factionState=player.factionState;
+    for(const village of getFactionSettlements(factionState)){
+      if(!village.placed)continue;
+      const next=advanceSettlementBuildingWork(village,player,mapData,state.timeline.turnNumber,facilitiesByTile,completed,developmentCompleted);
+      factionState=replaceFactionSettlement(factionState,next,{ownerPlayerId:player.id,select:false});
+    }
+    return {...player,factionState};
+  });
+  const byId=new Map(players.flatMap(player=>getFactionSettlements(player.factionState).map(base=>[base.settlementId||base.id,base])));
+  return {...state,players,facilitiesByTile,settlements:(state.settlements||[]).map(base=>byId.get(base.settlementId||base.id)||base)};
+}
+
 export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?.mapData) {
   if (!state || !mapData?.grid) return { state, reports:[], completed:[] };
   state = { ...state, territoryOwnerByTile:{ ...(state.territoryOwnerByTile || {}) }, territoryStateByTile:{ ...(state.territoryStateByTile || {}) } };
@@ -1466,36 +1525,8 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
         if (item.targetMode === TERRITORY_TILE_MODE_SETTLEMENT) delete facilitiesByTile[item.tileKey];
         territoryConversionCompleted.push({ ...item, playerId:player.id, settlementId });
       }
-      const constructionWorkKind=resolveV39ConstructionWorkKind(village);
-      const development = constructionWorkKind==='development' ? advanceV39SettlementDevelopment(village) : {village,completed:false};
-      village = normalizeV39Village(development.village, player.race);
-      if (development.completed) {
-        developmentCompleted.push({
-          playerId:player.id,
-          settlementId,
-          settlementName:text(village.name) || settlementId,
-          scaleKey:development.target.key,
-          scaleLevel:development.target.level,
-          scaleName:development.target.name
-        });
-      }
-      const construction = constructionWorkKind==='construction' ? advanceConstruction(village) : {village,completed:[]};
-      village = normalizeV39Village(construction.village, player.race);
-      const walls=constructionWorkKind==='wall' ? advanceV39WallConstruction(village,mapData,player.id,currentTurn) : {village,completed:[]};
-      village=normalizeV39Village(walls.village,player.race);
-      completed.push(...walls.completed);
-      for (const item of construction.completed) {
-        facilitiesByTile[item.tileKey] = [...(village.tileFacilityMap[item.tileKey]||[])];
-        const wallRule = V39_DEFENSE_BALANCE.facilityWalls[item.facilityName];
-        if (wallRule) {
-          const [x,y] = item.tileKey.split(",").map(Number);
-          const structure = createV39DefenseStructure(mapData, {x,y},
-            { 名前:item.facilityName, 効果:"壁", ガード:wallRule.hp, 範囲:"単体" },
-            { id:item.id, ownerPlayerId:player.id }, currentTurn);
-          if (structure) mapData.defenseStructures = [...(mapData.defenseStructures || []),
-            { ...structure, height:wallRule.height, facilityName:item.facilityName, settlementId }];
-        }
-        completed.push({ ...item, playerId:player.id, settlementId });
+      if(!usesV39OperationPhases(state)||player.isPlayer===false){
+        village=advanceSettlementBuildingWork(village,player,mapData,currentTurn,facilitiesByTile,completed,developmentCompleted);
       }
       const rawTerritoryIncome = collectV39TerritoryIncome(state, {
         ...player,
@@ -1645,7 +1676,7 @@ export function advanceV39EconomyTurn(state, mapData = window.__v39FieldRuntime?
   const enemyEconomy = advanceEnemyNestEconomy({ ...state, players }, mapData, currentTurn);
   const rebellion = advanceV39Rebellions({ ...state, players, facilitiesByTile, settlements, ...enemyEconomy }, currentTurn);
   return {
-    state:advanceV39OperationPlans(rebellion.state,mapData,{construction:startV39Construction,expansion:startV39LandExpansion,wall:startV39WallConstruction,development:startV39SettlementDevelopment}),
+    state:rebellion.state,
     reports,
     completed,
     developmentCompleted,

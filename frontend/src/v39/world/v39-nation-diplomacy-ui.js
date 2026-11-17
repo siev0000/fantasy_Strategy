@@ -91,10 +91,61 @@ function renderPolicy(player) {
   </div>`;
 }
 
+function showFactionInfo(title,body){
+  let dialog=document.getElementById('v39-faction-info');
+  if(!dialog){
+    dialog=document.createElement('dialog');
+    dialog.id='v39-faction-info';
+    dialog.style.cssText='max-width:min(38rem,92vw);max-height:80vh;background:#15262d;color:#eef4f4;border:1px solid #56717b;padding:1rem';
+    document.body.append(dialog);
+  }
+  dialog.innerHTML=`<form method="dialog"><button>閉じる</button></form><h2>${escapeHtml(title)}</h2>${body}`;
+  if(!dialog.open)dialog.showModal();
+}
+
+function openFactionRoster(){
+  const state=window.getV39GameState?.(),player=state?.players?.find(row=>row.id===state.activePlayerId);
+  if(!player)return;
+  const roster=(state.players||[]).map(target=>{
+    const seen=player.factionState?.factionSightings?.[target.id];
+    const details=target.id===player.id?'自勢力':seen
+      ?`最終確認 T${seen.turn} / ${seen.worldId==='surface'?'地上':'別マップ'} (${seen.x}, ${seen.y}) / ${seen.size}`:'未遭遇';
+    return `<li><strong>${escapeHtml(target.label)}</strong> ${escapeHtml(target.race||'種族未設定')} / ${escapeHtml(details)}</li>`;
+  }).join('');
+  const own=player.factionState?.units||[];
+  const eligible=own.filter(unit=>unit.state!=='死亡'&&Number(unit.hp??unit.currentHp)>0
+    &&['隠密','変装'].every(key=>Number(unit.status?.[key]??unit.skillLevels?.[key])>=150));
+  showFactionInfo('勢力情報',`<p>参加勢力 ${state.players.length}（NPC ${state.players.filter(row=>row.isPlayer===false).length}）</p><ul>${roster}</ul>
+    <h3>諜報</h3><p>任務資格は隠密・変装ともに150以上。</p>
+    <p>資格者 ${eligible.length}人 ${escapeHtml(eligible.map(unit=>unit.name).join('、'))}</p>
+    <details><summary>任務一覧</summary><p>諜報　偵察、内政調査、技術調査、情報網構築</p><p>工作　破壊工作、物資妨害、扇動、情報操作、暗殺</p><p>防諜　スパイ捜索、警戒強化、尋問、二重スパイ</p></details>`);
+}
+
+window.openV39ObservedFactionUnits=(ownerId,x,y)=>{
+  const state=window.getV39GameState?.({includeWorlds:false});
+  if(!state||state.activePlayerId===ownerId||window.isV39TileInCurrentVision?.(x,y)!==true)return;
+  const owner=state.players.find(player=>player.id===ownerId);
+  const units=(owner?.factionState?.units||[]).filter(unit=>unit.x===x&&unit.y===y
+    &&(unit.worldId||'surface')===(state.activeWorldId||'surface')&&window.isV39EntityDetected?.(unit)===true);
+  if(!units.length)return;
+  showFactionInfo(owner.label,units.map(unit=>{
+    const fields=['攻撃','防御','魔力','精神','速度','命中'].flatMap(key=>Number.isFinite(Number(unit.status?.[key]))?[`${key} ${Number(unit.status[key])}`]:[]);
+    return `<section><h3>${escapeHtml(unit.name)} / ${escapeHtml(unit.className||unit.race||'')}</h3>
+      <p>Lv ${escapeHtml(unit.level||1)} / HP ${escapeHtml(unit.hp??unit.currentHp??0)} / ${escapeHtml(unit.maxHp??'?')}</p>
+      <p>${escapeHtml(fields.join('　'))}</p></section>`;
+  }).join(''));
+};
+
+window.openV39FactionInfo=openFactionRoster;
+document.addEventListener('click',event=>{
+  if(event.target.closest?.('#v39-interaction-faction-info'))openFactionRoster();
+});
+
 function renderDiplomacy(state, player) {
   const others = state.players.filter(row => row.id !== player?.id&&(!contactTargetId||row.id===contactTargetId));
-  if (!others.length) return '<p class="v39-nation-empty">ほかの勢力はまだありません。</p>';
-  return `<div class="v39-diplomacy-list">${others.map(target => {
+  const info = '<button type="button" data-v39-faction-info>勢力情報</button>';
+  if (!others.length) return info+'<p class="v39-nation-empty">ほかの勢力はまだありません。</p>';
+  return `${info}<div class="v39-diplomacy-list">${others.map(target => {
     const relation = getV39DiplomacyRelation(state, player.id, target.id);
     const atWar = relation.status === "war";
     const exempt = isV39DemonFactionPair(player, target);
@@ -240,6 +291,7 @@ function install() {
   installStyles();
   document.getElementById("v39-manage-nation")?.addEventListener("click", openPanel);
   document.getElementById("v39-nation-panel")?.addEventListener("click", event => {
+    if(event.target.closest?.('[data-v39-faction-info]')){openFactionRoster();return;}
     const element = event.target instanceof Element ? event.target : null;
     if (element?.closest("#v39-nation-back")) return closePanel();
     const tab = element?.closest("[data-v39-nation-tab]");

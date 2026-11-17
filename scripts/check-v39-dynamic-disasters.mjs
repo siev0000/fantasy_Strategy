@@ -126,7 +126,8 @@ const unrelated={...sourceRule,id:'竜巻'};
 assert.equal(m.withV39TyphoonSpawnRadius(unrelated,{radius:4,autoGrow:false}),unrelated);
 console.log('PASS: manual typhoon radius 0-4, fixed/growing, actual footprints/render data, save/turn continuation, bounds and unchanged defaults.');
 const world=map();world.grid[5][5]='海';
-const tsunami={details:rows.find(row=>row.表示名==='津波').災害詳細設定};
+const movementDetails=name=>{ const row=rows.find(row=>row.表示名===name); return {...row.災害詳細設定,stepsPerTurn:row['1ターンあたりの移動マス数']}; };
+const tsunami={details:movementDetails('津波')};
 assert.equal(m.isV39DynamicDisasterAnchor(tsunami,world,{x:5,y:5},[]),false);
 assert.equal(m.isV39DynamicDisasterAnchor(tsunami,world,{x:5,y:5},[{disasterId:'地震',x:6,y:5}]),true);
 const blocked={id:'wave',disasterId:'津波',x:5,y:5,radius:1,startsAtTurn:1,expiresAtTurn:4,direction:1,details:tsunami.details,lastMovementTurn:1};
@@ -169,7 +170,7 @@ for(const [humidity,expected]of [[40,140],[65,140],[82.5,195],[100,250]]){
 }
 const big={...map(),w:30,h:30,grid:Array.from({length:30},()=>Array(30).fill('海')),heightLevelMap:Array.from({length:30},()=>Array(30).fill(0))};
 warmSea(big);
-let growing={id:'grow',disasterId:'台風',x:15,y:15,radius:1,startsAtTurn:1,expiresAtTurn:5,details:{...rows.find(row=>row.表示名==='台風').災害詳細設定,followWind:false}};
+let growing={id:'grow',disasterId:'台風',x:15,y:15,radius:1,startsAtTurn:1,expiresAtTurn:5,details:{...movementDetails('台風'),followWind:false}};
 for(const [turn,radius,count]of [[1,1,7],[2,2,19],[3,3,37],[4,4,61],[5,4,61]]){
   growing=m.advanceV39DynamicDisaster(JSON.parse(JSON.stringify(growing)),big,turn);
   assert.equal(growing.radius,radius);assert.equal(growing.tileKeys.length,count);
@@ -180,7 +181,7 @@ for(const [turn,radius,count]of [[1,1,7],[2,2,19],[3,3,37],[4,4,61],[5,4,61]]){
 console.log('PASS: five events, weather/magic lightning power, deterministic save ticks, typhoon growth 1..4 and visible-mask placement, penalties and terrain. No browser.');
 // Radius changes are incremental: returning to warm sea must not reset to age-based maximum size.
 const coast=warmSea(map());
-const detail={...cycloneRule.災害詳細設定,followWind:false};
+const detail={...movementDetails('台風'),followWind:false};
 const landing=warmSea(map());
 landing.grid=landing.grid.map(row=>row.map(()=>'平地'));landing.grid[5][5]='海';
 const landed=m.advanceV39DynamicDisaster({id:'landing',x:5,y:5,radius:3,startsAtTurn:1,expiresAtTurn:20,lastMovementTurn:1,direction:0,details:detail},landing,2);

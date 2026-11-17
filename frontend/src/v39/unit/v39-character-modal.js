@@ -1,3 +1,5 @@
+import {getV39OfferingPopulationSources,inspectV39SpecialVillageReincarnation,resolveV39SpecialVillage} from '../../lib/v39-special-villages.js';
+import {isV39VillageContactUnit} from '../../lib/v39-village-contacts.js';
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
 import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
 import { openV39EquipmentPicker } from "./v39-equipment-picker.js";
@@ -7,7 +9,7 @@ import { renderV39UnitAbility, renderV39DetailTabs, renderV39UnitEquipment, rend
 import {scaleV39TransformationHp} from '../../lib/v39-transformation.js';
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import {resolveV39ToolSlots,getV39ToolLoadout,getV39ConsumableDefinitions,setV39ToolLoadout} from "../../lib/v39-consumables.js";
-import {getV39ClassPromotionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
+import {getV39ClassPromotionOptions,getV39BaseClassAcquisitionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
 import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
 import {renderV39AnimalArmyControls,openV39AnimalArmyEditor} from './v39-animal-army-ui.js';
 import {renderV39UnitHeading} from './v39-unit-heading.js';
@@ -148,15 +150,40 @@ function equipmentPanel(unit) {
 function growthPanel(unit) {
   if(storageOf(unit))return `<div class="v39-char-detail-scroll"><h4>成長</h4>${renderV39UnitGrowth(unit)}<p class="v39-char-note">保管中は閲覧のみです。</p></div>`;
   const state=window.getV39GameState({includeWorlds:false}),options=getV39ClassPromotionOptions(state,state.activePlayerId,unit);
+  const player=state.players.find(row=>row.id===state.activePlayerId);
+  const sources=getV39OfferingPopulationSources(player);
+  const races=player&&(state.activeWorldId||'surface')==='surface'?(state.neutralVillages||[]).flatMap(village=>{
+    if(!resolveV39SpecialVillage(village)?.reincarnation?.enabled||!isV39VillageContactUnit(unit,village))return [];
+    const inspect=request=>inspectV39SpecialVillageReincarnation(state,player.id,village.id,{unitId:unit.id,...request});
+    const initial=inspect({});
+    if(initial.available)return [initial];
+    const candidates=sources.flatMap(source=>source.races.filter(race=>race.count>=initial.cost)
+      .map(race=>({settlementId:source.id,race:race.race})));
+    for(const candidate of candidates){
+      const result=inspect(candidate);
+      if(result.available)return [result];
+    }
+    return [initial];
+  }):[];
+  const canAcquireBase=getV39BaseClassAcquisitionOptions(state,state.activePlayerId,unit).some(option=>option.available);
+  const available=options.filter(option=>option.available);
+  const blocked=options.filter(option=>!option.available);
+  const classRows=available.map(option=>`<button type="button" class="v39-char-promotion-option" data-v39-class-acquire="${escapeHtml(option.row.名前)}"><b>${escapeHtml(option.row.ルビ||option.row.名前)}</b><span>${escapeHtml(unit.className)} Lv${option.retainedLevels} ＋ ${escapeHtml(option.row.名前)} Lv${option.surplus}</span></button>`).join('');
+  const raceRows=races.filter(option=>option.available).map(option=>`<p class="v39-char-note"><b>${escapeHtml(option.targetRace)} Lv${option.targetLevel}</b> / ${escapeHtml(option.village.name)}の交流から転生</p>`).join('');
+  const blockedRows=[...blocked.map(option=>({name:option.row.ルビ||option.row.名前,reasons:option.reasons})),
+    ...races.filter(option=>!option.available).map(option=>({name:option.targetRace,reasons:option.reasons}))]
+    .map(option=>`<details class="v39-char-promotion"><summary><b>${escapeHtml(option.name)}</b></summary><p>${escapeHtml(option.reasons.join(' / '))}</p></details>`).join('');
   return `<div class="v39-char-detail-scroll">
+    <button type="button" class="v39-char-promotion-option" data-v39-base-class-acquire ${canAcquireBase?'':'disabled'}>新規獲得</button>
+    <h4>獲得可能なクラス・種族</h4>
+    ${classRows+raceRows||'<p class="v39-char-note">現在取得できる候補はありません。</p>'}
+    ${equipmentMessage?`<p role="status">${escapeHtml(equipmentMessage)}</p>`:''}
+    <h4>条件未達の候補</h4>
+    ${blockedRows||'<p class="v39-char-note">条件未達の候補はありません。</p>'}
     <h4>成長</h4>
     ${renderV39UnitGrowth(unit)}
     ${unit.fusionGrowth?'<p class="v39-char-note">合体後のEXPは、基礎と追加クラスへ配分されます。EXPゲージは基礎分です。</p>':''}
     <details class="v39-char-note"><summary>Lvの内訳について</summary><p>種族Lvの表示は初期種族ボーナスLv5を含まない値です。</p></details>
-    <h4>上位クラス取得</h4>
-    <p class="v39-char-note">前提職の上限を超えたLvを移します。総合LvとEXPは増えません。</p>
-    ${options.length?options.map(option=>`<details class="v39-char-promotion"><summary><b>${escapeHtml(option.row.ルビ || option.row.名前)}</b><span>${option.available?'取得可能':'条件未達'}</span></summary><p>${option.available?`${escapeHtml(unit.className)}Lv${option.limit}＋${escapeHtml(option.row.名前)}Lv${option.surplus}`:escapeHtml(option.reasons.join(' / '))}</p><button data-v39-class-acquire="${escapeHtml(option.row.名前)}" ${option.available?'':'disabled'}>取得する</button></details>`).join(''):'<p class="v39-char-note">現在職を前提とする上位候補はありません。</p>'}
-    ${equipmentMessage?`<p role="status">${escapeHtml(equipmentMessage)}</p>`:''}
   </div>`;
 }
 
@@ -300,6 +327,7 @@ function installStyles() {
     #characterModal .v39-char-squad-toolbar .v39-char-squad-action{margin:0;padding:5px 7px}
     #characterModal .v39-char-squad-header{display:flex;justify-content:space-between;align-items:center;gap:6px}
     #characterModal .v39-char-group-heading{font:inherit;min-height:30px;padding:4px 0;border:0;border-bottom:1px solid #40575e;background:transparent;color:#a8dfe5;text-align:left;overflow-wrap:anywhere}
+    #characterModal button.v39-char-promotion-option{width:100%;display:grid;gap:3px;text-align:left;padding:7px;margin-bottom:4px;background:#18343c;color:#eef5f3;border:1px solid #53717c;border-radius:6px;cursor:pointer} #characterModal button.v39-char-promotion-option:is(:hover,:focus-visible){background:#25464d;border-color:#8dcfd1}
     #characterModal .v39-char-promotion{border-bottom:1px solid #40575e;padding:5px 0}
     #characterModal .v39-char-promotion summary{cursor:pointer;padding:5px 0;overflow-wrap:anywhere}
     #characterModal .v39-char-promotion summary span{display:block;color:#a9bbbf;font-size:var(--font-secondary)}
@@ -449,14 +477,28 @@ function install() {
     }
     const army=event.target.closest?.('#characterModal [data-animal-army-open]');
     if(army){openV39AnimalArmyEditor(army.dataset.animalArmyOpen,openCharacterModal);return;}
-    const promotion=event.target instanceof Element?event.target.closest('[data-v39-class-acquire]'):null;
+    const promotion=event.target instanceof Element?event.target.closest('[data-v39-class-acquire],[data-v39-base-class-acquire]'):null;
     if(promotion?.closest('#characterModal')) {
       const state=window.getV39GameState();
-      if(!window.confirm('前提職の超過Lvを移して上位クラスを取得しますか？'))return;
-      const result=acquireV39UpperClass(state,state.activePlayerId,detailUnitId(),promotion.dataset.v39ClassAcquire);
-      equipmentMessage=result.ok?result.message:result.reason;
-      if(result.ok)window.setV39GameState({players:result.state.players},{reason:'class-promotion'});
-      window.refreshV39SquadDerivedUI?.();render();return;
+      const unitId=detailUnitId(),playerId=state.activePlayerId,turn=state.timeline?.turnNumber;
+      const unit=state.players.find(player=>player.id===playerId)?.factionState.units.find(row=>row.id===unitId);
+      if(!unit)return;
+      const baseAcquisition=promotion.hasAttribute('data-v39-base-class-acquire');
+      const options=baseAcquisition?getV39BaseClassAcquisitionOptions(state,playerId,unit):getV39ClassPromotionOptions(state,playerId,unit);
+      const choices=options.filter(option=>option.available).map(option=>option.row.名前);
+      const preferred=promotion.dataset.v39ClassAcquire;
+      window.openV39AcquisitionPicker?.({kind:'class',race:unit.race,
+        choices:[preferred,...choices.filter(name=>name!==preferred)].filter(name=>choices.includes(name)),
+        subtitle:`${unit.name}の${baseAcquisition?'基礎クラス':'上位職'}を選択（${baseAcquisition?"現在職の超過Lvを移します":"現在職から最大10Lvを移します"}）`,
+        onConfirm:className=>{
+          const current=window.getV39GameState();
+          if(current.activePlayerId!==playerId||current.timeline?.turnNumber!==turn)return;
+          const result=acquireV39UpperClass(current,playerId,unitId,className,{baseAcquisition});
+          equipmentMessage=result.ok?result.message:result.reason;
+          if(result.ok)window.setV39GameState({players:result.state.players},{reason:'class-promotion'});
+          window.refreshV39SquadDerivedUI?.();render();
+        }});
+      return;
     }
     const element = event.target instanceof Element ? event.target : null;
     const resistance = element?.closest("[data-v39-resistance-label]");

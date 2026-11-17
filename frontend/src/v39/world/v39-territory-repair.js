@@ -37,12 +37,15 @@ window.runV39TerritoryRepair = (playerId, settlementId) => commitRepair(
 window.inspectV39TerritoryRepair = (playerId, settlementId) => inspectV39TerritoryRepair(window.getV39GameState?.({includeWorlds:false}), playerId, settlementId);
 window.setV39TerritoryAutoRepair = setAutoRepair;
 
-window.addEventListener("v39:economy-turn-resolved", event => {
+function runAutoRepair(event) {
   const state = window.getV39GameState?.({includeWorlds:false});
   const turnNumber = event?.detail?.turnNumber || state?.timeline?.turnNumber || 1;
   for (const player of state?.players || []) {
     for (const settlement of getFactionSettlements(player?.factionState)) {
+      if(event.type==='v39:territory-building-phase-resolved'&&player.isPlayer===false)continue;
       if (settlement.autoRepair === true) commitRepair(player.id, settlement.settlementId, turnNumber, "territory-auto-repair");
     }
   }
-});
+}
+window.addEventListener("v39:economy-turn-resolved",runAutoRepair);
+window.addEventListener("v39:territory-building-phase-resolved",runAutoRepair);

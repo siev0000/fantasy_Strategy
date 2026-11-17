@@ -13,6 +13,21 @@ const selectedCharacterName = ref("主人公");
 const selectedVillageName = ref("はじまりの村");
 const visibleStep = ref("");
 const setupTarget = ref(null);
+const acquisition=ref(null);
+
+window.openV39AcquisitionPicker=request=>{
+  if(visibleStep.value||acquisition.value||!request?.choices?.length)return false;
+  acquisition.value=request;
+  return true;
+};
+
+function confirmAcquisition(name){
+  const request=acquisition.value;
+  if(!request?.choices.includes(name))return;
+  acquisition.value=null;
+  request.onConfirm(name);
+}
+
 
 function openSetup(detail = {}) {
   const playerId = String(detail?.playerId || "player-1").trim();
@@ -179,6 +194,27 @@ window.addEventListener("v39:multiplayer-sovereign-required", event => {
 </script>
 
 <template>
+  <class-select-modal
+    v-if="acquisition?.kind === 'class'"
+    :show="true"
+    :selected-race="acquisition.race"
+    :selected-class="acquisition.choices[0]"
+    :allowed-classes="acquisition.choices"
+    :setup-progress-text="acquisition.subtitle"
+    @close="acquisition = null"
+    @back="acquisition = null"
+    @confirm="confirmAcquisition($event.className)"
+  />
+  <race-select-modal
+    v-if="acquisition?.kind === 'race'"
+    :show="true"
+    :selected-race="acquisition.choices[0]"
+    :allowed-races="acquisition.choices"
+    :include-acquirable-races="true"
+    :setup-progress-text="acquisition.subtitle"
+    @close="acquisition = null"
+    @confirm="confirmAcquisition"
+  />
   <race-select-modal
     :show="visibleStep === 'race'"
     :selected-race="selectedRace"

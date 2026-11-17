@@ -10,7 +10,7 @@ import { advanceV39PersonalDefenses } from "../../lib/v39-defense-rules.js";
 import {pruneV39DefenseStructures} from '../../lib/v39-wall-edges.js';
 import {resolveV39GroundCollapses} from '../world/v39-terrain-destruction.js';
 import { advanceV39NaturalFog, advanceV39Fog } from "../../lib/v39-fog-rules.js";
-import { resolveV39FacilityEffectsAtTile } from "../../lib/v39-economy-rules.js";
+import { resolveV39FacilityEffectsAtTile,advanceV39TerritoryBuildingPhase } from "../../lib/v39-economy-rules.js";
 import { getSettlementForTerritory } from "../../lib/settlement-state.js";
 import {resolveV39CitySpecializationModifiers} from '../../lib/v39-city-specialization-rules.js';
 import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
@@ -354,6 +354,14 @@ export async function advanceTurn(options = {}) {
       state=fresh;
       const next=finishV39TerritoryPlanning(state);
       if(!next.ok)return false;
+      if(!isV39TerritoryPhase(next.state)){
+        await withV39WorldContext('surface',()=>{
+          const scoped=window.getV39GameState({includeWorlds:false});
+          const worked=advanceV39TerritoryBuildingPhase(scoped,window.__v39FieldRuntime?.mapData);
+          window.setV39GameState({players:worked.players,facilitiesByTile:worked.facilitiesByTile,settlements:worked.settlements,territoryOwnerByTile:worked.territoryOwnerByTile,territoryStateByTile:worked.territoryStateByTile},{reason:'territory-building-phase',returnState:false});
+          window.dispatchEvent(new CustomEvent('v39:territory-building-phase-resolved',{detail:{turnNumber:before.turnNumber}}));
+        },{allUnits:true});
+      }
       window.setV39GameState({activePlayerId:next.state.activePlayerId,timeline:next.state.timeline},{reason:'territory-planning-finished',returnState:false});
       if(!isV39TerritoryPhase(next.state))window.activateV39FooterTab?.('squad');
       showBanner(isV39TerritoryPhase(next.state)?'この勢力の拠点フェーズ終了。次の勢力へ移ります':'拠点フェーズ終了。戦闘・探索を開始します');

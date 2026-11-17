@@ -132,6 +132,8 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
   }
 }
 
+const devilSummonSlots=new Map([['レムレ',1],['レムレー',1],['インプ',2]]);
+
 function resolveReferenceFromEnemy(enemy) {
   const undead=resolveUndeadArtworkReference(enemy);
   const yokaiReference=resolveYokaiArtworkReference(enemy);
@@ -149,6 +151,11 @@ function resolveReferenceFromEnemy(enemy) {
       return ref?.race===baseRace&&ref?.className==='ゴースト';
     });
   if(undead&&!namedGhostBeast&&!namedYokaiFusion)return undead;
+  const fusionName=text(enemy?.fusionGrowth?.recipeName||enemy?.strongFusionResultName);
+  if(fusionName==='ワイバーン')return {fileName:'ワイバーン_ユニット集.webp',slotNumber:1};
+  const summonName=text(enemy?.summon?.catalogName||(enemy?.id==='summon-preview'?enemy?.name:''));
+  const summonSlot=devilSummonSlots.get(summonName);
+  if(summonSlot)return {fileName:'デヴィル_召喚集.webp',slotNumber:summonSlot};
   const beastReference=resolveBeastArtworkReference(enemy);
   if(beastReference)return beastReference;
   const directFileName = text(

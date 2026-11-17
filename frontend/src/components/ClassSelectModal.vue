@@ -20,6 +20,7 @@ const props = defineProps({
   selectedRace: { type: String, default: "" },
   selectedClass: { type: String, default: "" },
   allowAdvancedClasses: { type: Boolean, default: false },
+  allowedClasses: { type: Array, default: null },
   baseClassesOnly: { type: Boolean, default: false },
   setupProgressText: { type: String, default: "" }
 });
@@ -112,6 +113,7 @@ const skillDescMap = computed(() => {
 
 const classCandidates = computed(() => {
   const race = nonEmptyText(props.selectedRace);
+  if (props.allowedClasses) return allClasses.value.filter(row=>props.allowedClasses.includes(nonEmptyText(row.名前)));
   if (!race) return [];
   if(props.baseClassesOnly)return allClasses.value.filter(isV39BaseClassRow);
   const raceClassName = RACE_CLASS_NAME_MAP[race] || race;

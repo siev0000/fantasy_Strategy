@@ -302,7 +302,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
           </div>
         </section>
         <section id="footSettlement" class="settlement-panel" hidden aria-hidden="true"></section>
-        <section id="footInteraction" class="v39-interaction-panel" hidden aria-hidden="true"><header><strong>交流</strong><span>相手の領土・隣接ユニットを選択</span></header><p data-interaction-empty>村・勢力の領土に隣接するユニット、または相手のマスを選択してください。</p><div id="v39-interaction-actions"></div></section>
+        <section id="footInteraction" class="v39-interaction-panel" hidden aria-hidden="true"><header><strong>交流</strong><span>相手の領土・隣接ユニットを選択</span><button type="button" id="v39-interaction-faction-info">勢力情報</button></header><p data-interaction-empty>村・勢力の領土に隣接するユニット、または相手のマスを選択してください。</p><div id="v39-interaction-actions"></div></section>
         <section id="footLogistics" hidden aria-hidden="true"></section>
         <section id="footTest" class="v39-test-footer-panel" hidden aria-hidden="true"></section>
         <section id="footManage" class="mobile-manage-panel" hidden aria-hidden="true">

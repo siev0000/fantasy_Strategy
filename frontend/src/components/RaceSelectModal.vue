@@ -35,6 +35,7 @@ const raceBackgroundByCategory = new Map(
 const props = defineProps({
   show: { type: Boolean, default: false },
   selectedRace: { type: String, default: "" },
+  includeAcquirableRaces: { type: Boolean, default: false },
   allowedRaces: { type: Array, default: () => [] },
   setupProgressText: { type: String, default: "" }
 });
@@ -95,7 +96,8 @@ function raceListIconSrc(race) {
 
 const races = computed(() => {
   if (!Array.isArray(raceSelectionDb)) return [];
-  return raceSelectionDb.filter(isV39RacePlayable);
+  return raceSelectionDb.filter(row=>isV39RacePlayable(row)||
+    (props.includeAcquirableRaces&&props.allowedRaces.includes(row.key)));
 });
 
 const allowedRaceSet = computed(() => {

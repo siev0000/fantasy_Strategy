@@ -32,7 +32,7 @@ import {getFactionSettlements} from '../../lib/settlement-state.js';
 import {applyV39NaturalLandslide,damageV39DisasterGround,V39_TERRAIN_DESTRUCTION_RULES} from '../../lib/v39-terrain-destruction.js';
 import {createV39FacilityGroundAbsorber,applyV39PlannedFacilityDamage} from '../../lib/v39-facility-ground-absorption.js';
 import {scheduleV39CaveEarthquake} from '../../lib/v39-cave-earthquake.js';
-import {advanceV39DiseaseConditions,applyV39DiseasePopulation} from '../../lib/v39-disease-events.js';
+import {advanceV39DiseaseConditions,applyV39DiseasePopulation,applyV39FixedDisasterPopulation} from '../../lib/v39-disease-events.js';
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -179,6 +179,7 @@ function buildDisasterEvent(rule, mapData, anchor, turn, forced = false, terrain
 
     damageElement:rule.damageElement,damagePower:rule.damagePower,movementDamagePower:rule.movementDamagePower,
     groundDamageEnabled:rule.groundDamageEnabled,
+    populationLossBase:rule.populationLossBase,
     damagePattern:rule.damagePattern,randomDamageTileCount:rule.randomDamageTileCount,
     randomDamageTilesPerHit:rule.randomDamageTilesPerHit,
     spawnEnemy:rule.spawnEnemy,
@@ -230,7 +231,7 @@ export function inspectV39NaturalDisasterTrial(state,mapData,turn){
 }
 
 function tickDisasterDamage(state, mapData, activeDisasters, turn) {
-  const damageEvents = activeDisasters.filter(event => integer(event?.lastTickTurn) < turn && (event.disasterId==='精神浸食'||resolveV39DisasterDamage(event).power > 0))
+  const damageEvents = activeDisasters.filter(event => integer(event?.lastTickTurn) < turn && (event.disasterId==='精神浸食'||event.populationLossBase>0||resolveV39DisasterDamage(event).power > 0))
     .map(event=>({...event,damagePower:resolveV39ClimateDisasterPower(event,mapData,state.worldEnvironment?.weather),damageTileKeys:resolveV39DisasterDamageTiles(event,turn),damageTickTurn:turn}));
   if (!damageEvents.length) return { players:state.players, enemies:state.enemies, neutralVillages:state.neutralVillages, activeDisasters, entries:[] };
   const unitDamageByKey = new Map();
@@ -288,11 +289,12 @@ function tickDisasterDamage(state, mapData, activeDisasters, turn) {
       entries:[...facilities.entries,...absorbed.entries]};
   }
   const displaced=applyV39DisasterKnockback({...state,players:facilities.players,enemies,neutralVillages:facilities.neutralVillages},mapData,damageEvents);
+  const population=applyV39FixedDisasterPopulation({...state,players:displaced.players,neutralVillages:displaced.neutralVillages},damageEvents,turn);
   return {
-    players:displaced.players,
+    players:population.players,
     enemies:displaced.enemies,
-    neutralVillages:displaced.neutralVillages,
-    entries:[...entries,...facilities.entries,...displaced.damageEntries],knockbackEntries:displaced.entries,terrainDamageReports,
+    neutralVillages:population.neutralVillages,
+    entries:[...entries,...population.entries,...facilities.entries,...displaced.damageEntries],knockbackEntries:displaced.entries,terrainDamageReports,
     activeDisasters:activeDisasters.map(event => integer(event?.lastTickTurn) < turn
       ? { ...event, ...damageEvents.find(row=>row.id===event.id), lastTickTurn:turn } : event)
   };

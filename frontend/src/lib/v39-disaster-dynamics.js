@@ -35,6 +35,12 @@ function area(map,point,radius){
   for(let y=Math.max(0,point.y-radius-1);y<=Math.min(map.h-1,point.y+radius+1);y++)for(let x=Math.max(0,point.x-radius-1);x<=Math.min(map.w-1,point.x+radius+1);x++)if(getHexDistance(point,{x,y})<=radius)result.push(`${x},${y}`);
   return result;
 }
+function travelStopRoll(id,turn,step){
+  let hash=2166136261;
+  for(const char of `${id}:${turn}:${step}`)hash=Math.imul(hash^char.charCodeAt(0),16777619);
+  return (hash>>>0)/4294967296;
+}
+
 export function advanceV39DynamicDisaster(source,map,turn,state={}){
   const detail=source.details||{};
   if(!detail.movement)return source;
@@ -55,13 +61,32 @@ export function advanceV39DynamicDisaster(source,map,turn,state={}){
     if(wind!=null)direction=!Number.isInteger(source.direction)?wind
       :turn>event.startsAtTurn?turnV39HexDirectionToward(direction,wind,detail.windTurnSteps??1):direction;
   }
-  if(turn>event.startsAtTurn)for(let step=0;step<(detail.stepsPerTurn||0);step++){
+  let traveled=event.traveledSteps??0;
+  const limit=detail.maximumTravelSteps??Infinity;
+  if(turn>event.startsAtTurn&&!event.travelStopped)for(let step=0;step<(detail.stepsPerTurn||0)&&traveled<limit;step++){
     const neighbors=getHexOffsetNeighbors(point.x,point.y);
     let next=neighbors[direction];
-    if(detail.movement==='downhill')next=neighbors.filter(p=>inside(map,p)&&height(map,p)<height(map,point)).sort((a,b)=>height(map,a)-height(map,b))[0];
+    if(detail.movement==='downhill'){
+      const previous=event.downhillDirection;
+      const candidates=neighbors.map((tile,index)=>({tile,index})).filter(({tile,index})=>{
+        const difference=Math.abs(index-previous);
+        const angle=Math.min(difference,6-difference)*60;
+        return inside(map,tile)&&height(map,tile)<height(map,point)
+          &&(!Number.isInteger(previous)||angle<=(detail.travelTurnAngle??180));
+      }).sort((a,b)=>height(map,a.tile)-height(map,b.tile));
+      if(!candidates.length){event.travelStopped=true;break;}
+      next=candidates[0].tile;
+      event.downhillDirection=direction=candidates[0].index;
+    }
     if(!next||!inside(map,next)||detail.movement==='coast'&&(height(map,next)>(detail.maximumHeight??Infinity)||event.reachedLand&&water(map,next))){event.expiresAtTurn=Math.min(event.expiresAtTurn,turn-1);break;}
     point=next;if(!water(map,point))event.reachedLand=true;
+    traveled++;
+    if(detail.travelStopChance>0&&travelStopRoll(event.id,turn,traveled)<detail.travelStopChance){
+      event.travelStopped=true;
+      break;
+    }
   }
+  if(detail.maximumTravelSteps!=null||detail.travelStopChance>0)event.traveledSteps=traveled;
   const tileKeys=area(map,point,event.radius||0);
   event={...event,...point,tileKeys,direction,lastMovementTurn:turn};
   if(detail.radiusDecayPerTurn!==undefined){

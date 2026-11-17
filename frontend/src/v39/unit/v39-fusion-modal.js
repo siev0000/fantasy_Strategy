@@ -36,6 +36,52 @@ function detail(unit,check){
     ${renderV39DetailTabs([['status','能力'],['skills','スキル'],['equipment','装備'],['growth','成長']],session.detailTab,'data-fusion-detail-tab')}
     <div class="squad-detail-tab-content"><div class="squad-detail-tab-panel" data-fusion-detail-scroll>${rewards}${content}${allocation}</div></div>`;
 }
+function recipeOutline(recipe){
+  return {name:recipe?.合成結果,race:recipe?.requirements?.[0]?.name,
+    fusionGrowth:{recipeName:recipe?.合成結果},
+    fusionAppearanceClass:recipe?.requirements?.find(row=>['エンジェル','デヴィル'].includes(row?.name))?.name};
+}
+
+function recipeReadiness(state,recipe,units){
+  const request={...session,recipeId:recipe.id,materialIds:[]};
+  const slots=inspectV39MonsterFusion(state,request).slots||[];
+  if(slots.length<2||slots.length>12)return '素材条件を確認';
+  const slotByUnit=new Map();
+  function assign(index,seen){
+    for(const unit of units){
+      if(seen.has(unit.id)||!matchV39FusionMaterialRequirement(unit,slots[index]))continue;
+      seen.add(unit.id);
+      if(!slotByUnit.has(unit.id)||assign(slotByUnit.get(unit.id),seen)){
+        slotByUnit.set(unit.id,index);
+        return true;
+      }
+    }
+    return false;
+  }
+  if(!slots.every((_,index)=>assign(index,new Set())))return '使用可能な素材が不足';
+  const materialIds=[];
+  for(const [id,index] of slotByUnit)materialIds[index]=id;
+  return inspectV39MonsterFusion(state,{...request,materialIds}).available
+    ?'合成可能':'素材あり・配置や発動条件を確認';
+}
+
+function renderRecipePicker(host,state,recipes,check){
+  const materials=getV39FusionMaterials(check.faction).filter(unit=>
+    !inspectV39FusionMaterial(state,session.playerId,check.actor,unit).length);
+  const rows=recipes.map(recipe=>{
+    const requirements=recipe.requirements.filter(Boolean).map(r=>`${r.name} ×${r.count}`).join('、');
+    return `<button type="button" class="fusion-recipe-card" data-fusion-pick-recipe="${esc(recipe.id)}">
+      ${portrait(recipeOutline(recipe))}
+      <span><strong>${esc(recipe.合成結果)}</strong><small>${esc(requirements||'素材未設定')}</small>
+      <small>${esc(recipeReadiness(state,recipe,materials))}${['テスト専用','候補','未定'].includes(recipe.状態)?' / テスト限定':''}</small></span>
+    </button>`;
+  }).join('');
+  updateV39RetainedMarkup(host,`<section class="fusion-recipe-picker" role="dialog" aria-modal="true" aria-labelledby="fusion-recipe-title">
+    <header><h3 id="fusion-recipe-title">合成レシピを選ぶ</h3><button type="button" data-fusion-recipe-back>戻る</button></header>
+    <div class="fusion-recipe-list">${rows||'<p>選べるレシピがありません。</p>'}</div>
+  </section>`);
+}
+
 function render(){
   if(!session)return;
   const state=currentState();
@@ -45,6 +91,7 @@ function render(){
   const recipes=getV39FusionRecipes(state);
   if(!recipes.some(r=>r.id===session.recipeId)){session.recipeId=recipes[0]?.id;session.materialIds=[];}
   const check=inspectV39MonsterFusion(state,session),units=getV39FusionMaterials(check.faction),recipe=check.recipe;
+  if(session.pickingRecipe){renderRecipePicker(host,state,recipes,check);return;}
   session.activeSlot=Math.min(session.activeSlot,Math.max(0,(check.slots?.length||1)-1));
   const required=check.slots?.[session.activeSlot],candidates=units.filter(u=>required&&matchV39FusionMaterialRequirement(u,required));
   if(!candidates.some(u=>u.id===session.candidateId))session.candidateId=session.materialIds[session.activeSlot]
@@ -52,14 +99,13 @@ function render(){
   const candidate=candidates.find(u=>u.id===session.candidateId),reasons=candidate?candidateReasons(state,check,candidate):['候補がありません'];
   const result=session.created||check.preview,detailUnit=session.created||(session.detailSource==='result'?check.preview:candidate);
   const detailKey=`${session.detailSource}:${detailUnit?.id}:${session.activeSlot}:${session.detailTab}`;
-  const outline={name:recipe?.合成結果,race:recipe?.requirements?.[0]?.name,fusionGrowth:{recipeName:recipe?.合成結果},
-    fusionAppearanceClass:recipe?.requirements?.find(row=>['エンジェル','デヴィル'].includes(row?.name))?.name};
+  const outline=recipeOutline(recipe);
   const preview=`<div class="fusion-preview fusion-result${session.animating?' animating':''}" data-fusion-preview>
     <span class="fusion-preview-label">${session.created?'合成完了':'合成後のユニット'}</span>
     ${session.animating?`<div class="fusion-converge">${session.materials.map(unit=>portrait(unit)).join('')}</div>`:''}${portrait(result||outline,!result)}
     <h3>${esc(result?.name||recipe?.合成結果||'レシピを選択')}</h3><b>${result?`Lv${result.level}`:'素材を選択してください'}</b>
     ${session.confirming?'<p class="fusion-confirm-warning">素材と素材の未使用EXPを消費します。元に戻せません。</p>':''}</div>`;
-  const toolbar=`<div class="fusion-toolbar"><label><span>レシピ</span><select data-fusion-recipe aria-label="レシピ">${recipes.map(r=>`<option value="${r.id}"${r.id===session.recipeId?' selected':''}>${esc(r.合成結果)}${r.状態==='テスト専用'?'（テスト専用）':['候補','未定'].includes(r.状態)?`（${esc(r.状態)}・テスト限定）`:''}</option>`).join('')}</select></label>
+  const toolbar=`<div class="fusion-toolbar"><button type="button" data-fusion-recipe-open>レシピを選ぶ</button><span>${esc(recipe?.合成結果)}</span>
     <label><span>方法</span><select data-fusion-mode aria-label="合成方法"><option value="skill"${session.mode==='skill'?' selected':''}>スキル</option><option value="facility"${session.mode==='facility'?' selected':''}>施設</option></select></label>
     ${session.mode==='skill'&&getV39FusionSkills(check.actor).length>1?`<label><span>スキル</span><select data-fusion-skill>${getV39FusionSkills(check.actor).map(row=>`<option value="${esc(row.名前)}"${check.skill?.名前===row.名前?' selected':''}>${esc(row.名前)}</option>`).join('')}</select></label>`:''}</div>`;
   const slotBar=`<div class="fusion-slots" role="tablist" aria-label="素材枠">${(check.slots||[]).map((name,index)=>`<button role="tab" aria-selected="${index===session.activeSlot}" data-fusion-slot="${index}">素材${index+1} ${esc(name)}${session.materialIds[index]?' ✓':''}</button>`).join('')}</div>`;
@@ -94,6 +140,16 @@ document.addEventListener('click',event=>{
   const el=event.target instanceof Element?event.target:null,trigger=el?.closest('[data-v39-fusion-open]');
   if(trigger){openV39FusionModal(trigger.dataset.v39FusionOpen,trigger.dataset.fusionMode||'skill');return;}
   if(!session||!el?.closest('#v39-fusion-modal'))return;
+  if(el.closest('[data-fusion-recipe-open]')){session.pickingRecipe=true;render();return;}
+  if(el.closest('[data-fusion-recipe-back]')){session.pickingRecipe=false;render();return;}
+  const recipeButton=el.closest('[data-fusion-pick-recipe]');
+  if(recipeButton){
+    const recipeId=recipeButton.dataset.fusionPickRecipe;
+    if(!getV39FusionRecipes(currentState()).some(recipe=>recipe.id===recipeId))return;
+    if(recipeId!==session.recipeId)Object.assign(session,{recipeId,materialIds:[],activeSlot:0,candidateId:'',detailSource:'material',confirming:false,message:''});
+    session.pickingRecipe=false;
+    render();return;
+  }
   if(el.closest('[data-fusion-close]')){close();return;}
   if(el.closest('[data-fusion-next]')&&session.created){
     clearTimeout(timer);timer=null;
@@ -134,11 +190,10 @@ document.addEventListener('click',event=>{
 });
 document.addEventListener('change',event=>{
   const el=event.target;if(!session||session.created||!(el instanceof HTMLSelectElement)||!el.closest('#v39-fusion-modal'))return;
-  if(el.matches('[data-fusion-recipe]')){session.recipeId=el.value;session.materialIds=[];session.activeSlot=0;session.candidateId='';}
   if(el.matches('[data-fusion-skill]'))session.skillName=el.value;
   if(el.matches('[data-fusion-mode]')){session.mode=el.value;session.skillName='';}
   session.confirming=false;session.message='';render();
 });
-window.addEventListener('keydown',event=>{if(event.key==='Escape')close();});
+window.addEventListener('keydown',event=>{if(event.key==='Escape'){if(session?.pickingRecipe){session.pickingRecipe=false;render();}else close();}});
 for(const name of ['v39:save-loaded','v39:field-generated'])window.addEventListener(name,close);
 window.addEventListener('v39:game-state-changed',()=>{if(session)render();});

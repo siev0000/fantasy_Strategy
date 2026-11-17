@@ -438,7 +438,25 @@ function roundDetectionValue(value) {
   return Number.isFinite(parsed) ? Math.round(parsed * 10) / 10 : 0;
 }
 
-function persistVisibilityTiles(faction, explored, currentVision) {
+function recordFactionSightings(state, player, detectedIds, turn){
+  const previous=player.factionState.factionSightings||{};
+  const updates=[];
+  const worldId=state.activeWorldId||'surface';
+  for(const target of state.players||[]){
+    if(target.id===player.id)continue;
+    const units=(target.factionState?.units||[]).filter(unit=>livingUnit(unit)
+      &&isV39UnitInWorld(unit,worldId)&&detectedIds.has(String(unit.id??unit.unitId??unit.characterId??'').trim()));
+    if(!units.length)continue;
+    const {x,y}=units[0];
+    const size=units.length===1?'単独':units.length<=4?'少数':'多数';
+    const old=previous[target.id];
+    if(old?.x===x&&old.y===y&&old.turn===turn&&old.worldId===worldId&&old.size===size)continue;
+    updates.push([target.id,{x,y,turn,worldId,size}]);
+  }
+  return updates.length?{...previous,...Object.fromEntries(updates)}:previous;
+}
+
+function persistVisibilityTiles(faction, explored, currentVision, factionSightings) {
   const oldKeys = Array.isArray(faction?.visibility?.exploredTileKeys)
     ? faction.visibility.exploredTileKeys.map(String)
     : [];
@@ -447,8 +465,9 @@ function persistVisibilityTiles(faction, explored, currentVision) {
     : [];
   const exploredUnchanged = oldKeys.length === explored.size && oldKeys.every(key => explored.has(key));
   const visibleUnchanged = oldVisibleKeys.length === currentVision.size && oldVisibleKeys.every(key => currentVision.has(key));
-  if (exploredUnchanged && visibleUnchanged) return;
+  if (exploredUnchanged && visibleUnchanged && factionSightings===faction.factionSightings) return;
   window.updateV39ActiveFactionState?.({
+    factionSightings,
     visibility: {
       ...faction.visibility,
       exploredTileKeys: [...explored].sort(),
@@ -644,6 +663,7 @@ function renderVisibilityLayers() {
   const currentVision = vision.visible;
   const turnNumber = Math.max(1, Math.floor(Number(state?.timeline?.turnNumber) || 1));
   const detectedEntityIds = buildDetectedEntityIds(state, player.id, currentVision, vision.detectionByTile, turnNumber);
+  const factionSightings=recordFactionSightings(state,player,detectedEntityIds,turnNumber);
   const explored = new Set(
     (Array.isArray(faction.visibility?.exploredTileKeys) ? faction.visibility.exploredTileKeys : []).map(String)
   );
@@ -695,6 +715,7 @@ function renderVisibilityLayers() {
     initialPlacement ? 1 : 0,
     sortedSetSignature(explored),
     sortedSetSignature(currentVision),
+    factionSightings,
     sortedSetSignature(detectedEntityIds),
     livingUnitScoutSignature(faction.units),
     nestSignature(visibleNests),
@@ -705,7 +726,7 @@ function renderVisibilityLayers() {
     sortedSetSignature(developmentSelection?.selectedTileKeys),
     playerColor
   ].join(";");
-  persistVisibilityTiles(faction, explored, currentVision);
+  persistVisibilityTiles(faction, explored, currentVision, factionSightings);
   // Weather remains visible out to normal LOS; spotting and exploration still use penalized vision.
   drawV39AtmosphereLayer(scene,data,state,()=>atmosphereDisplayVision(scene,data,faction,state,player.id),testMode);
   if (renderSignature === lastRenderSignature && scene === lastRenderScene) return true;

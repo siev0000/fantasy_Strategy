@@ -25,8 +25,12 @@ export function resolveV39DisasterRule(value) {
 
     damageElement:text(row.ダメージ属性),
     groundDamageEnabled:row.地形被害ON===true||String(row.地形被害ON).toLowerCase()==='true',
+    populationLossBase:Math.max(0,Math.floor(configured(row.人口減少値))),
     damagePower:Math.max(0,configured(row.ダメージ威力)),
-    details:row.災害詳細設定&&typeof row.災害詳細設定==='object'?row.災害詳細設定:{},
+    details:{...row.災害詳細設定,
+      ...(text(row.最大進行マス) ? {maximumTravelSteps:Math.max(0,Math.floor(configured(row.最大進行マス)))} : {}),
+      ...(text(row.維持角度) ? {travelTurnAngle:Math.min(180,Math.max(0,configured(row.維持角度)))} : {}),
+      ...(text(row.停止率) ? {travelStopChance:Math.min(1,Math.max(0,configured(row.停止率)))} : {}),...(row["1ターンあたりの移動マス数"] == null ? {} : {stepsPerTurn:row["1ターンあたりの移動マス数"]})},
     movementDamagePower:Math.max(0,configured(row.移動時ダメージ威力)),
     damagePattern:randomDamageTileCount>0||randomDamageTilesPerHit>0?'ランダム':'全域',
     randomDamageTileCount,

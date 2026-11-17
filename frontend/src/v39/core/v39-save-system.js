@@ -1,3 +1,4 @@
+import {normalizeV39LegacyCombatSave} from '../../lib/v39-legacy-combat-save.js';
 import {isV39AutoFoodResupplyEnabled} from '../../lib/v39-carried-food.js';
 const SAVE_FORMAT = "fantasy-strategy-v39";
 import {V39_SOUL_APP_FIELDS,normalizeV39SoulAppSettings} from '../../lib/v39-soul-app.js';
@@ -264,6 +265,7 @@ export function importV39SaveJson(jsonText) {
   validateSaveData(save);
   const migration = migrateSaveData(save);
   save = validateSaveData(migration.save);
+  save = {...save,gameState:normalizeV39LegacyCombatSave(save.gameState)};
   const recovery=window.recoverV39MissingCaves?.(hydrateRuntimeDefinitions(save.gameState),save.field?.mapData);
   if(recovery){
     save.gameState=recovery.state;

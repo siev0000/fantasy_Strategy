@@ -599,6 +599,9 @@ def validate_dynamic_disasters(result):
     for record in result.records:
         if "地形被害ON" in record and type(record["地形被害ON"]) is not bool:
             result.errors.append({"type": "invalid_ground_damage_flag", "id": record.get("ID")})
+        steps = record.get("1ターンあたりの移動マス数")
+        if steps is not None and (type(steps) not in (int, float) or not math.isfinite(steps) or not float(steps).is_integer() or not 0 <= steps <= 10):
+            result.errors.append({"type": "invalid_disaster_movement_steps", "name": record.get("表示名")})
         detail = record.get("災害詳細設定")
         if detail is None:
             continue

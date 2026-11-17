@@ -396,7 +396,7 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
       if(cleared){event('被状態解除',id,attacker.id,0,'回復');event('状態解除',attacker.id,id,0,'回復');}
     }
   }
-  for(const [eventName,amount]of [['ドレイン',Math.floor(drainDamage*resolveV39DrainRate(row))],['吸血',bloodRecovery]]){
+  for(const [eventName,amount]of [['ドレイン',Math.round(drainDamage*resolveV39DrainRate(row))],['吸血',bloodRecovery]]){
     const actor=ctx.units.get(text(attacker.id));
     if(amount<=0||!alive(actor))continue;
     const effectiveHealing=reduceV39BlockedHealing(actor,amount);

@@ -50,3 +50,9 @@
 @media(min-width:800px){#v39-fusion-modal>section{grid-template-rows:auto minmax(120px,42fr) minmax(0,58fr) auto}#v39-fusion-modal .fusion-panes{grid-template-columns:minmax(220px,32%) minmax(0,1fr)}}
 @media(max-width:600px){#v39-fusion-modal .fusion-toolbar label>span{display:none}#v39-fusion-modal .fusion-footer-buttons>button{flex:1;padding:6px 3px!important}#v39-fusion-modal .fusion-panes{gap:3px;padding:2px 3px}}
 @media(prefers-reduced-motion:reduce){#v39-fusion-modal .animating>.fusion-portrait{animation:none}#v39-fusion-modal .fusion-converge{display:none}}
+
+#v39-fusion-modal > .fusion-recipe-picker{grid-template-rows:auto minmax(0,1fr)}
+.fusion-recipe-list{overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));align-content:start;gap:8px;padding:8px}
+.fusion-recipe-card{display:flex;gap:10px;align-items:center;text-align:left;min-height:72px}
+.fusion-recipe-card .fusion-portrait{flex:0 0 60px;width:60px;height:60px}
+.fusion-recipe-card small{display:block;font-size:inherit;color:#acd0d4}

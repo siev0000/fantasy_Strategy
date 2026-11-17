@@ -523,6 +523,7 @@ function resetFactionForNewLocalSession(factionState = {}) {
     selectedUnitId:String(source?.selectedUnitId || ""),
     villagePlacementMode:false,
     moveCommandUnitId:"",
+    factionSightings:{},
     visibility:{
       exploredTileKeys:[], visibleTileKeys:[], spottedEnemyTileKeys:[],
       spottedFactionTileKeys:[], alertedEnemyTileKeys:[], alertedFactionTileKeys:[]

@@ -82,7 +82,9 @@ executed={...executed,timeline:{...executed.timeline,turnNumber:2},players:[{...
 executed=m.advanceV39OperationPlans(executed,map,deps);b=executed.players[0].factionState.settlements[0];assert.equal(b.operationPlans.length,0);assert.equal(b.operationPlanHistory.length,2);assert.equal(b.materialStockByType.鉄,0);
 // Real economy: income arrives before the queued facility checks its materials.
 let incomeState={...state,players:[{...state.players[0],factionState:{...state.players[0].factionState,settlements:[{...base,materialStockByType:{木材:19},operationPlans:[{id:'income',kind:'construction',facilityName:'伐採場',tile:{x:3,y:4},notBeforeTurn:1}]}]}}]};
-const advanced=m.advanceV39EconomyTurn(incomeState,map).state.players[0].factionState.settlements[0];
+const afterIncome=m.advanceV39EconomyTurn(incomeState,map).state;
+assert(afterIncome.players[0].factionState.settlements[0].operationPlans.some(row=>row.id==='income'));
+const advanced=m.advanceV39TerritoryBuildingPhase(afterIncome,map).players[0].factionState.settlements[0];
 assert(advanced.operationPlanHistory?.some(row=>row.id==='income'),JSON.stringify(advanced.operationPlans));
 assert(advanced.constructionQueue.some(row=>row.facilityName==='伐採場'));
 // Start dates and queue editing remain data, including through JSON save/load.
@@ -110,6 +112,7 @@ Object.assign(services,m,{
  withV39WorldContext:async(id,fn)=>fn(),v39TurnWorldIds:()=>['surface'],
  advanceV39RecruitInstructorMovement:state=>({state,reports:[]}),advanceV39AutomaticTransport:state=>({state,reports:[]}),advanceV39TradeLogistics:state=>({state,reports:[]}),
  advanceV39RecruitTraining:state=>({state,completedUnits:[]}),advanceV39Teleports:state=>state,advanceV39ExpeditionTools:state=>state,advanceV39ToolProduction:state=>state,
+ settleV39CastingActions:faction=>faction,advanceV39SustainedEffects:player=>player,
  restoreV39SquadMovementForTurn:faction=>faction,paintV39TurnLoading:async()=>{},showV39TurnLoading:()=>{},showV39SideNotice:()=>{}
 });
 let routed={...state,timeline:{turnNumber:1,phase:'player',operationPhase:'territory'},players:[{...state.players[0],factionState:{...state.players[0].factionState,units:[]}}]};

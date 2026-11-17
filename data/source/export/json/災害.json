@@ -798,9 +798,9 @@
     "発生方法": "条件付き,魔法",
     "発生条件": "寒冷",
     "必要継続ターン": 1,
+    "1ターンあたりの移動マス数": 1,
     "災害詳細設定": {
       "movement": "downhill",
-      "stepsPerTurn": 1,
       "minimumHeight": 2,
       "rubbleDurability": 100
     },
@@ -828,9 +828,9 @@
     "発生方法": "条件付き,魔法",
     "発生条件": "強風",
     "必要継続ターン": 1,
+    "1ターンあたりの移動マス数": 1,
     "災害詳細設定": {
       "movement": "drift",
-      "stepsPerTurn": 1,
       "damageComponents": [
         {
           "element": "打撃",
@@ -869,9 +869,9 @@
     "発生方法": "条件付き,魔法",
     "発生条件": "豪雨",
     "必要継続ターン": 1,
+    "1ターンあたりの移動マス数": 1,
     "災害詳細設定": {
       "movement": "drift",
-      "stepsPerTurn": 1,
       "minimumClimateTemperature": 20,
       "weather": "豪雨",
       "weatherHumidity": 100,
@@ -913,9 +913,9 @@
     "移動時ダメージ威力": 0,
     "発生方法": "自然,魔法",
     "必要継続ターン": 1,
+    "1ターンあたりの移動マス数": 1,
     "災害詳細設定": {
       "movement": "coast",
-      "stepsPerTurn": 1,
       "maximumHeight": 1,
       "triggerDisaster": "災害:地震",
       "triggerRadius": 6,

@@ -171,7 +171,7 @@ export function resolveUnitArtwork(unit) {
     const primary=resolveUnitSheetArtwork(unit);
     if(primary)return primary;
   }
-  return (unit?.画像ファイル || unit?.fusionGrowth || unit?.strongFusionResultName || unit?.fusionAppearanceClass || resolveUndeadArtworkReference(unit) ? resolveMonsterSheetArtwork(unit) : null)
+  return (unit?.画像ファイル || unit?.summon?.catalogName || unit?.id === 'summon-preview' || unit?.fusionGrowth || unit?.strongFusionResultName || unit?.fusionAppearanceClass || resolveUndeadArtworkReference(unit) ? resolveMonsterSheetArtwork(unit) : null)
     || resolveUnitSheetArtwork(unit)
     || resolveMonsterSheetArtwork(unit)
     || resolveUnitImageArtwork(unit)

@@ -61,29 +61,46 @@ export function advanceV39DiseaseConditions(state,map,events,turn,previous={},ra
 }
 
 export function applyV39DiseasePopulation(state,events,turn){
+  return applyPopulationLoss(state,events,turn,false);
+}
+
+export function applyV39FixedDisasterPopulation(state,events,turn){
+  return applyPopulationLoss(state,events,turn,true);
+}
+
+function applyPopulationLoss(state,events,turn,fixed){
+  const baseline=event=>event.populationLossBase||0;
   const rules=getV39ConditionEventRules('populationLoss');
-  const active=(events||[]).filter(event=>rules.some(rule=>rule.id===event.disasterId)&&number(event.lastTickTurn)<turn);
+  const active=(events||[]).filter(event=>(fixed?baseline(event)>0:rules.some(rule=>rule.id===event.disasterId))&&number(event.lastTickTurn)<turn);
   if(!active.length)return {players:state.players,neutralVillages:state.neutralVillages,entries:[]};
   const entries=[];
   function damageBase(base,ownerKey){
+    if(fixed&&(base.disasterPopulationCheckedTurn===turn||base.placed===false||(base.worldId||'surface')!==(state.activeWorldId||'surface')))return base;
     const tiles=exposedTiles(base);
     let current=base;
-    for(const event of active.filter(event=>event.diseaseOwnerKey===ownerKey||!event.diseaseOwnerKey&&event.tileKeys?.some(tile=>tiles.includes(tile)))){
+    const affected=active.filter(event=>fixed
+      ?event.damageTileKeys?.some(tile=>tiles.includes(tile))
+      :event.diseaseOwnerKey===ownerKey||!event.diseaseOwnerKey&&event.tileKeys?.some(tile=>tiles.includes(tile)));
+    if(fixed)affected.sort((a,b)=>baseline(b)-baseline(a)||String(a.id).localeCompare(String(b.id)));
+    if(fixed&&affected.length)current={...current,disasterPopulationCheckedTurn:turn};
+    for(const event of fixed?affected.slice(0,1):affected){
       const rule=rules.find(rule=>rule.id===event.disasterId);
       const rate=getV39ConditionEffect(rule,'populationLoss')?.rate||0;
       const population=Math.max(0,Math.floor(number(current.population)||Object.values(current.populationByRace||{}).reduce((sum,n)=>sum+number(n),0)));
-      if(!population||!rate)continue;
-      const requestedLoss=Math.min(population,Math.max(1,Math.ceil(population*rate)));
+      if(!population||(!fixed&&!rate))continue;
+      const requestedLoss=Math.min(population,fixed
+        ?Math.max(0,baseline(event)+Math.floor(roll(`${event.id}:${ownerKey}:${turn}:population`)*3)-1)
+        :Math.max(1,Math.ceil(population*rate)));
       const races=reducePopulationByRatio(current.populationByRace,requestedLoss);
       const loss=Object.keys(current.populationByRace||{}).length?races.loss:requestedLoss;
       if(!loss)continue;
       entries.push({targetType:'population',name:current.name||'拠点',settlementId:current.settlementId||current.id,
-        damage:loss,source:rule.name,disasterId:rule.id,x:current.x,y:current.y});
+        damage:loss,source:event.name||rule?.name||event.disasterId,disasterId:event.disasterId,x:current.x,y:current.y});
       current={...current,population:population-loss,
         populationByRace:Object.keys(current.populationByRace||{}).length?races.populationByRace:current.populationByRace,
         populationGrowthByRace:Object.keys(current.populationByRace||{}).length
           ?rescaleV39PopulationGrowthForPopulationChange(races.populationByRace,current.populationGrowthByRace):current.populationGrowthByRace,
-        diseaseState:{turn,populationLoss:loss}};
+        ...(fixed?{disasterState:{turn,populationLoss:loss}}:{diseaseState:{turn,populationLoss:loss}})};
     }
     return current;
   }

@@ -164,9 +164,23 @@ export function renderV39VillageHub(options){
     }
     if(selectedTalk==='special-reincarnation'){
       if(window.isV39MapInputLocked?.())return;
-      const current=window.getV39GameState(),result=reincarnateV39VillageNegotiator(current,current.activePlayerId,village.id,{...offeringDraft,unitId:actor?.id});
-      if(result.ok){window.setV39GameState(result.state,{reason:'special-village-reincarnation'});recordV39Conversation(village.id,'生贄を奉納して転生を願います。',result.message);window.appendV39ActivityLog?.(current.activePlayerId,'転生',result.message);}
-      onRefresh();output(root).textContent=result.message||result.reason;return;
+      const state=window.getV39GameState(),playerId=state.activePlayerId,turn=state.timeline?.turnNumber;
+      const draft={...offeringDraft,unitId:actor?.id};
+      if(!reincarnationCheck?.available||!reincarnationCheck.targetRace)return;
+      window.openV39AcquisitionPicker?.({kind:'race',choices:[reincarnationCheck.targetRace],
+        subtitle:`${actor?.name||'ユニット'}の転生先（生贄${reincarnationCheck.cost}人・AP${V39_NEGOTIATION_AP}）`,
+        onConfirm:()=>{
+          const current=window.getV39GameState();
+          if(current.activePlayerId!==playerId||current.timeline?.turnNumber!==turn)return;
+          const result=reincarnateV39VillageNegotiator(current,playerId,village.id,draft);
+          if(result.ok){
+            window.setV39GameState(result.state,{reason:'special-village-reincarnation'});
+            recordV39Conversation(village.id,'生贄を奉納して転生を願います。',result.message);
+            window.appendV39ActivityLog?.(playerId,'転生',result.message);
+          }
+          onRefresh();output(root).textContent=result.message||result.reason;
+        }});
+      return;
     }
     if(selectedTalk==='raid'&&!window.confirm('この村を襲撃し、戦闘を開始しますか？'))return;
     const result=onAction(selectedTalk,'',talk.find(([id])=>id===selectedTalk)?.[1]);if(result)output(root).textContent=result.message||result.reason;

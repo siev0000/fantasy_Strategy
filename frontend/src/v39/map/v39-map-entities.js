@@ -808,6 +808,16 @@ function drawForeignUnits(scene, container, players, activePlayerId, worldId) {
       addUnitOwnerBorder(scene,marker,ownerColor);
       addDeadMark(scene, marker, unit, radius);
       addMilitaryMemberCount(scene, marker, unit, radius);
+      if(normallyVisible){
+        marker.setSize(diameter,diameter);
+        marker.setInteractive({useHandCursor:true});
+        marker.on('pointerdown',(_pointer,_lx,_ly,event)=>{
+          if(window.isV39MapInputLocked?.()||window.isV39LandConstructionOpen?.()
+            ||window.getV39AttackSession?.()||window.isV39SoulRecoverySelecting?.())return;
+          event?.stopPropagation?.();
+          window.openV39ObservedFactionUnits?.(player.id,x,y);
+        });
+      }
       container.add(marker);
     }
   }

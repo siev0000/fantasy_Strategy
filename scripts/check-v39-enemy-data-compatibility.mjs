@@ -37,6 +37,17 @@ for(const enemy of wyverns){
   }
 }
 assert.equal(m.resolveUnitArtwork({race:'ドレイク',className:'ドレイク',level:10})?.sheetFrame?.slotNumber,7,'drake is unchanged');
+const fusedWyvern={race:'ドレイク',name:'ワイバーン',className:'ドレイク',fusionGrowth:{recipeName:'ワイバーン'}};
+assert.equal(m.resolveUnitArtwork(fusedWyvern)?.sheetFrame?.fileName,'ワイバーン_ユニット集.webp');
+for(const [name,slot] of [['レムレ',1],['インプ',2]]){
+  const unit={name,race:'デヴィル',className:'デヴィル'};
+  for(const variant of [{...unit,id:'summon-preview'},{...unit,summon:{catalogName:name}}]){
+    const frame=m.resolveUnitArtwork(variant)?.sheetFrame;
+    assert.equal(frame?.fileName,'デヴィル_召喚集.webp');
+    assert.equal(frame?.slotNumber,slot);
+  }
+}
+
 const scenarios=[];
 const savedRandom=Math.random;let seed=253;Math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
 try{

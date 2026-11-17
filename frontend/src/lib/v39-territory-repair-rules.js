@@ -1,3 +1,4 @@
+import {usesV39OperationPhases,isV39TerritoryPhase} from './v39-operation-phases.js';
 import { resolveVillageScaleDefinition } from "../composables/villageCoreUtils.js";
 import { resolveCompletedResearchLevel } from "./research-progress.js";
 import { getFactionSettlementById, replaceFactionSettlement, territorySettlementId } from "./settlement-state.js";
@@ -33,6 +34,8 @@ function blacksmithLevel(player, settlement) {
 export function inspectV39TerritoryRepair(state, playerId, settlementId) {
   const player = (state?.players || []).find(row => text(row?.id) === text(playerId));
   const settlement = getFactionSettlementById(player?.factionState, settlementId);
+  if(usesV39OperationPhases(state)&&!isV39TerritoryPhase(state)&&player?.isPlayer!==false)
+    return {available:false,reason:'拠点フェーズ中に修復できます',targets:[]};
   if (!player || !settlement) return { available:false, reason:"拠点が見つかりません", targets:[] };
   const level = blacksmithLevel(player, settlement);
   const scaleLevel = Math.max(1, Math.floor(number(resolveVillageScaleDefinition(settlement)?.level, 1)));

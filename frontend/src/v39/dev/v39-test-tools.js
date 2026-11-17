@@ -605,6 +605,7 @@ function selectedTileBaseInfoHtml(state, tile) {
 
 const SCENARIO_SUITES = [
   {id:'village',label:'村・交流テスト',description:'村との会話・依頼・報酬交渉と、村の発展を確認します。',scenarios:[
+    ['faction-info-check','勢力情報・諜報資格','現在のマップで交流から勢力一覧を開く。視認した他勢力ユニットはマップで選択して確認。勢力が足りない場合は「勢力追加」を使う。'],
     ['negotiation-hub-start','会話・報酬交渉','村長・性格・交渉スキル・人口報酬・休息・属国化'],
     ['special-village-start','特殊村・生贄奉納','天使・悪魔・ヴァンパイアの軍隊加入・定期維持・本人の転生'],
     ['village-plan-start','村の計画・支援','物資不足・討伐依頼・墓地建設・守備兵の補充'],
@@ -617,7 +618,8 @@ const SCENARIO_SUITES = [
     ['expedition-invasion','洞窟への侵入・再巣化','入口への侵入と、プレイヤー不在時の再巣化']
   ]},
   {id:'support',label:'道具・部隊支援テスト',description:'薬草・水薬と、王・指揮官・王の騎士の部隊支援を確認します。',scenarios:[
-    ['expedition-start','道具・部隊支援を開始','傷ついた道具試験官と支援検証部隊を地上に配置']
+    ['expedition-start','道具・部隊支援を開始','傷ついた道具試験官と支援検証部隊を地上に配置'],
+    ['class-promotion-test','上位職取得 Lv50','ファイターLv50を配置。成長からウォーリアーを選び、Lv40＋Lv10を確認']
   ]}
 ];
 
@@ -960,6 +962,19 @@ function handleAction(action) {
     "fusion-test-start":()=>{if(window.confirm("現在のゲームを合体テストに置き換えます。開始しますか？"))window.startV39FusionTest?.();},
     "animal-army-test-start":()=>{if(window.confirm('現在のゲームを動物軍隊テストに置き換えます。開始しますか？')){closePanel();window.startV39AnimalArmyTest?.();}},
     "disaster-test-start":()=>{if(window.confirm('現在のゲームを11種類の災害検証マップに置き換えます。開始しますか？')){closePanel();window.startV39DisasterTest?.();}},
+    "class-promotion-test":()=>{
+      if(!window.confirm('現在のゲームを上位職取得の検証マップに置き換えます。開始しますか？'))return;
+      closePanel();
+      window.startV39ExpeditionTest(false,{profile:'support'});
+      const faction=window.getV39ActiveFactionState();
+      const unitId='expedition-test-king';
+      window.updateV39ActiveFactionState({selectedUnitId:unitId,units:faction.units.map(unit=>{
+        if(unit.id!==unitId)return unit;
+        return window.applyV39DerivedCharacterData({...unit,name:'上位職試験官',race:'只人',className:'ファイター',
+          level:50,prerequisiteClassLevels:{},promotionGrowthStart:null,classGrowthStart:null,hp:100,currentHp:100});
+      })});
+      window.openV39CharacterModal?.({tab:'character'});
+    },
     "expedition-start":()=>{if(window.confirm("現在のゲームを道具・部隊支援の検証マップに置き換えます。開始しますか？")){closePanel();window.startV39ExpeditionTest?.(false,{profile:"support"});}},
     "expedition-transport-start":()=>{if(window.confirm("現在のゲームを鉱床輸送・入口警備の検証マップに置き換えます。開始しますか？")){closePanel();window.startV39ExpeditionTest?.(false,{profile:"transport"});}},
     "logistics-test-start":()=>{if(window.confirm("現在のゲームを洞窟・森・村・町と3か国の物流検証マップに置き換えます。開始しますか？")){closePanel();window.startV39LogisticsTest?.();}},
@@ -972,6 +987,7 @@ function handleAction(action) {
     "weather-turn":()=>advanceTurn(),
     "weather-overlay":()=>{window.setV39WeatherOverlayEnabled?.(window.isV39WeatherOverlayEnabled?.()===false);render();},
     "snowfall-on":() => setSelectedSnowState("falling", true), "snowfall-off":() => setSelectedSnowState("falling", false),
+    "faction-info-check":()=>{closePanel();window.activateV39FooterTab?.('interaction');window.openV39FactionInfo?.();},
     "faction-player":() => addTestFaction("player"), "faction-npc":() => addTestFaction("npc"),
     turn:() => advanceTurn(),
     "turn-many":() => advanceTurn(bulkTurnCount),
