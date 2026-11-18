@@ -17,6 +17,7 @@ import { normalizeFactionSettlements, normalizeTerritoryStateRecord,getFactionSe
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
+import {releaseV39DestroyedGolemPilots} from '../../lib/v39-golem-boarding.js';
 import {findV39NewUnitDeaths,applyV39DeathPurification} from '../../lib/v39-death-purification.js';
 import {evaluateV39Victory} from '../../lib/v39-victory-rules.js';
 import {
@@ -163,7 +164,7 @@ function normalizeUnitArray(value) {
 }
 
 function normalizeFactionState(value = {}, ownerPlayerId = "", race = "只人") {
-  const source = value && typeof value === "object" ? value : {};
+  const source = releaseV39DestroyedGolemPilots(value && typeof value === "object" ? value : {});
   const base = createPlayerFactionState(source, ownerPlayerId);
   const settlementState = normalizeFactionSettlements(base, ownerPlayerId);
   const selectedSettlement = settlementState.settlements.find(row => row.settlementId === settlementState.selectedSettlementId) || null;
@@ -269,6 +270,7 @@ function cloneUnit(unit) {
     ...unit,
     prerequisiteClassLevels:cloneRecord(unit?.prerequisiteClassLevels),
     ...(unit.fusionGrowth ? {fusionGrowth:cloneJson(unit.fusionGrowth,{})} : {}),
+    ...(unit.boardingPilot ? {boardingPilot:cloneJson(unit.boardingPilot,{})} : {}),
     ...(unit.summonGrowth ? {summonGrowth:cloneJson(unit.summonGrowth,{})} : {}),
     ...(unit.classGrowthStart ? {classGrowthStart:cloneRecord(unit.classGrowthStart)} : {}),
     ...(unit.promotionGrowthStart ? {promotionGrowthStart:cloneRecord(unit.promotionGrowthStart)} : {}),
@@ -523,6 +525,8 @@ function resetFactionForNewLocalSession(factionState = {}) {
     selectedUnitId:String(source?.selectedUnitId || ""),
     villagePlacementMode:false,
     moveCommandUnitId:"",
+    golemOrders:[],
+    golemOrderSerial:0,
     factionSightings:{},
     visibility:{
       exploredTileKeys:[], visibleTileKeys:[], spottedEnemyTileKeys:[],

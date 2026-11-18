@@ -1,7 +1,6 @@
-import { changeV39UnitEquipment, getV39EquipmentSlotCandidates, normalizeV39EquipmentInventory, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
+import { canV39ChangeUnitEquipmentSlot, changeV39UnitEquipment, getV39EquipmentSlotCandidates, normalizeV39EquipmentInventory, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import { normalizeV39Cargo } from "../../lib/v39-logistics-state.js";
-import { isMobUnit } from "../../composables/unitCoreUtils.js";
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 
@@ -25,7 +24,7 @@ export function changeV39UnitEquipmentFromStock(state, playerId, request, underg
   const fail = reason => ({ok:false, reason, state});
   if (!EQUIPMENT_SLOT_KEYS.includes(request.slot)) return fail("装備部位が不正です");
   if (!unit) return fail("キャラクターが見つかりません");
-  if (isMobUnit(unit)) return fail("軍隊ユニットは固定装備です");
+  if (!canV39ChangeUnitEquipmentSlot(unit,request.slot)) return fail("この装備枠は変更できません");
   if (!(unit.hp > 0)) return fail("死亡したキャラクターは装備変更できません");
   const {squad, individual, cargo} = cargoContext(player, unit);
   if (!squad) return fail("携帯在庫を持つ部隊がありません");

@@ -25,6 +25,7 @@ import { advanceV39AutomaticTransport } from "../../lib/v39-transport-rules.js";
 import {advanceV39TradeLogistics} from '../../lib/v39-trade-logistics.js';
 import { showV39TurnLoading, paintV39TurnLoading } from "../ui/v39-turn-loading.js";
 import { showV39SideNotice } from "../ui/v39-notification-rail.js";
+import {advanceV39GolemOrders} from "../../lib/v39-golem-workshop.js";
 import { withV39WorldContext, v39TurnWorldIds } from "./v39-world-context.js";
 import {advanceV39RecruitTraining} from "../../lib/v39-recruit-training.js";
 import {advanceV39RecruitInstructorMovement} from "../../lib/v39-recruit-instructor.js";
@@ -478,7 +479,8 @@ export async function advanceTurn(options = {}) {
           dispatchTurnStage(stage,nextTurn);
           if (stage === "economy" && worldId === "surface") {
             const result = advanceV39RecruitTraining(window.getV39GameState({includeWorlds:false}), nextTurn);
-            window.setV39GameState({players:result.state.players}, {reason:"recruit-training",returnState:false});
+            const built=advanceV39GolemOrders(result.state,window.__v39FieldRuntime?.mapData,nextTurn);
+            window.setV39GameState({players:built.players}, {reason:"recruit-training",returnState:false});
             for (const {playerId,unit} of result.completedUnits) {
               window.dispatchEvent(new CustomEvent("v39:units-created", {detail:{playerId,units:[unit]}}));
               if (playerId === window.getV39ActivePlayer?.()?.id) showBanner(`訓練完了: ${unit.name} Lv${unit.level}`);

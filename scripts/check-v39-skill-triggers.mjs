@@ -27,6 +27,8 @@ export {resolveV39CombatEffect} from './frontend/src/lib/v39-combat-effect-rules
 export {playV39TriggerEffect} from './frontend/src/v39/combat/v39-trigger-presentation.js';
 export * from './frontend/src/lib/v39-ability-damage.js';
 export {applyV39ActiveCombatEffects} from './frontend/src/lib/v39-combat-engine.js';
+export {applyV39PassiveCombatSkills,resolveAttackRange,resolveAttackRows,resolveCounterAttackRow} from './frontend/src/lib/v39-combat-engine.js';
+export {changeV39UnitEquipment,craftV39Equipment,createV39EquipmentEntry} from './frontend/src/lib/v39-equipment-rules.js';
 export {applyV39DerivedCharacterData} from './frontend/src/v39/unit/v39-character-derived-rules.js';
 export {renderV39UnitConditions,renderV39UnitAbility} from './frontend/src/v39/unit/v39-unit-detail.js';
 export {resolveV39StateInfliction,resolveV39HarmfulEffectDefense,resolveV39HarmfulEffectPower,resolveV39StaggerDamage} from './frontend/src/lib/v39-combat-engine.js';
@@ -155,6 +157,42 @@ assert.equal(death.state.players[0].factionState.units[1].deathCause,'出血');
 
 window.isV39TestMode=()=>true;
 const field=m.createV39SkillTriggerFieldFixture({id:'p',controllerParticipantId:'local',factionState:{}});
+const [equipmentTeam,trainingTargets]=field.players.map(player=>player.factionState.units);
+const tester=equipmentTeam.find(unit=>unit.id===fixture.equipmentTest.unit.id);
+const targets=trainingTargets.filter(unit=>unit.testTrainingTarget);
+assert.equal(tester.derivedCharacter.classLevels,10);
+assert.deepEqual(tester.derivedCharacter.prerequisiteClassLevels,{ファイター:10,アーチャー:10});
+assert.equal(targets.length,2);
+assert.ok(targets.every(unit=>m.resolveCounterAttackRow(unit)===null));
+const bare=m.resolveAttackRows(tester).find(row=>row.名前==='素手');
+assert.equal(bare.物理,20);
+assert.equal(bare.AP消費,30);
+assert.equal(bare.攻撃回数,2);
+assert.ok(m.applyV39PassiveCombatSkills(tester,bare).appliedPassiveSkillNames.includes('素手の扱い'));
+assert.ok(!m.resolveAttackRows({...tester,techniques:tester.techniques.filter(row=>(row.source||row).名前!=='素手')}).some(row=>row.名前==='素手'));
+const kick=m.resolveAttackRows(tester).find(row=>row.名前==='離脱蹴り');
+assert.equal(kick.対象,'敵');
+assert.equal(kick.AP消費,40);
+for(const [name,method,passive] of [['剣','武器','武器の扱い'],['弓','弓','弓の使い手'],['篭手','素手','素手の扱い']]){
+ const equipped={...tester,equipment:[m.createV39EquipmentEntry(name,undefined,'武器1')]};
+ const rows=m.resolveAttackRows(equipped),attack=rows.find(row=>row.名前===name);
+ assert.equal(attack.攻撃手段,method);
+ assert.ok(!rows.some(row=>row.名前==='素手'));
+ assert.ok(m.applyV39PassiveCombatSkills(equipped,attack).appliedPassiveSkillNames.includes(passive));
+ assert.ok(m.resolveAttackRange(attack,equipped)>=m.getHexDistance(tester,targets[0]));
+ assert.equal(m.resolveAttackRange(attack,equipped)>=m.getHexDistance(tester,targets[1]),method==='弓');
+}
+let craftField=m.createV39SkillTriggerFieldFixture({id:'craft-test',factionState:{}},{craftEquipment:true});
+for(const name of fixture.equipmentTest.equipmentNames){
+ const crafted=m.craftV39Equipment(craftField,'craft-test',{name});
+ assert.ok(crafted.ok,crafted.reason);
+ const equipped=m.changeV39UnitEquipment(crafted.state,'craft-test',{name,unitId:tester.id,slot:'武器1'});
+ assert.ok(equipped.ok,equipped.reason);
+ const unit=equipped.state.players[0].factionState.units[0];
+ assert.ok(m.resolveAttackRows(unit).some(row=>row.名前===name));
+ craftField=equipped.state;
+}
+console.log('PASS: three-class equipment fixture, unarmed gate, weapon passives, range and blacksmith crafting.');
 assert.equal(field.players.length,2);
 assert.ok(field.players.every(p=>p.isPlayer&&p.controllerParticipantId==='local'));
 assert.ok(m.canV39FactionAttack(field,'p','trigger-test-opponent'));
@@ -233,7 +271,7 @@ assert.equal(m.applyV39DerivedCharacterData(derived).status.速度,speed,'derive
 console.log('PASS: ability damage/curse, floors, full-HP recovery, curse recovery, persistent max/stacking and derived idempotence.');
 
 for(const player of field.players){
- for(const unit of player.factionState.units){
+ for(const unit of player.factionState.units.filter(unit=>unit.testSkillNames)){
   const names=m.getV39UnitTestTechniques(unit).map(row=>row.name);
   for(const name of unit.testSkillNames)assert.ok(names.includes(name),'fixture skill resolves: '+name);
   for(const row of fixture.actions)assert.ok(names.includes(row.名前),unit.id+' has '+row.名前);
@@ -276,12 +314,12 @@ assert.deepEqual(m.resolveV39CombatEffect({アニメ:'斬撃'}, {},effectCategor
 console.log('PASS: test skills use saved effect categories/sequences and existing explicit image names are preserved.');
 
 assert.equal(field.players.length,2);
-assert.ok(field.players.every(player=>player.factionState.units.length===3));
+assert.deepEqual(field.players.map(player=>player.factionState.units.length),[4,5]);
 const positions=field.players.flatMap(player=>player.factionState.units.map(unit=>unit.x+','+unit.y));
-assert.equal(new Set(positions).size,6,'six units occupy distinct tiles');
+assert.equal(new Set(positions).size,positions.length,'all fixture units occupy distinct tiles');
 for(const player of field.players){
- assert.equal(player.factionState.squads[0].unitIds.length,3);
- for(const unit of player.factionState.units){
+ assert.equal(player.factionState.squads[0].unitIds.length,player.factionState.units.length);
+ for(const unit of player.factionState.units.slice(0,3)){
   const names=m.getV39UnitTestTechniques(unit).map(row=>row.name);
   assert.ok(names.includes('TEST_貫通'));assert.ok(names.includes('検証・守護'));
  }

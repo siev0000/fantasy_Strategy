@@ -3,7 +3,8 @@ import {isV39VillageContactUnit} from '../../lib/v39-village-contacts.js';
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
 import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
 import { openV39EquipmentPicker } from "./v39-equipment-picker.js";
-import { isMobUnit } from "../../composables/unitCoreUtils.js";
+import {canV39ChangeUnitEquipmentSlot} from "../../lib/v39-equipment-rules.js";
+import {EQUIPMENT_SLOT_KEYS} from "../../constants/unitCommon.js";
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
 import { renderV39UnitAbility, renderV39DetailTabs, renderV39UnitEquipment, renderV39UnitGrowth,renderV39UnitAchievements } from "./v39-unit-detail.js";
 import {scaleV39TransformationHp} from '../../lib/v39-transformation.js';
@@ -133,7 +134,7 @@ function skillsPanel(unit) {
 }
 function equipmentPanel(unit) {
   if(storageOf(unit))return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><p class="v39-char-note">保管中は閲覧のみです。変更する場合は施設から取り出してください。</p>${renderV39UnitEquipment(unit)}</div>`;
-  const fixed = isMobUnit(unit) || isDead(unit) || !!unit.summon;
+  const fixed = isDead(unit) || !EQUIPMENT_SLOT_KEYS.some(slot=>canV39ChangeUnitEquipmentSlot(unit,slot));
   return `<div class="squad-detail-tab-panel v39-char-detail-scroll">
     <p class="v39-char-note">${fixed ? "このユニットの装備は変更できません。" : "装備を押して変更候補と性能を比較"}</p>
     ${renderV39UnitEquipment(unit,{readOnly:false,disabled:fixed})}

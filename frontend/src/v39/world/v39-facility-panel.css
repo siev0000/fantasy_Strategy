@@ -14,3 +14,21 @@
 #v39-land-facility-actions{grid-column:1/-1;border:1px solid #557983;border-radius:6px;background:#122127}
 #v39-land-facility-actions[hidden]{display:none}
 #v39-land-facility-actions>strong{display:block;padding:6px 8px 0}
+#v39-golem-workshop {
+  padding:0;
+  max-width:calc(100vw - 12px);
+  max-height:calc(100dvh - 12px);
+  background:transparent;
+  color-scheme:dark;
+  border:0;
+}
+#v39-golem-workshop::backdrop { background:#0009; }
+#v39-golem-workshop .modal { box-sizing:border-box; }
+#v39-golem-workshop .v39-summon-action[aria-pressed=true] {
+  background:#245360;
+  border-color:#8bd8e4;
+  color:#fff;
+}
+#v39-golem-workshop .v39-golem-actions { display:flex; flex-wrap:wrap; gap:6px; }
+#v39-golem-workshop .v39-enchant-options button { width:100%; }
+#v39-golem-workshop footer p { overflow-wrap:anywhere; }

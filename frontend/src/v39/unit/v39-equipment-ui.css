@@ -1,0 +1,155 @@
+#equipmentModal > .modal {
+  width: min(900px, 100%);
+  max-height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+#equipmentModal .modal-head h2 { font-size: 18px; }
+
+#equipmentModal .v39-equipment-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+#equipmentModal .v39-equipment-tabs,
+#equipmentModal .v39-equip-craft-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+#equipmentModal button,
+#equipmentModal select,
+#equipmentModal input {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid #526771;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #17282e;
+  color: #edf4f2;
+  font-size: 14px;
+}
+
+#equipmentModal button[aria-pressed="true"],
+#equipmentModal .v39-enchant-options button.active:not(:disabled) {
+  background: #204650;
+  color: #fff;
+  border-color: #81d5df;
+}
+
+#equipmentModal button:disabled {
+  background: #26343a;
+  color: #b6c5c8;
+  opacity: 1;
+}
+
+#equipmentModal :is(button, select, input):focus-visible {
+  outline: 2px solid #f1cb79;
+  outline-offset: -2px;
+}
+
+#equipmentModal .v39-equipment-content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+#equipmentModal .v39-equip-inventory,
+#equipmentModal .v39-equip-craft-layout,
+#equipmentModal .v39-enchant-layout {
+  display: grid;
+  gap: 8px;
+  height: 100%;
+}
+
+#equipmentModal :is(.v39-equip-inventory, .v39-equip-craft-layout) {
+  grid-template-rows: minmax(0, 55fr) minmax(0, 45fr);
+}
+
+#equipmentModal :is(.v39-equip-inventory, .v39-equip-craft-layout) > * { overscroll-behavior: contain; }
+#equipmentModal .v39-enchant-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+#equipmentModal :is(.v39-equip-list, .v39-equip-detail, .v39-enchant-form, .v39-equip-slots section, .v39-equip-craft) {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #34474e;
+  border-radius: 8px;
+  background: #111b20;
+  padding: 8px;
+}
+
+#equipmentModal :is(.v39-equip-list, .v39-equip-detail, .v39-enchant-form) { overflow: auto; }
+#equipmentModal .v39-equip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 5px;
+}
+#equipmentModal .v39-equip-tile {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 66px;
+  padding: 3px 5px;
+  line-height: 1.15;
+}
+#equipmentModal .v39-equip-rank { justify-self: start; color: #f1cb79; }
+#equipmentModal .v39-equip-icon { place-self: center; font-size: 22px; }
+#equipmentModal .v39-equip-count { justify-self: end; color: #edf4f2; }
+#equipmentModal .v39-equip-grid > .v39-equip-empty { grid-column: 1 / -1; }
+#equipmentModal h3 { margin: 0 0 8px; font-size: 17px; }
+#equipmentModal h4 { margin: 8px 0 4px; }
+#equipmentModal .v39-equip-stats,
+#equipmentModal .v39-equip-slots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+#equipmentModal .v39-equip-stat {
+  display: grid;
+  gap: 2px;
+  padding: 5px;
+  background: #19272d;
+  border-radius: 5px;
+}
+#equipmentModal .v39-equip-stat span,
+#equipmentModal .v39-equip-empty { color: #b7c8cd; }
+#equipmentModal .v39-equip-chips,
+#equipmentModal .v39-equip-slots footer,
+#equipmentModal .v39-equip-unit-bar,
+#equipmentModal .v39-equip-reroll {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+#equipmentModal :is(.v39-equip-unit-bar, .v39-equip-reroll) { margin-block: 6px; }
+#equipmentModal .v39-equip-chips span { padding: 4px 6px; border: 1px solid #43555b; border-radius: 5px; }
+#equipmentModal .v39-equip-slots .v39-equip-detail { border: 0; padding-inline: 0; overflow: visible; }
+#equipmentModal .v39-equip-slots select { flex: 1 1 110px; }
+#equipmentModal .v39-equip-craft { display: grid; align-content: start; gap: 10px; overflow: auto; }
+#equipmentModal .v39-equip-craft > label,
+#equipmentModal .v39-equip-craft-fields { max-width: 500px; }
+#equipmentModal .v39-equip-preview-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#equipmentModal .v39-equip-preview-rarity { color: #b8b8b8; font-size: 14px; }
+#equipmentModal .v39-equip-preview-rarity[data-quality="uncommon"] { color: #97e39c; }
+#equipmentModal .v39-equip-preview-rarity[data-quality="rare"] { color: #7bc3ff; }
+#equipmentModal .v39-equip-preview-rarity[data-quality="epic"] { color: #d6a2ff; }
+#equipmentModal .v39-equip-preview-rarity[data-quality="legendary"] { color: #ffd18b; }
+#equipmentModal .v39-equip-craft-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 5rem); }
+#equipmentModal :is(.v39-equip-craft, .v39-enchant-form) label { display: grid; gap: 4px; min-width: 0; }
+#equipmentModal :is(.v39-equip-craft, .v39-enchant-form) :is(select, input) { width: 100%; }
+#equipmentModal .v39-equip-craft button { justify-self: start; min-width: 90px; }
+#equipmentModal .v39-equip-status { color: #e7cf8b; }
+#equipmentModal .v39-equip-status:empty { display: none; }
+#equipmentModal .v39-enchant-form { display: grid; align-content: start; gap: 8px; }
+
+@media (max-width: 700px) {
+  #equipmentModal :is(.v39-enchant-layout, .v39-equip-slots) {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  #equipmentModal .v39-equipment-tabs button { padding-inline: 3px; }
+}

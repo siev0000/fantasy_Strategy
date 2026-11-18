@@ -17,7 +17,8 @@ import {
   resolveEnemyArtwork,
   resolveNestArtwork,
   resolveSettlementArtwork,
-  resolveUnitArtwork
+  resolveUnitArtwork,
+  getV39UnitArtworkBrightness
 } from "../../lib/map-entity-artwork.js";
 import { resolveFacilityIconArtwork } from "../../lib/facility-icon-artwork.js";
 import {getV39StorageFacilities,getV39FacilityStoredEntries} from '../../lib/v39-facility-storage.js';
@@ -564,7 +565,23 @@ function ensureArtworkTexture(scene, artwork) {
     try {
       if (!scene?.sys?.isActive?.() || !scene?.game?.renderer) return;
       if (!scene.textures.exists(artwork.textureKey)) {
-        scene.textures.addImage(artwork.textureKey, image);
+        if(artwork.brightness>1){
+          const canvas=document.createElement('canvas');
+          canvas.width=image.naturalWidth;
+          canvas.height=image.naturalHeight;
+          const context=canvas.getContext('2d');
+          if(context){
+            context.drawImage(image,0,0);
+            const pixels=context.getImageData(0,0,canvas.width,canvas.height);
+            for(let i=0;i<pixels.data.length;i+=4){
+              pixels.data[i]*=artwork.brightness;
+              pixels.data[i+1]*=artwork.brightness;
+              pixels.data[i+2]*=artwork.brightness;
+            }
+            context.putImageData(pixels,0,0);
+            scene.textures.addCanvas(artwork.textureKey,canvas);
+          }else scene.textures.addImage(artwork.textureKey,image);
+        }else scene.textures.addImage(artwork.textureKey,image);
       }
       states.set(artwork.textureKey, "loaded");
       markerArtworkVersion += 1;
@@ -590,7 +607,12 @@ function addUnitOwnerBorder(scene,marker,color){
 }
 
 function addUnitArtwork(scene, marker, unit, diameter) {
-  const artwork = resolveV39ActiveTransformationArtwork(unit,gameState()) || resolveUnitArtwork(unit);
+  const transformation=resolveV39ActiveTransformationArtwork(unit,gameState());
+  const baseArtwork=transformation||resolveUnitArtwork(unit);
+  const brightness=transformation?1:getV39UnitArtworkBrightness(unit);
+  const artwork=baseArtwork&&brightness>1
+    ? {...baseArtwork,brightness,textureKey:`${baseArtwork.textureKey}-brightness-${brightness}`}
+    : baseArtwork;
   if (!artwork || !ensureArtworkTexture(scene, artwork)) return false;
 
   const frameKey = ensureArtworkSheetFrame(scene, artwork);

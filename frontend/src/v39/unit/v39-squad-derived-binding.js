@@ -6,7 +6,7 @@ import { resolveV39BaseMoveApCost, resolveV39MovementMultiplier } from "../../li
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import { updateV39UnitAbility } from "./v39-unit-detail.js";
-import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
+import {renderV39SquadCoordination,renderV39GolemBoarding} from './v39-squad-coordination-ui.js';
 import {renderV39RubbleActions} from '../world/v39-terrain-destruction.js';
 import {renderV39UnitHeading} from './v39-unit-heading.js';
 import {renderV39TeleportGateActions} from './v39-teleport-ui.js';
@@ -346,6 +346,7 @@ function renderDetail() {
   if (!unit) {
     updateMarkup(document.getElementById('v39-rubble-actions'),'');
     updateMarkup(pane?.querySelector('[data-squad-coordination-host]'),'');
+    updateMarkup(document.getElementById('v39-golem-boarding-actions'),'');
     updateMarkup(document.getElementById('v39-teleport-gate-actions'),'');
     updateMarkup(document.getElementById('detailUnitHeading'),'');
     if (pane) pane.dataset.empty = "1";
@@ -364,6 +365,8 @@ function renderDetail() {
   }
   if (pane) delete pane.dataset.empty;
   updateMarkup(pane?.querySelector('[data-squad-coordination-host]'),renderV39SquadCoordination(unit,renderingFaction));
+  updateMarkup(document.getElementById('v39-golem-boarding-actions'),
+    renderV39GolemBoarding(unit,renderingFaction,window.__v39FieldRuntime?.mapData));
 
   updateMarkup(document.getElementById('detailUnitHeading'),renderV39UnitHeading(unit));
 

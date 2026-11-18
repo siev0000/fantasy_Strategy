@@ -1,3 +1,4 @@
+import {releaseV39DestroyedGolemPilots} from '../../lib/v39-golem-boarding.js';
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 import {isV39Undead,resolveV39CorpseKind} from '../../lib/v39-corpse-types.js';
 import {expireV39Summons} from "../../lib/v39-summon-rules.js";
@@ -198,7 +199,8 @@ export function runV39DeathLifecycle(turnNumber = currentV39TurnNumber()) {
       return [unit];
     }) }));
   let players = state.players.map((player) => {
-    let faction = player.factionState;
+    let faction = releaseV39DestroyedGolemPilots(player.factionState);
+    if(faction!==player.factionState)changed=true;
     let sourceUnits = Array.isArray(faction?.units) ? faction.units.map(normalizeUnit) : [];
     const defeated = moveDefeatedPlayerCargoToCorpses(sourceUnits, Array.isArray(faction?.squads) ? faction.squads : []);
     sourceUnits = defeated.units;

@@ -1,3 +1,4 @@
+import {hasV39GolemBoarding} from './v39-golem-boarding.js';
 import {getGameDataRows} from "./game-data-registry.js";
 import {parseV39ClassCondition,splitV39ClassCondition,isV39ProfessionClassRow,isV39BaseClassRow} from "./v39-class-rules.js";
 import {deriveV39CharacterFromRaceClass,applyV39DerivedCharacterData} from "../v39/unit/v39-character-derived-rules.js";
@@ -8,7 +9,10 @@ export function inspectV39ClassPromotion(state,playerId,unit,row,context={}) {
   const derived=deriveV39CharacterFromRaceClass(unit),reasons=[];
   const current=derived.classRow,prior={...derived.prerequisiteClassLevels,[unit.className]:derived.classLevels};
   const conditions=splitV39ClassCondition(row.条件クラス).map(value=>parseV39ClassCondition(value));
-  const baseAcquisition=context.baseAcquisition===true&&isV39BaseClassRow(row);
+  const faction=state.players.find(player=>player.id===playerId)?.factionState;
+  const pilotAcquisition=context.baseAcquisition===true&&row.名前==='パイロット';
+  const baseAcquisition=context.baseAcquisition===true&&(isV39BaseClassRow(row)||pilotAcquisition);
+  if(pilotAcquisition&&!faction?.units.some(hasV39GolemBoarding))reasons.push('自軍に搭乗機能付きゴーレムが必要');
   const limit=n(current?.Tire ?? current?.Tier)>1
     ? recruitment.growthCaps[derived.raceRow?.種類]?.classLevels ?? V39_CLASS_PROGRESSION_BALANCE.classLevelLimit
     : V39_CLASS_PROGRESSION_BALANCE.classLevelLimit;
@@ -29,7 +33,6 @@ export function inspectV39ClassPromotion(state,playerId,unit,row,context={}) {
   for(const condition of conditions)if(n(prior[condition.token])<condition.required)reasons.push(`${condition.token}Lv${condition.required}が必要`);
   const skills=new Set(derived.acquiredSkillNames || []);
   for(const name of splitV39ClassCondition(row.条件スキル))if(!skills.has(name))reasons.push(`スキル「${name}」が必要`);
-  const faction=state.players.find(player=>player.id===playerId)?.factionState;
   const settlement=faction?.settlements?.find(base=>base.placed&&(unit.worldId || 'surface')==='surface'
     &&(unit.x===base.x&&unit.y===base.y||base.territoryTileKeys?.includes(`${unit.x},${unit.y}`)
       ||base.territoryResidentialCenterMap?.[`${unit.x},${unit.y}`]===`${base.x},${base.y}`));
@@ -46,7 +49,9 @@ export function getV39ClassPromotionOptions(state,playerId,unit,context={}) {
     .some(value=>parseV39ClassCondition(value)?.token===unit.className)).map(row=>inspectV39ClassPromotion(state,playerId,unit,row,context));
 }
 export function getV39BaseClassAcquisitionOptions(state,playerId,unit){
-  return getGameDataRows('クラス').filter(isV39BaseClassRow)
+  const faction=state.players.find(player=>player.id===playerId)?.factionState;
+  const pilotUnlocked=faction?.units.some(hasV39GolemBoarding);
+  return getGameDataRows('クラス').filter(row=>isV39BaseClassRow(row)||(pilotUnlocked&&row.名前==='パイロット'))
     .map(row=>inspectV39ClassPromotion(state,playerId,unit,row,{baseAcquisition:true}));
 }
 export function acquireV39UpperClass(state,playerId,unitId,className,context={}) {

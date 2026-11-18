@@ -49,24 +49,37 @@ const number = (value, fallback = 0) => {
 export function resolveActionSkillRows(unit) {
   const rows = (Array.isArray(unit?.techniques) ? unit.techniques : [])
     .map((technique) => technique?.source || technique)
-    .filter((row) => text(row?.名前) && text(row?.行動).toUpperCase() === "A");
+    .filter((row) => text(row?.名前) && text(row?.行動).toUpperCase() === "A" && row.条件 !== "ゴーレム作成時"
+      && (row.条件 !== "搭乗" || unit?.boardingPilot));
   const names = new Set(rows.map(row => text(row?.名前)));
   for (const row of getV39UnitTestSkillRows(unit)) {
-    if (text(row?.行動).toUpperCase() !== "A" || names.has(text(row?.名前))) continue;
+    if (text(row?.行動).toUpperCase() !== "A" || names.has(text(row?.名前))
+      || row.条件 === "搭乗" && !unit?.boardingPilot) continue;
     names.add(text(row?.名前));
     rows.push(row);
   }
-  return rows;
+  return rows.map(row => text(row.攻撃手段) === "蹴り" && !text(row.対象)
+    ? {...row, 対象:"敵"}
+    : row);
+}
+
+function equipmentAttackMethod(item) {
+  const source = item?.source;
+  if ([...(item?.traits || []), source?.特性1, source?.特性2, source?.特性3, source?.特性4].includes("素手")) return "素手";
+  const name = text(item?.name ?? item?.equipmentName ?? source?.装備名);
+  if (/弓|ボウ/.test(name)) return "弓";
+  if (/銃|砲|ライフル|ピストル/.test(name)) return "銃";
+  return "武器";
 }
 
 function weaponMatchesMethod(item, method) {
-  const name=text(item?.name ?? item?.equipmentName ?? item?.source?.装備名);
-  return method === "武器" || (method === "弓" && /弓|ボウ/.test(name))
-    || (method === "銃" && /銃|砲|ライフル|ピストル/.test(name));
+  const actual = equipmentAttackMethod(item);
+  return actual === method || method === "武器" && actual !== "素手";
 }
 
 function skillWeaponRow(skillRow, unit) {
   const method=text(skillRow?.攻撃手段);
+  if (skillRow?.装備攻撃 && skillRow?.装備元) return buildWeaponAttackRow(skillRow.装備元);
   if (!["武器","弓","銃"].includes(method)) return null;
   if (skillRow?.装備元) return buildWeaponAttackRow(skillRow.装備元);
   const item=(unit?.equipment || []).find(item=>["武器1","武器2"].includes(text(item?.slot)) && weaponMatchesMethod(item,method));
@@ -100,7 +113,7 @@ export function buildWeaponAttackRow(item) {
   return {
     名前:name,
     行動:"A",
-    攻撃手段:"武器",
+    攻撃手段:equipmentAttackMethod(item),
     対象:"相手",
     判定:"攻撃",
     物理:basePower + number(enchantAttack.物理),
@@ -129,6 +142,14 @@ export function resolveAttackRows(unit) {
     .filter((item) => ["武器1", "武器2"].includes(text(item?.slot)))
     .map(buildWeaponAttackRow);
   const bodyWeapons = resolveV39BodyWeaponAttackRows(unit);
+  const unarmed = !weapons.some(row=>text(row.装備元?.source?.武器分類)!=="盾")
+    && getV39PassiveRows(unit).some(row=>text(row.名前)==="素手")
+    ? findGameDataRow("装備","装備名","素手")
+    : null;
+  if (unarmed && !bodyWeapons.some(row=>row.名前==="素手")) {
+    const row = buildWeaponAttackRow({source:unarmed});
+    bodyWeapons.push({...row, 攻撃手段:"素手", 身体武器:true, 攻撃回数:number(unarmed.攻撃回数,1), ガード:number(unarmed.ガード)});
+  }
   const bodyNames = new Set(bodyWeapons.map(row => row.名前));
   return [...weapons, ...bodyWeapons, ...resolveActionSkillRows(unit).filter(row => !bodyNames.has(row.名前) && !/^(召喚|呼集)_|^転移(?:_|$)/.test(text(row.効果)))];
 }
@@ -146,6 +167,7 @@ function isMeleeCounterRow(row, unit, allowWeaponSkill = false) {
 }
 
 export function resolveCounterAttackRow(unit) {
+  if (unit?.testTrainingTarget) return null;
   const candidates = resolveAttackRows(unit).filter((row) => isMeleeCounterRow(row, unit));
   const lastUsed = text(unit?.lastUsedAttack);
   const selected = candidates.find((row) => text(row?.名前) === lastUsed) || candidates[0] || null;
@@ -222,7 +244,8 @@ export function resolveSkillGuard(skillRow, attacker, options = {}) {
 
 export function resolveSkillTimedModifiers(skillRow) {
   skillRow=normalizeV39ReductionFields(skillRow);
-  return Object.fromEntries(TIMED_EFFECT_FIELDS
+  const fields=skillRow?.条件==='搭乗'?[...TIMED_EFFECT_FIELDS,'攻撃回数']:TIMED_EFFECT_FIELDS;
+  return Object.fromEntries(fields
     .map(key => [key, number(skillRow?.[key])])
     .filter(([, value]) => value !== 0));
 }
@@ -521,7 +544,8 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
   const resistancePenetration = Math.max(0, number(adjusted.attacker?.status?.耐性貫通, 0));
   const {effectiveResistance,resistanceRate,targetLevel,levelReduction,reducedPower}=resolveV39ResistanceReduction(power,number(target?.level,target?.status?.Lv||1),resistance,resistancePenetration,resistanceKey);
   const attackCount = Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)))
-    * Math.max(1,Math.floor(number(adjusted.attacker?.combatProfile?.attackCount,1)));
+    * Math.max(1,Math.floor(number(adjusted.attacker?.combatProfile?.attackCount,1)))
+    + Math.max(0,Math.floor(number(adjusted.attacker?.status?.攻撃回数)));
   const magicalAttack = text(adjusted.skillRow?.攻撃手段) === "魔法" || magicalJudge;
   const weapon=skillWeaponRow(adjusted.skillRow,adjusted.attacker)?.装備元;
   const physicalCritical=!magicalAttack&&['物理','射撃','切断','貫通','打撃'].includes(damageType||strongestDamageType(adjusted.skillRow));

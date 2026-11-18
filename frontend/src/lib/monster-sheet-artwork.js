@@ -132,6 +132,13 @@ for (const row of Array.isArray(enemySpawnData) ? enemySpawnData : []) {
   }
 }
 
+const golemArtworkSlots=new Map([
+  ['ウッドゴーレム',1],['クレイゴーレム',2],['ストーンゴーレム',3],['アイアンゴーレム',4],
+  ['フレッシュゴーレム',5],['ボーンゴーレム',6],['クリスタルゴーレム',7],['アイスゴーレム',8],
+  ['マグマゴーレム',9],['サンドゴーレム',10],['ミスリルゴーレム',11],['アダマンティンゴーレム',12],
+  ['マッドゴーレム',10]
+]);
+
 const devilSummonSlots=new Map([['レムレ',1],['レムレー',1],['インプ',2]]);
 
 function resolveReferenceFromEnemy(enemy) {
@@ -183,6 +190,11 @@ function resolveReferenceFromEnemy(enemy) {
   }
 
   if (yokaiReference) return yokaiReference;
+  const golemName=baseRace||text(enemy?.種族名||enemy?.speciesName);
+  const golemSlot=golemArtworkSlots.get(golemName);
+  if (golemSlot&&(!fusionName||fusionName===golemName)) {
+    return { fileName:'ゴーレム_ユニット集.webp', slotNumber:golemSlot };
+  }
 
   // Fusion keeps its base race; resolve the result identity before that race's ordinary sprite.
   // Reuse the sheet-managed named references instead of maintaining a second slot table.

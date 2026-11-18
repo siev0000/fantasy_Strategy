@@ -1,3 +1,5 @@
+import { installV39ModalGallery } from "../dev/v39-modal-gallery.js";
+
 // Load the v39 runtime in ordered groups so startup progress is visible without changing module order.
 const BOOTSTRAP_STAGES = Object.freeze([
   { label:"基本システム", loadedModules:20, load:() => import("./v39-bootstrap-core.js") },
@@ -88,4 +90,5 @@ async function bootstrap() {
   }
 }
 
+installV39ModalGallery();
 bootstrap();

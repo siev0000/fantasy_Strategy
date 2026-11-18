@@ -43,6 +43,7 @@ const sourcePathMap = new Map();
 
 const TABLE_KEY_FIELDS = Object.freeze({
   召喚モンスターリスト:["名称"],
+  ゴーレム作成レシピ:["ゴーレム名"], ゴーレム追加スキル:["名前"],
   性格会話:["性格"],
   モンスター合成:["素材", "合成結果"],
   イベント会話:["ID"],

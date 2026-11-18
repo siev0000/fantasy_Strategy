@@ -8,6 +8,7 @@ import {v39SustainCost} from '../../lib/v39-sustained-effects.js';
 import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 import "./v39-unit-detail.css";
+import {canV39ChangeUnitEquipmentSlot} from '../../lib/v39-equipment-rules.js';
 import {EQUIPMENT_SLOT_KEYS} from '../../constants/unitCommon.js';
 import {resolveV39UnitWeatherMovement} from '../../lib/v39-terrain-traversal.js';
 import {V39_UNIT_ACHIEVEMENT_FIELDS} from '../../lib/v39-unit-achievements.js';
@@ -42,7 +43,7 @@ export function renderV39UnitEquipment(unit,{readOnly=true,disabled=false}={}){
     const quality=item?.qualityLabel||item?.quality;
     const content=`<span>${escapeHtml(slot)}</span><b>${escapeHtml(item?.name||'なし')}${quality?` [${escapeHtml(quality)}]`:''}</b>`;
     return readOnly?`<div class="v39-char-equipment-row">${content}</div>`
-      :`<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}"${disabled?' disabled':''}>${content}</button>`;
+      :`<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}"${disabled||!canV39ChangeUnitEquipmentSlot(unit,slot)?' disabled':''}>${content}</button>`;
   }).join('')}</div>`;
 }
 

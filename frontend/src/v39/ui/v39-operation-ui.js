@@ -176,7 +176,8 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
           <div class="squad-content-split" id="v39-squad-content">
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
-              <div class="squad-detail-minihead"><div id="detailUnitHeading" style="width:100%;min-width:0"></div></div>
+              <div><div class="squad-detail-minihead"><div id="detailUnitHeading" style="width:100%;min-width:0"></div></div>
+                <div id="v39-golem-boarding-actions"></div></div>
               ${renderV39DetailTabs([["status","能力"],["basic","基本"],["action","スキル"]], "status", "data-squad-detail-tab")}
               <div class="squad-detail-tab-content" id="detailTechniqueList">
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">

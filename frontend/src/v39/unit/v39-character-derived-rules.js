@@ -1,6 +1,6 @@
 import {normalizeV39ReductionFields} from '../../lib/v39-reduction-keys.js';
 import {applyAbilityDamage} from '../../lib/v39-ability-damage.js';
-import { classData as classDb, skillData as skillDb, testClassData as testClassDb, testSkillData as testSkillDb } from "../../lib/game-data-registry.js";
+import { getGameDataRows, classData as classDb, skillData as skillDb, testClassData as testClassDb, testSkillData as testSkillDb } from "../../lib/game-data-registry.js";
 import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
 import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "../../constants/unitCommon.js";
 import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules, rowStatusVector } from "../../composables/unitStatusUtils.js";
@@ -36,6 +36,7 @@ const testClassRows = Array.isArray(testClassDb) ? testClassDb : [];
 const testSkillRows = Array.isArray(testSkillDb) ? testSkillDb : [];
 const classByName = new Map(classRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
 const skillByName = new Map(skillRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
+const golemAdditionByName = new Map(getGameDataRows("ゴーレム追加スキル").map(row=>[row.名前,row]));
 const testClassByName = new Map(testClassRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
 const testSkillByName = new Map(testSkillRows.map(row => [text(row?.名前), row]).filter(([name]) => name));
 
@@ -77,6 +78,8 @@ function skillNameAt(row, level) {
   return "";
 }
 
+const golemSkillUnlockLevels=[1,3,6,9,12,15,18,21,24,27];
+
 function collectSkills(row, levels) {
   const out = [];
   const count = Math.max(0, Math.round(number(levels, 0)));
@@ -87,8 +90,8 @@ function collectSkills(row, levels) {
   return out;
 }
 
-function techniqueFromName(name, { allowTest = false } = {}) {
-  const row = skillByName.get(name) || (allowTest ? testSkillByName.get(name) : null) || null;
+function techniqueFromName(name, { allowTest = false, golemAddition = false } = {}) {
+  const row = (golemAddition?golemAdditionByName.get(name):null) || skillByName.get(name) || (allowTest ? testSkillByName.get(name) : null) || null;
   if (!row) return { name, apCost: null, hpCost: null, range: null, area: null, target: null, detail: "", action: "", source: null };
   return {
     name,
@@ -223,14 +226,17 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
 
   const acquiredNames = [
     ...prerequisiteClasses.flatMap(prior => collectSkills(prior.row,prior.levels)),
-    ...collectSkills(raceRow, raceLevels),
-    ...collectSkills(classRow, classLevels)
+    ...(unit.golemBuild
+      ? collectSkills(raceRow,golemSkillUnlockLevels.filter(required=>required<=level).length)
+      : [...collectSkills(raceRow, raceLevels),...collectSkills(classRow, classLevels)])
   ];
   if (strongAnimalClassRow) acquiredNames.push(...collectSkills(strongAnimalClassRow, strongAnimalClassLevel));
   // Direct fusion rewards are permanent, independent of class skill unlock levels.
   const fusionSkillNames = Array.isArray(unit.fusionGrowth?.acquiredSkillNames)
     ? unit.fusionGrowth.acquiredSkillNames.filter(name => typeof name === 'string' && !isPlaceholder(name)).map(text) : [];
   acquiredNames.push(...fusionSkillNames);
+  const golemAdditions=new Set(unit.golemBuild?.additionalSkillNames||[]);
+  acquiredNames.push(...golemAdditions);
   acquiredNames.push(...(unit.reincarnationInheritedSkillNames||[]));
 
   let secondClassRow = null;
@@ -241,16 +247,45 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
 
   const uniqueNames = [...new Set(acquiredNames.filter(Boolean))];
   const techniques = uniqueNames.map(name => {
-    const technique = techniqueFromName(name, { allowTest:testMode });
+    const technique = techniqueFromName(name, { allowTest:testMode,golemAddition:golemAdditions.has(name) });
     return !technique.source && fusionSkillNames.includes(name)
       ? {...technique, detail:'スキル一覧に未登録のため、名前のみ保持しています。効果はありません。'} : technique;
   });
-  const basePassives=getV39PassiveRows({techniques}).filter(row=>!isV39ConditionalPassive(row));
+  const pilot=unit.boardingPilot?applyV39DerivedCharacterData({...unit.boardingPilot,boardingPilot:null}):null;
+  const pilotPassives=getV39PassiveRows(pilot);
+  const allPilotActions=pilotPassives.some(row=>row.条件==='搭乗'&&row.効果==='搭乗中全スキル');
+  const names=new Set(uniqueNames);
+  for(const technique of pilot?.techniques||[]){
+    const row=technique.source||technique;
+    const name=text(row.名前||technique.name);
+    const transferable=row.行動==='P'||row.行動==='A'&&(row.条件==='搭乗'||allPilotActions);
+    if(transferable&&!names.has(name)){
+      techniques.push(technique);
+      names.add(name);
+    }
+  }
+  const basePassives=getV39PassiveRows({techniques}).filter(row=>!isV39ConditionalPassive(row)
+    ||pilot&&row.条件==='搭乗'&&!row.条件系統&&!row.攻撃手段&&!row.発動);
   const passiveBonuses=collectV39PassiveBonuses(basePassives);
-  const sized=applyV39SizStatusModifiers(statusResult.status||{},skillLevels);
-  const status = addV39PassiveValues(applyMilitaryProfileToStatus(sized.status, unit?.combatProfile),passiveBonuses.status);
+  const rawStatus=statusResult.status||{};
+  const fixedSiz=Number(unit.golemBuild?.siz);
+  const sized=applyV39SizStatusModifiers(fixedSiz>0?{...rawStatus,SIZ:fixedSiz}:rawStatus,skillLevels);
+  const golemBonuses=unit.golemBuild?.bonuses;
+  const pilotBase=collectV39PassiveBonuses(pilotPassives.filter(row=>!isV39ConditionalPassive(row)));
+  // The stored rider already has personal passives in its effective stats.
+  const pilotMagic=pilot?{
+    魔力:number(pilot.status?.魔力)-number(pilotBase.status.魔力),
+    精神:number(pilot.status?.精神)-number(pilotBase.status.精神)
+  }:{};
+  const baseSkills=pilot?Object.fromEntries(SKILL_LEVEL_FIELDS.map(key=>[
+    key,number(pilot.skillLevels?.[key])-number(pilotBase.skillLevels[key])
+  ])):sized.skillLevels;
+  const status = addV39PassiveValues(
+    addV39PassiveValues(applyMilitaryProfileToStatus({...sized.status,...pilotMagic}, unit?.combatProfile),passiveBonuses.status),
+    golemBonuses?.status||{}
+  );
   const bodyWeaponLevels=deriveV39BodyWeaponLevels([raceRow,classRow,secondClassRow,strongAnimalClassRow,...prerequisiteClasses.map(prior=>prior.row)]);
-  for (const [key,value] of Object.entries(passiveBonuses.bodyWeaponValues)) {
+  for (const [key,value] of Object.entries(addV39PassiveValues(passiveBonuses.bodyWeaponValues,golemBonuses?.bodyWeaponValues||{}))) {
     bodyWeaponLevels[key]=(bodyWeaponLevels[key]||0)+value/V39_BODY_WEAPON_BALANCE.levelDivisor;
   }
 
@@ -270,13 +305,13 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     strongAnimalClassLevel,
     initialRaceBonusLevel: INITIAL_RACE_BONUS_LEVEL,
     status,
-    skillLevels:addV39PassiveValues(sized.skillLevels,passiveBonuses.skillLevels),
+    skillLevels:addV39PassiveValues(addV39PassiveValues(baseSkills,passiveBonuses.skillLevels),golemBonuses?.skillLevels||{}),
     sizModifiers:sized.modifiers,
-    resistances:addV39PassiveValues(resistances,passiveBonuses.resistances),
+    resistances:addV39PassiveValues(addV39PassiveValues(resistances,passiveBonuses.resistances),golemBonuses?.resistances||{}),
     passiveBaseSkillNames:basePassives.map(row=>row.名前),
     passiveDiagnostics:passiveBonuses.unsupported,
     passiveBonuses,
-    acquiredSkillNames: uniqueNames,
+    acquiredSkillNames: [...names],
     techniques,
     bodyWeaponLevels,
     uiStats: {
@@ -305,8 +340,12 @@ export function applyV39DerivedCharacterData(unit = {}) {
   const resistances = Object.fromEntries(RESISTANCE_FIELDS.map(key => [
     key,
     number(derived.resistances?.[key]) + number(equipmentResistances?.[key])
+      + number(unit.golemBuild?.enchantment?.resistanceBonus?.[key])
   ]));
   const status = { ...derived.status };
+  for (const [key, value] of Object.entries(unit.golemBuild?.enchantment?.statusBonus || {})) {
+    if (Object.hasOwn(status,key)) status[key] = number(status[key]) + number(value);
+  }
   for (const item of equipment) {
     for (const [key, value] of Object.entries(item?.statusBonus || {})) {
       if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);

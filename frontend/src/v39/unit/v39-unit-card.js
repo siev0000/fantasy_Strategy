@@ -4,7 +4,7 @@ import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import {resolveV39MaxAp} from '../../lib/v39-control-status.js';
 import {renderV39CastSymbol} from '../../lib/v39-cast-symbol.js';
 import { getRaceIconSrc } from "../../lib/race-icon-library.js";
-import {resolveUnitArtwork} from '../../lib/map-entity-artwork.js';
+import {resolveUnitArtwork,getV39UnitArtworkBrightness} from '../../lib/map-entity-artwork.js';
 import {resolveMonsterSheetArtwork} from '../../lib/monster-sheet-artwork.js';
 import {resolveV39ActiveTransformationArtwork} from '../../lib/v39-transformation-artwork.js';
 import "./v39-unit-card.css";
@@ -49,14 +49,16 @@ function levelBadgeIconMarkup(unit, options = {}) {
 
 function portraitMarkup(unit, exp, expTitle) {
   const state=typeof window.getV39GameState==='function'?window.getV39GameState({includeWorlds:false}):null;
-  const art=resolveV39ActiveTransformationArtwork(unit,state)||resolveMonsterSheetArtwork(unit)||resolveUnitArtwork(unit);
+  const transformation=resolveV39ActiveTransformationArtwork(unit,state);
+  const art=transformation||resolveMonsterSheetArtwork(unit)||resolveUnitArtwork(unit);
+  const brightness=transformation?1:getV39UnitArtworkBrightness(unit);
   if(!art?.src || art.type==='icon')return '';
   const frame=art.sheetFrame;
   const columns=Math.max(1,Number(frame?.columns)||1),rows=Math.max(1,Number(frame?.rows)||1);
   const style=frame
     ? `background-size:${columns*100}% ${rows*100}%;background-position:${columns>1?frame.column/(columns-1)*100:0}% ${rows>1?frame.row/(rows-1)*100:0}%`
     : 'background-size:contain;background-position:center';
-  return `<span class="v39-card-portrait" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="v39-card-portrait-image" style="background-image:url(&quot;${escapeHtml(art.src)}&quot;);${style}" data-v39-portrait-file="${escapeHtml(frame?.fileName||art.name)}" data-v39-portrait-slot="${frame?.slotNumber||''}" aria-hidden="true"></span><span class="v39-card-portrait-level" aria-hidden="true">${exp.level}</span></span>`;
+  return `<span class="v39-card-portrait" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="v39-card-portrait-image" style="background-image:url(&quot;${escapeHtml(art.src)}&quot;);${style};--v39-artwork-brightness:${brightness}" data-v39-portrait-file="${escapeHtml(frame?.fileName||art.name)}" data-v39-portrait-slot="${frame?.slotNumber||''}" aria-hidden="true"></span><span class="v39-card-portrait-level" aria-hidden="true">${exp.level}</span></span>`;
 }
 
 // 部隊一覧と自キャラ画面が同じカードを描く。クリック先だけ呼出し側で指定する。

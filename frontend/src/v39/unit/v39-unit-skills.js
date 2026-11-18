@@ -40,11 +40,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-const BODY_ATTACK_METHODS = new Set(["素手", "角", "牙", "爪", "翼", "尾", "吐息", "針"]);
+const BODY_ATTACK_METHODS = new Set(["素手", "蹴り", "角", "牙", "爪", "翼", "尾", "吐息", "針"]);
 
 function techniqueAttackCategory(source = {}) {
   const method = text(source?.攻撃手段);
-  if (method === "武器") return "武器";
+  if (["武器", "弓", "銃"].includes(method)) return "武器";
   if (method === "魔法") return "魔法";
   if (BODY_ATTACK_METHODS.has(method)) return "肉体";
   return "その他";
@@ -130,7 +130,7 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const expanded = name === expandedName;
           const detailHtml = `<span class="technique-detail-head"><b>説明</b>${durationLabel ? `<small>${escapeHtml(durationLabel)}</small>` : ""}</span>
             <span class="technique-detail-description">${description ? escapeHtml(description).replaceAll("\n","<br>") : "説明なし"}${unsupported.length ? `<br>未対応: ${escapeHtml(unsupported.join(" / "))}` : ""}</span>`;
-          const attackAttr = interactive && action === "A" ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
+          const attackAttr = interactive && action === "A" && (source.条件 !== "搭乗" || unit.boardingPilot) ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
           return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" ${interactive ? "data-v39-technique-name" : "data-v39-character-skill"}="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
             <span class="technique-summary">
               <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>

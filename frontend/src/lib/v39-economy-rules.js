@@ -1474,6 +1474,41 @@ function advanceSettlementBuildingWork(village,player,mapData,currentTurn,facili
   return village;
 }
 
+export function completeV39QueuedConstruction(state,mapData,playerId){
+  const player=state.players.find(row=>row.id===playerId);
+  if(!player||!mapData?.grid)return {state,count:0};
+  const facilitiesByTile={...state.facilitiesByTile},completed=[],developmentCompleted=[];
+  const turn=state.timeline?.turnNumber||1;
+  const finish=item=>({...item,remainingTurns:1});
+  let factionState=player.factionState,conversionCount=0;
+  for(const base of getFactionSettlements(factionState)){
+    if(!base.placed||(base.worldId||'surface')!=='surface')continue;
+    const conversions=Object.entries(base.territoryTileConversionMap||{});
+    if(!conversions.length&&!resolveV39ConstructionWorkKind(base))continue;
+    const {village:converted,completed:convertedTiles}=advanceV39TerritoryTileConversions({
+      ...base,territoryTileConversionMap:Object.fromEntries(conversions.map(([key,item])=>[key,item&&finish(item)]))
+    });
+    conversionCount+=convertedTiles.length;
+    for(const tile of convertedTiles)if(tile.targetMode===TERRITORY_TILE_MODE_SETTLEMENT)delete facilitiesByTile[tile.tileKey];
+    let village={
+      ...converted,
+      developmentProject:converted.developmentProject&&finish(converted.developmentProject),
+      constructionQueue:(converted.constructionQueue||[]).map(finish),
+      wallConstructionQueue:(converted.wallConstructionQueue||[]).map(finish)
+    };
+    while(resolveV39ConstructionWorkKind(village)){
+      village=advanceSettlementBuildingWork(village,player,mapData,turn,facilitiesByTile,completed,developmentCompleted);
+    }
+    factionState=replaceFactionSettlement(factionState,village,{ownerPlayerId:playerId,select:false});
+  }
+  if(factionState===player.factionState)return {state,count:0};
+  const byId=new Map(getFactionSettlements(factionState).map(base=>[base.settlementId||base.id,base]));
+  return {state:{...state,facilitiesByTile,
+    players:state.players.map(row=>row.id===playerId?{...row,factionState}:row),
+    settlements:(state.settlements||[]).map(base=>byId.get(base.settlementId||base.id)||base)
+  },count:completed.length+developmentCompleted.length+conversionCount};
+}
+
 const operationStarters={construction:startV39Construction,expansion:startV39LandExpansion,wall:startV39WallConstruction,development:startV39SettlementDevelopment};
 
 export function advanceV39TerritoryBuildingPhase(state,mapData){

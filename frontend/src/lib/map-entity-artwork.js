@@ -20,6 +20,10 @@ const rawUnitArtworkModules = import.meta.glob("../../../assets/images/units/**/
   import: "default"
 });
 
+export function getV39UnitArtworkBrightness(unit) {
+  return unit?.golemBuild?.craftedByGolemCrafter===true ? 1.1 : 1;
+}
+
 function text(value) {
   return String(value ?? "").trim();
 }

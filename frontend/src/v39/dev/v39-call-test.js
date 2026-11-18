@@ -2,6 +2,9 @@ import fixture from '../../../../config/v39-call-test.json';
 import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
 import {getGameDataRows} from '../../lib/game-data-registry.js';
 import {replaceFactionSettlement} from '../../lib/settlement-state.js';
+import {golemRecipes,getV39GolemRecipeCost} from '../../lib/v39-golem-workshop.js';
+import {getHexNeighborCoords} from '../../lib/hex-grid.js';
+import {FOOD_RESOURCE_KEYS} from '../../lib/v39-economy-rules.js';
 import {getV39FacilitySummonSlots} from '../../lib/v39-facility-summoning.js';
 
 window.isV39CallTestReady=()=>{
@@ -80,5 +83,73 @@ window.startV39CallTest=()=>{
     selectedUnitId:casterId,units:[...faction.units.map(unit=>unit.id===casterId?{...unit,...fixture.召喚者,position:[fixture.召喚者.x,fixture.召喚者.y],squadId:'solo',testOnly:true}:unit),...units],
     squads:faction.squads.map(row=>({...row,unitIds:row.id==='solo'?[...row.unitIds,casterId,...units.map(unit=>unit.id)]:row.unitIds.filter(id=>id!==casterId)}))}})},{reason:'call-test-started'});
   window.activateV39FooterTab('squad');window.refreshV39SquadDerivedUI?.();document.querySelector('[data-squad-detail-tab="action"]')?.click();
+  return {ok:true};
+};
+
+window.startV39GolemWorkshopTest=async()=>{
+  if(!window.isV39TestMode?.())return {ok:false,reason:'テストモードで実行してください'};
+  const started=window.startV39ExpeditionTest?.(false,{silentBanner:true});
+  if(!started?.ok)return started;
+  const state=window.getV39GameState(),playerId=state.activePlayerId;
+  const player=state.players.find(row=>row.id===playerId),faction=player?.factionState;
+  const base=faction?.settlements?.find(row=>row.placed);
+  if(!base)return {ok:false,reason:'検証用の拠点が見つかりません'};
+  const map=window.__v39FieldRuntime?.mapData;
+  if(!map?.grid)return {ok:false,reason:'検証用の地上マップが見つかりません'};
+  const tileKey=`${base.x},${base.y}`,name='ゴーレム工房（大）';
+  const orderedRecipes=[...golemRecipes.keys()].sort((a,b)=>Number(b==='ストーンゴーレム')-Number(a==='ストーンゴーレム'));
+  const grid=map.grid.map(row=>[...row]);
+  const tileFacilityMap={...base.tileFacilityMap},territoryOwnerByTile={...state.territoryOwnerByTile};
+  const territoryStateByTile={...state.territoryStateByTile};
+  const materialStockByType={...base.materialStockByType,金:1500,銀:80};
+  const foodStockByType={...base.foodStockByType};
+  const crafters=[];
+  for(const [index,golemName] of orderedRecipes.entries()){
+    const x=index?4+4*((index-1)%5):base.x;
+    const y=index?10+4*Math.floor((index-1)/5):base.y;
+    const key=`${x},${y}`;
+    const terrain=golemRecipes.get(golemName).必要地形[0];
+    if(terrain){
+      const sample=getHexNeighborCoords(map.w,map.h,x,y).find(point=>point.x>x);
+      grid[sample.y][sample.x]=terrain;
+    }
+    tileFacilityMap[key]=[...new Set([...(tileFacilityMap[key]||[]),name])];
+    territoryOwnerByTile[key]=playerId;
+    territoryStateByTile[key]={...territoryStateByTile[key],status:'領土',settlementId:base.settlementId||base.id};
+    const crafter=buildV39UnitEntity({id:`golem-workshop-test-crafter-${index}`,
+      name:`${golemName.replace(/ゴーレム$/,'')}工房のクラフター`,
+      race:'只人',className:'ゴーレムクラフター',level:10,x,y});
+    if(!crafter.derivedCharacter?.ok)return {ok:false,reason:'ゴーレムクラフターを読み込めません'};
+    crafters.push(crafter);
+    for(const [resource,amount] of Object.entries(getV39GolemRecipeCost(golemName,2))){
+      const stock=FOOD_RESOURCE_KEYS.includes(resource)?foodStockByType:materialStockByType;
+      stock[resource]=(stock[resource]||0)+amount;
+    }
+  }
+  if(!crafters.length)return {ok:false,reason:'ゴーレム作成レシピが見つかりません'};
+  const units=faction.units.map(unit=>{
+    if(unit.id!=='expedition-test-carrier')return unit;
+    const {caveDuty,...carrier}=unit;
+    return {...carrier,x:base.x-1,y:base.y,position:[base.x-1,base.y]};
+  });
+  const pilot=buildV39UnitEntity({id:'golem-workshop-test-pilot',name:'搭乗検証パイロット',
+    race:'只人',className:'パイロット',level:20,prerequisiteClassLevels:{ウィザード:10},x:base.x-1,y:base.y-2});
+  if(!pilot.derivedCharacter?.ok)return {ok:false,reason:'パイロットを読み込めません'};
+  const updated={...base,buildings:[...new Set([...(base.buildings||[]),name])],
+    tileFacilityMap,territoryTileKeys:[...new Set([...(base.territoryTileKeys||[]),...Object.keys(tileFacilityMap)])],
+    cityLevels:{...base.cityLevels,魔法Lv:5,信仰Lv:5},materialStockByType,foodStockByType};
+  const next=replaceFactionSettlement(faction,updated,{ownerPlayerId:playerId});
+  window.updateV39FieldData({...map,grid},{silent:true});
+  window.setV39GameState({players:state.players.map(row=>row.id!==playerId?row:{...row,factionState:{
+    ...next,selectedUnitId:crafters[0].id,units:[...units,...crafters,pilot]
+  }}),facilitiesByTile:{...state.facilitiesByTile,...tileFacilityMap},territoryOwnerByTile,territoryStateByTile},{reason:'golem-workshop-test'});
+  await window.waitForV39MapRenderSettled?.();
+  window.activateV39FooterTab?.('settlement');
+  window.renderV39SettlementPanel?.();
+  document.querySelector('#footSettlement [data-settlement-page-select="facility"]')?.click();
+  const id=JSON.stringify(['surface',tileKey,name]);
+  Array.from(document.querySelectorAll('#footSettlement [data-settlement-facility]'))
+    .find(button=>button.dataset.settlementFacility===id)?.click();
+  window.showV39TurnBanner?.('各ゴーレムの条件を満たす工房を配置しました。施設欄の「ゴーレム作成」から確認できます');
   return {ok:true};
 };

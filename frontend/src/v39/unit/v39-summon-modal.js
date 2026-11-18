@@ -74,6 +74,13 @@ function renderCall(host,state,caster) {
         <button data-call-confirm ${check.available?'':'disabled'}>呼び寄せる</button></footer>
     </div></div></section>`);
 }
+export function renderV39SummonPicker({title,closeAttribute,candidates,detail}) {
+  return `<section class="modal" role="dialog" aria-modal="true" aria-labelledby="v39-summon-title">
+    <header class="modal-header"><h3 id="v39-summon-title">${escape(title)}</h3><button type="button" ${closeAttribute} class="v39-summon-action" aria-label="閉じる">×</button></header>
+    <div class="modal-body character-layout"><div class="list-pane">${candidates}</div>
+    <div class="summon-detail squad-detail-pane">${detail}</div></div></section>`;
+}
+
 function render() {
   const state=window.getV39GameState(),caster=state.players.find(row=>row.id===session?.playerId)?.factionState.units.find(row=>row.id===session?.unitId);
   if(!session||state.activePlayerId!==session.playerId||state.activeWorldId!==session.worldId||state.timeline.turnNumber!==session.turn||state.timeline.phase!=='player'){close();return;}
@@ -117,15 +124,16 @@ function render() {
     ${Object.keys(check.initialMaterials||{}).length?`<p>必要資材: ${escape(materialSummary(facilityMode?check.initialMaterials:check.initialPayment))}</p>`:''}
     ${Object.keys(check.upkeepMaterials||{}).length?`<p>維持素材: ${escape(materialSummary(facilityMode?check.totalUpkeepMaterials:check.upkeepMaterials))} / ${check.upkeepIntervalTurns||resolveV39FacilitySummonCosts(check.preview).upkeepIntervalTurns}Tごと${facilityMode?'・合計':'・1体あたり'}</p>`:''}
     <p>${facilityMode?'施設':'スキル'}上限Lv${check.facility.maximumLevel} / ${escape(check.facility.family||'全般')}${facilityMode?` / ${check.radius?'周囲'+check.radius+'マス以内':'施設マスのみ'}`:''}</p>`:'';
-  updateView(host,`<section class="modal" role="dialog" aria-modal="true" aria-labelledby="v39-summon-title">
-    <header class="modal-header"><h3 id="v39-summon-title">${facilityMode?'施設召喚':'召喚'}</h3><button data-summon-close aria-label="閉じる">×</button></header>
-    <div class="modal-body character-layout"><div class="list-pane">${selector}${checks.map(item=>`<div data-summon-option="${escape(item.entry.row.名前)}" class="${item.available?'':'unavailable'}">${item.preview?renderV39UnitCard(item.preview,{id:item.entry.row.名前,character:true,portrait:true,attribute:'data-summon-card',selected:item.entry.row.名前===session.skillName,position:`${item.entry.spec.members?item.entry.spec.members+'人編成 / ':''}${item.entry.spec.count}ユニット`}):`<button>${escape(item.entry.row.名前)}（設定不正）</button>`}</div>`).join('')||'<p>召喚条件を満たす候補がありません</p>'}</div>
-    <div class="summon-detail squad-detail-pane"><h4>${escape(entry?.spec.target||'候補を選択')}</h4>
+  updateView(host,renderV39SummonPicker({
+    title:facilityMode?'施設召喚':'召喚',closeAttribute:'data-summon-close',
+    candidates:`${selector}${checks.map(item=>`<div data-summon-option="${escape(item.entry.row.名前)}" class="${item.available?'':'unavailable'}">${item.preview?renderV39UnitCard(item.preview,{id:item.entry.row.名前,character:true,portrait:true,attribute:'data-summon-card',selected:item.entry.row.名前===session.skillName,position:`${item.entry.spec.members?item.entry.spec.members+'人編成 / ':''}${item.entry.spec.count}ユニット`}):`<button>${escape(item.entry.row.名前)}（設定不正）</button>`}</div>`).join('')||'<p>召喚条件を満たす候補がありません</p>'}`,
+    detail:`<h4>${escape(entry?.spec.target||'候補を選択')}</h4>
     ${describeV39SummonEquipment(entry?.spec.target)?`<p class="summon-equipment-note">${escape(describeV39SummonEquipment(entry.spec.target))}</p>`:''}${details}
     ${renderV39DetailTabs([['ability','能力'],['skills','スキル']],tab,'data-summon-tab')}
     <div class="summon-scroll">${check?.preview?(tab==='ability'?renderV39UnitAbility(check.preview):renderV39UnitSkills(check.preview)):''}</div>
     <footer><p role="status">${escape(message||(check?.available?'召喚先を確保できます':check?.reasons.join(' / '))||'召喚施設を選択してください')}</p>
-    <button data-summon-confirm ${check?.available?'':'disabled'}>${facilityMode?'召喚先を選ぶ':'召喚する'}</button></footer></div></div></section>`);
+    <button data-summon-confirm ${check?.available?'':'disabled'}>${facilityMode?'召喚先を選ぶ':'召喚する'}</button></footer>`
+  }));
 }
 function open(unitId,mode='summon',slotId=null) {
   if(window.isV39MapInputLocked?.())return;
@@ -210,11 +218,11 @@ const style=document.createElement('style');style.textContent=`
 #v39-facility-summon-placement{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:calc(100vw - 16px);width:max-content;padding:8px;background:#102025;border:2px solid #79d4e8;border-radius:8px;color:#eef9f9;font-size:var(--font-body)}
 #v39-facility-summon-placement span{flex:1 1 100%}#v39-facility-summon-placement button{padding:6px 9px;background:#19353f;border:1px solid #6aa9b8;border-radius:6px;color:#eef9f9;font-size:var(--font-body)}#v39-facility-summon-placement button:disabled{opacity:.45}
 #v39-summon-modal{position:fixed;inset:0;z-index:2100;background:#0009;display:grid;place-items:center}
-#v39-summon-modal .modal{width:min(900px,96vw);height:min(780px,94svh);display:flex;flex-direction:column;background:#102025;border:1px solid #65858b;border-radius:10px;color:#e6eeeb;overflow:hidden;font-size:var(--font-body)}
-#v39-summon-modal .modal-header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;flex-shrink:0}#v39-summon-modal h3,#v39-summon-modal h4,#v39-summon-modal p{margin:4px 0}
-#v39-summon-modal .character-layout{flex:1;min-height:0;height:auto;overflow:hidden;display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:7px;padding:8px}
-#v39-summon-modal .list-pane label{display:flex;flex-direction:column;gap:4px}#v39-summon-modal .list-pane select{max-width:100%;min-height:34px;color:#e6eeeb;background:#19353f}#v39-summon-modal .list-pane{overflow:auto;min-width:0;display:flex;flex-direction:column;gap:5px}#v39-summon-modal .squad-card{width:100%}#v39-summon-modal .unavailable{opacity:.55}
-#v39-summon-modal .summon-detail{min-width:0;min-height:0;display:flex;flex-direction:column;padding:7px;border:1px solid #35535b;border-radius:7px}#v39-summon-modal .summon-scroll{overflow:auto;flex:1;min-height:0}#v39-summon-modal footer{border-top:1px solid #35535b;padding-top:6px;flex-shrink:0}
-#v39-summon-modal button{font-size:var(--font-body);color:#e6eeeb}#v39-summon-modal [data-summon-confirm],#v39-summon-modal [data-call-confirm],#v39-summon-modal [data-summon-close]{background:#19353f;border:1px solid #6aa9b8;border-radius:6px;min-height:34px;padding:6px 12px}#v39-summon-modal button:disabled{opacity:.45}
-@media(max-width:600px){#v39-summon-modal .character-layout{grid-template-columns:minmax(110px,40%) minmax(0,1fr);gap:5px;padding:5px}#v39-summon-modal .summon-detail{padding:5px}}
+:is(#v39-summon-modal,#v39-golem-workshop) .modal{width:min(900px,96vw);height:min(780px,94svh);display:flex;flex-direction:column;background:#102025;border:1px solid #65858b;border-radius:10px;color:#e6eeeb;overflow:hidden;font-size:var(--font-body)}
+:is(#v39-summon-modal,#v39-golem-workshop) .modal-header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;flex-shrink:0}:is(#v39-summon-modal,#v39-golem-workshop) h3,:is(#v39-summon-modal,#v39-golem-workshop) h4,:is(#v39-summon-modal,#v39-golem-workshop) p{margin:4px 0}
+:is(#v39-summon-modal,#v39-golem-workshop) .character-layout{flex:1;min-height:0;height:auto;overflow:hidden;display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:7px;padding:8px}
+:is(#v39-summon-modal,#v39-golem-workshop) .list-pane label{display:flex;flex-direction:column;gap:4px}:is(#v39-summon-modal,#v39-golem-workshop) .list-pane select{max-width:100%;min-height:34px;color:#e6eeeb;background:#19353f}:is(#v39-summon-modal,#v39-golem-workshop) .list-pane{overflow:auto;min-width:0;display:flex;flex-direction:column;gap:5px}:is(#v39-summon-modal,#v39-golem-workshop) .squad-card{width:100%}:is(#v39-summon-modal,#v39-golem-workshop) .unavailable{opacity:.55}
+:is(#v39-summon-modal,#v39-golem-workshop) .summon-detail{min-width:0;min-height:0;display:flex;flex-direction:column;padding:7px;border:1px solid #35535b;border-radius:7px}:is(#v39-summon-modal,#v39-golem-workshop) .summon-scroll{overflow:auto;flex:1;min-height:0}:is(#v39-summon-modal,#v39-golem-workshop) footer{border-top:1px solid #35535b;padding-top:6px;flex-shrink:0}
+:is(#v39-summon-modal,#v39-golem-workshop) button{font-size:var(--font-body);color:#e6eeeb}:is(#v39-summon-modal,#v39-golem-workshop) [data-summon-confirm],:is(#v39-summon-modal,#v39-golem-workshop) [data-call-confirm],:is(#v39-summon-modal,#v39-golem-workshop) .v39-summon-action,:is(#v39-summon-modal,#v39-golem-workshop) [data-summon-close]{background:#19353f;border:1px solid #6aa9b8;border-radius:6px;min-height:34px;padding:6px 12px}:is(#v39-summon-modal,#v39-golem-workshop) button:disabled{opacity:.45}
+@media(max-width:600px){:is(#v39-summon-modal,#v39-golem-workshop) .character-layout{grid-template-columns:minmax(110px,40%) minmax(0,1fr);gap:5px;padding:5px}:is(#v39-summon-modal,#v39-golem-workshop) .summon-detail{padding:5px}}
 `;document.head.append(style);

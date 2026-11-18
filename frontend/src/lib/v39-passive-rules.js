@@ -44,6 +44,7 @@ export function matchV39PassiveCondition(row,unit,action,{isCounter=false,mapDat
   }
   const system=text(row.条件系統);
   const condition=text(row.条件);
+  if(condition==='搭乗')return {matches:!!unit?.boardingPilot&&(!system||system===text(action?.系統)||Number(action?.[system])>0)};
   if(condition==='変身中')return {matches:!!text(unit?.activeTransformationSystem)&&(!system||system===text(unit.activeTransformationSystem))};
   if (system&&text(action?.系統)!==system&&!(Number(action?.[system])>0)) return {matches:false};
   if (!condition) return {matches:true};

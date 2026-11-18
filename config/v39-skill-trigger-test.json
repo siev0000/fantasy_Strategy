@@ -1,4 +1,22 @@
 {
+  "equipmentTest": {
+    "unit": {
+      "id": "equipment-test-fighter",
+      "name": "武具検証・ファイター／モンク／アーチャー",
+      "race": "只人",
+      "className": "モンク",
+      "level": 40,
+      "classGrowthStart": {"level": 40, "raceLevels": 10, "classLevels": 10},
+      "prerequisiteClassLevels": {"ファイター": 10, "アーチャー": 10},
+      "x": 2,
+      "y": 6
+    },
+    "targets": [
+      {"id": "equipment-test-dummy-near", "name": "案山子・近距離", "x": 3, "y": 6},
+      {"id": "equipment-test-dummy-far", "name": "案山子・遠距離", "x": 5, "y": 6}
+    ],
+    "equipmentNames": ["剣", "弓", "篭手"]
+  },
   "units": [
     {
       "id": "trigger-test-a",

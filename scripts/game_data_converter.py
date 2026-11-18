@@ -38,6 +38,7 @@ DEFAULT_REPORT = Path("artifacts/game-data-converter-report.json")
 SHEET_TO_JSON = {
     "召喚モンスターリスト": "召喚モンスターリスト.json",
     "モンスター合成": "モンスター合成.json",
+    "ゴーレム作成レシピ": "ゴーレム作成レシピ.json",
     "道具": "道具.json",
     "クラス": "クラス.json",
     "種族": "種族.json",
@@ -70,6 +71,7 @@ MERGED_SHEET_TABLES = {
     "効果": ("用語辞書", 0, 2),
     "説明": ("用語辞書", 3, 5),
     "範囲": ("用語辞書", 6, 9),
+    "ゴーレム作成レシピ": ("用語辞書", 11, 14),
     "体制": ("国家設定", 0, 25),
     "外交姿勢": ("国家設定", 26, 35),
     "組織": ("国家設定", 36, 40),
@@ -222,6 +224,7 @@ UNIQUE_KEYS = {
     "召喚モンスターリスト": ("名称",),
     "性格会話": ("性格",),
     "モンスター合成": ("素材", "合成結果"),
+    "ゴーレム作成レシピ": ("ゴーレム名",),
     "道具": ("名前",),
     "特産品": ("名前",),
     "種族": ("key",),
@@ -590,9 +593,31 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
                     result.errors.append({"type": "invalid_specialty_food_bonus", "name": record.get("名前"), "field": key})
             if (record.get("収穫量加算") or record.get("固定収入")) and record.get("収穫資源") not in ("穀物", "野菜", "肉", "魚"):
                 result.errors.append({"type": "invalid_specialty_food_resource", "name": record.get("名前")})
+    if sheet_name == "ゴーレム作成レシピ":
+        parse_golem_recipes(reader, result)
     if sheet_name == "勝利対象土地":
         validate_guardian_landmarks(reader, result)
     return result
+
+
+def parse_golem_recipes(reader, result):
+    terrains = {row.get("地形") for row in convert_sheet(reader, "地形", "地形.json").records}
+    resources = {row.get("データ分類") for row in convert_sheet(reader, "都市基本データ", "都市基本データ.json").records
+                 if row.get("分類") in {"食料", "特殊資源", "木材", "石材", "金属", "貴金属", "宝石"}}
+    for record in result.records:
+        name = record["ゴーレム名"]
+        required = [part.strip() for part in str(record.get("必要地形", "")).split("/") if part.strip()]
+        if any(terrain not in terrains for terrain in required):
+            result.errors.append({"type":"invalid_golem_terrain", "name":name, "terrains":required})
+        cost = {}
+        for part in str(record.get("基礎素材費", "")).split("/"):
+            match = re.fullmatch(r"([^:]+):([1-9][0-9]*)", part.strip())
+            if not match or match[1] not in resources or match[1] in cost:
+                result.errors.append({"type":"invalid_golem_base_cost", "name":name, "cost":part})
+                continue
+            cost[match[1]] = int(match[2])
+        record["必要地形"] = required
+        record["基礎素材費"] = cost
 
 
 def validate_dynamic_disasters(result):
@@ -912,6 +937,12 @@ def main():
                 return 0
 
             selected = expand_selected_tables(args.sheet or list(SHEET_TO_JSON))
+            # Older workbooks can still synchronize the original dictionary tables.
+            if "ゴーレム作成レシピ" in selected and "ゴーレム作成レシピ" not in (args.sheet or []):
+                source = source_sheet_name(reader, "ゴーレム作成レシピ")
+                header = next(iter(reader.sheet_rows(source)), (0, {}))[1] if source in reader.sheet_targets else {}
+                if not any(cell.value == "ゴーレム名" for cell in header.values()):
+                    selected.remove("ゴーレム作成レシピ")
             if has_unified_race_table(reader) and any(name in selected for name in ("種族","勢力")):
                 selected = list(dict.fromkeys([*selected,"種族","勢力"]))
                 validate_unified_race_table(reader)

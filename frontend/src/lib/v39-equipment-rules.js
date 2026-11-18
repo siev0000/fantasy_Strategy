@@ -216,8 +216,8 @@ function takeInventoryItem(inventory, name, rarity, requestedKey = "") {
   return { ok:true, item, inventory:rows.filter(row => row.count > 0) };
 }
 
-function researchLevel(player, field) {
-  return Math.max(number(getSelectedSettlement(player?.factionState)?.cityLevels?.[field]), resolveCompletedResearchLevel(player?.factionState?.research, field.replace(/Lv$/, "")));
+function researchLevel(player, field, settlement = getSelectedSettlement(player?.factionState)) {
+  return Math.max(number(settlement?.cityLevels?.[field]), resolveCompletedResearchLevel(player?.factionState?.research, field.replace(/Lv$/, "")));
 }
 
 function selectedVillage(player) {
@@ -231,24 +231,43 @@ function updateSelectedVillage(player, village, factionPatch = {}) {
   };
 }
 
-export function craftV39Equipment(state, playerId, request = {}) {
-  const player = state?.players?.find(row => text(row?.id) === text(playerId));
-  if (!player) return { ok:false, reason:"プレイヤーが見つかりません", state };
+export function inspectV39EquipmentCraft(player, request = {}) {
+  if (!player) return { ok:false, reason:"プレイヤーが見つかりません" };
   const village = selectedVillage(player);
-  if (!village?.placed) return { ok:false, reason:"装備作成には拠点配置が必要です", state };
+  if (!village?.placed) return { ok:false, reason:"装備作成には拠点配置が必要です" };
   const count = Math.max(1, Math.min(99, Math.floor(number(request.count, 1))));
   const item = createV39EquipmentEntry(request.name, request.rarity);
-  if (!item) return { ok:false, reason:"装備データが見つかりません", state };
+  if (!item) return { ok:false, reason:"装備データが見つかりません" };
   const cost = getV39EquipmentCraftCost(item.name, item.quality, count);
-  if (!cost.ok) return { ...cost, state };
-  if (researchLevel(player, "鍛冶Lv") < cost.level) return { ok:false, reason:`鍛冶Lv${cost.level}が必要です`, state, cost };
+  if (!cost.ok) return cost;
+  if (researchLevel(player, "鍛冶Lv") < cost.level) return { ok:false, reason:`鍛冶Lv${cost.level}が必要です`, cost };
+  const missing = Object.entries(cost.material).filter(([key, amount]) => number(village.materialStockByType?.[key]) < number(amount)).map(([key]) => key);
+  if (missing.length) return { ok:false, reason:`素材不足: ${missing.join("・")}`, cost };
+  return { ok:true, village, item, count, cost };
+}
+
+export function craftV39Equipment(state, playerId, request = {}) {
+  const player = state?.players?.find(row => text(row?.id) === text(playerId));
+  const check = inspectV39EquipmentCraft(player, request);
+  if (!check.ok) return { ...check, state };
+  const {village, item, count, cost} = check;
   const stock = { ...village.materialStockByType };
-  const missing = Object.entries(cost.material).filter(([key, amount]) => number(stock[key]) < number(amount)).map(([key]) => key);
-  if (missing.length) return { ok:false, reason:`素材不足: ${missing.join("・")}`, state, cost };
   for (const [key, amount] of Object.entries(cost.material)) stock[key] = round1(Math.max(0, number(stock[key]) - number(amount)));
   const nextVillage = normalizeV39Village({ ...village, materialStockByType:stock, equipmentInventory:storeInventoryItem(village.equipmentInventory, item, count) }, player.race);
   const nextState = updatePlayer(state, playerId, row => updateSelectedVillage(row, nextVillage));
   return { ok:true, state:nextState, item, count, cost };
+}
+
+export function canV39ChangeUnitEquipmentSlot(unit,slot) {
+  if(!unit||unit.summon)return false;
+  if(unit.golemBuild){
+    if(slot!=='武器1'&&slot!=='武器2')return false;
+    return (unit.techniques||[]).some(technique=>{
+      const row=technique.source||technique;
+      return row.行動==='P'&&row.効果==='武器装備解禁'&&unit.golemBuild.additionalSkillNames?.includes(row.名前);
+    });
+  }
+  return !isMobUnit(unit);
 }
 
 export function changeV39UnitEquipment(state, playerId, request = {}) {
@@ -256,9 +275,9 @@ export function changeV39UnitEquipment(state, playerId, request = {}) {
   const unit = player?.factionState?.units?.find(row => text(row?.id) === text(request.unitId));
   if (!unit) return { ok:false, reason:"キャラクターが見つかりません", state };
   if (unit.summon) return {ok:false,state,reason:"召喚ユニットの装備は交換できません"};
-  if (isMobUnit(unit)) return { ok:false, reason:"モブは固定装備です。レア度一新を使用してください", state };
   const slot = normalizeV39EquipmentSlot(request.slot);
   if (!slot) return { ok:false, reason:"装備部位が不正です", state };
+  if (!canV39ChangeUnitEquipmentSlot(unit,slot)) return {ok:false,state,reason:unit.golemBuild?"この装備枠は変更できません":"モブは固定装備です。レア度一新を使用してください"};
   const village = selectedVillage(player);
   if (!village?.placed) return { ok:false, reason:"装備変更には拠点配置が必要です", state };
   const current = (unit.equipment || []).map(normalizeV39EquipmentItem).filter(Boolean);
@@ -336,10 +355,10 @@ export function getV39EquipmentInventoryView(player) {
   return [...combined.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
 }
 
-function enchantTargetMatches(row, item) {
+function enchantTargetMatches(row, item, part) {
   const targets = text(row?.対象装備).split(/[,、\/／|]/).map(text).filter(Boolean);
   if (!targets.length) return true;
-  const slots = getV39EquipmentSlotCandidates(item?.source || item?.name);
+  const slots = part ? [part] : getV39EquipmentSlotCandidates(item?.source || item?.name);
   return targets.some(target => {
     if (target === "武器") return slots.some(slot => slot.startsWith("武器"));
     if (target === "防具") return slots.some(slot => ["頭", "体", "足"].includes(slot));
@@ -348,11 +367,11 @@ function enchantTargetMatches(row, item) {
   });
 }
 
-function enchantRequirements(player, row) {
+function enchantRequirements(player, row, settlement) {
   const failed = [];
   for (const key of RESEARCH_CATEGORY_ORDER) {
     const required = Math.max(0, Math.floor(number(row?.[key])));
-    const current = researchLevel(player, key);
+    const current = researchLevel(player, key, settlement);
     if (required > current) failed.push(`${key} ${current}/${required}`);
   }
   return failed;
@@ -367,11 +386,39 @@ function enchantCost(row) {
   return { level, material, food };
 }
 
+const armorEnchantLimits = {
+  common:{total:2,single:2},
+  uncommon:{total:6,single:3},
+  rare:{total:9,single:5}
+};
+
+export const golemEnchantParts = Object.freeze({頭:'兜',体:'鎧',足:'靴'});
+
+export function getV39GolemEnchantLimits(quality) {
+  return quality==='epic'?{total:12,single:5}:armorEnchantLimits[quality];
+}
+
+export function getV39GolemEnchantOptions(player, settlement, part) {
+  const name = golemEnchantParts[part];
+  if (!name) return [];
+  return enchantmentRows.filter(row => enchantTargetMatches(row,{name},part)).map(row => ({
+    name:text(row.付与能力), row, cost:enchantCost(row), failed:enchantRequirements(player,row,settlement)
+  }));
+}
+
 function enchantCapacity(item, row) {
   const weapon = getV39EquipmentSlotCandidates(item?.source || item?.name).some(slot => slot.startsWith("武器"));
   const currentNames = Array.isArray(item?.enchantments) ? item.enchantments : [];
   if (currentNames.includes(text(row?.付与能力))) return "同じ付与は重複できません";
-  if (!weapon) return "";
+  if (!weapon) {
+    const armor = getV39EquipmentSlotCandidates(item?.source || item?.name).some(slot => ["頭", "体", "足"].includes(slot));
+    const limit = armor ? armorEnchantLimits[getV39EquipmentRarity(item?.quality).key] : null;
+    if (!limit) return "";
+    const level = Math.max(0, number(row?.Lv));
+    if (level > limit.single) return `1つあたりの付与Lvは${limit.single}までです`;
+    const used = currentNames.reduce((sum, name) => sum + Math.max(0, number(enchantmentByName.get(text(name))?.Lv)), 0);
+    return used + level > limit.total ? `付与Lv合計は${limit.total}までです` : "";
+  }
   if (currentNames.length >= 3) return "武器付与は最大3つです";
   const usedLevel = currentNames.reduce((sum, name) => sum + Math.max(0, number(enchantmentByName.get(text(name))?.Lv)), 0);
   const limit = getV39EquipmentRarity(item?.quality).level;

@@ -1,10 +1,14 @@
+import "./v39-enchantment-options.css";
+import "./v39-equipment-ui.css";
 import {
   V39_EQUIPMENT_RARITIES,
   applyV39EquipmentEnchantment,
   changeV39UnitEquipment,
+  canV39ChangeUnitEquipmentSlot,
   craftV39Equipment,
+  createV39EquipmentEntry,
   getV39EquipmentCatalog,
-  getV39EquipmentCraftCost,
+  inspectV39EquipmentCraft,
   getV39EquipmentInventoryView,
   getV39EnchantmentOptions,
   getV39EquipmentSlotCandidates,
@@ -21,6 +25,8 @@ let selectedInventoryKey = "";
 let selectedUnitId = "";
 let selectedEnchantmentName = "";
 let statusText = "";
+let craftCategory = "武器";
+let craftRequest = {name:"", rarity:V39_EQUIPMENT_RARITIES[0]?.key, count:1};
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -28,15 +34,15 @@ const escapeHtml = value => text(value).replaceAll("&", "&amp;").replaceAll("<",
 const stat = (label, value, suffix = "") => number(value) === 0 ? "" : `<div class="v39-equip-stat"><span>${label}</span><b>${escapeHtml(value)}${suffix}</b></div>`;
 
 function player() {
-  return window.getV39ActivePlayer?.() || null;
+  return window.getV39ActivePlayer?.() ?? null;
 }
 
-function itemDetail(item) {
+function itemDetail(item, {preview = false} = {}) {
   if (!item) return '<p class="v39-equip-empty">装備を選択してください</p>';
   const traits = (item.traits || []).map(value => `<span>${escapeHtml(value)}</span>`).join("");
   const resistances = Object.entries(item.resistanceBonus || {}).filter(([, value]) => number(value) !== 0)
     .map(([key, value]) => `<span>${escapeHtml(key)} ${number(value) > 0 ? "+" : ""}${number(value)}</span>`).join("");
-  return `<h3>${escapeHtml(item.name)} <small>[${escapeHtml(item.qualityLabel)}]</small></h3>
+  return `<h3${preview ? ' class="v39-equip-preview-title"' : ""}>${preview ? `<span class="v39-equip-icon" aria-hidden="true">${inventoryIcon(item, item.name)}</span>` : ""}${escapeHtml(item.name)} <small${preview ? ` class="v39-equip-preview-rarity" data-quality="${escapeHtml(item.quality)}"` : ""}>[${escapeHtml(item.qualityLabel)}]</small></h3>
     <div class="v39-equip-stats">${stat("威力", item.power)}${stat("魔力", item.statusBonus?.魔力)}${stat("ガード", item.guard)}${stat("攻撃AP", item.attackAp)}${stat("魔法AP", item.magicAp)}${stat("射撃", item.shot)}${stat("射程", item.range)}${stat("Cr率", item.criticalRate, "%")}${stat("Cr威力", item.criticalPower, "%")}${stat("ペナルティ", item.penalty)}</div>
     ${resistances ? `<h4>耐性</h4><div class="v39-equip-chips">${resistances}</div>` : ""}
     ${(item.enchantments || []).length ? `<h4>付与</h4><div class="v39-equip-chips">${item.enchantments.map(value => `<span>${escapeHtml(value)}</span>`).join("")}</div>` : ""}
@@ -47,10 +53,34 @@ function inventoryPanel(current) {
   const rows = getV39EquipmentInventoryView(current);
   if (!rows.some(row => row.key === selectedInventoryKey)) selectedInventoryKey = rows[0]?.key || "";
   const selected = rows.find(row => row.key === selectedInventoryKey) || null;
-  return `<div class="v39-equip-columns"><div class="v39-equip-list">${rows.map(row => {
-    const rarity = V39_EQUIPMENT_RARITIES.find(entry => entry.key === row.quality);
-    return `<button type="button" class="v39-equip-row${row.key === selectedInventoryKey ? " active" : ""}" data-v39-equip-item="${escapeHtml(row.key)}"><strong>${escapeHtml(row.name)} [${rarity?.short || "C"}]</strong><span>${row.equippedCount ? `E${row.equippedCount} ` : ""}残${row.remainingCount}</span></button>`;
-  }).join("") || '<p class="v39-equip-empty">装備はありません</p>'}</div><div class="v39-equip-detail">${itemDetail(selected?.item)}</div></div>`;
+  return `<div class="v39-equip-inventory"><div class="v39-equip-list"><div class="v39-equip-grid">${rows.map(row => {
+    const rank = V39_EQUIPMENT_RARITIES.find(rarity => rarity.key === row.quality)?.short || row.qualityLabel;
+    const label = `${row.name} ${row.qualityLabel} 在庫${row.remainingCount}${row.equippedCount ? ` 装備中${row.equippedCount}` : ""}`;
+    return `<button type="button" class="v39-equip-tile" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-pressed="${row.key === selectedInventoryKey}" data-v39-equip-item="${escapeHtml(row.key)}">
+      <span class="v39-equip-rank" aria-hidden="true">${escapeHtml(rank)}</span>
+      <span class="v39-equip-icon" aria-hidden="true">${inventoryIcon(row.item, row.name)}</span>
+      <span class="v39-equip-count" aria-hidden="true">${row.equippedCount ? "残" : ""}${row.remainingCount}</span>
+    </button>`;
+  }).join("") || '<p class="v39-equip-empty">装備はありません</p>'}</div></div><div class="v39-equip-detail">${itemDetail(selected?.item)}</div></div>`;
+}
+
+function inventoryIcon(item, name) {
+  const source = item?.source;
+  if (source?.武器分類 === "盾") return "🛡";
+  switch (source?.装備箇所) {
+    case "武器":
+      if (/弓|ボウ/.test(name)) return "🏹";
+      if (/斧/.test(name)) return "🪓";
+      if (/槌|鎚|ハンマー/.test(name)) return "🔨";
+      if (/篭手|籠手|ガントレット/.test(name)) return "🥊";
+      return "🗡";
+    case "頭": return "⛑";
+    case "体":
+    case "胴": return "🥋";
+    case "足": return "👢";
+    case "装飾": return "💍";
+    default: return "⚒";
+  }
 }
 
 function compatibleOptions(current, slot) {
@@ -66,11 +96,12 @@ function unitPanel(current) {
   if (!unit) return '<p class="v39-equip-empty">キャラクターがいません</p>';
   const equipment = (unit.equipment || []).map(normalizeV39EquipmentItem).filter(Boolean);
   const mob = isMobUnit(unit);
-  return `<div class="v39-equip-unit-bar"><label>キャラ<select id="v39-equip-unit">${units.map(row => `<option value="${escapeHtml(row.id)}"${row.id === unit.id ? " selected" : ""}>${escapeHtml(row.name)} / ${isMobUnit(row) ? "モブ" : "ネームド"}</option>`).join("")}</select></label>${mob ? '<b>固定プリセット装備</b>' : '<b>在庫装備を使用</b>'}</div>
+  const canChangeWeapons=mob&&canV39ChangeUnitEquipmentSlot(unit,"武器1");
+  return `<div class="v39-equip-unit-bar"><label>キャラ<select id="v39-equip-unit">${units.map(row => `<option value="${escapeHtml(row.id)}"${row.id === unit.id ? " selected" : ""}>${escapeHtml(row.name)} / ${isMobUnit(row) ? "モブ" : "ネームド"}</option>`).join("")}</select></label>${canChangeWeapons ? '<b>武器は在庫装備を使用</b>' : mob ? '<b>固定プリセット装備</b>' : '<b>在庫装備を使用</b>'}</div>
     <div class="v39-equip-slots">${EQUIPMENT_SLOT_KEYS.map(slot => {
       const item = equipment.find(row => row.slot === slot);
       const options = compatibleOptions(current, slot);
-      return `<section><header><span>${slot}</span><strong>${escapeHtml(item?.name || "なし")}${item ? ` [${escapeHtml(item.qualityLabel)}]` : ""}</strong></header>${itemDetail(item)}${mob ? "" : `<footer><select data-v39-equip-pick="${slot}"><option value="">在庫から選択</option>${options}</select><button type="button" data-v39-equip-apply="${slot}"${options ? "" : " disabled"}>変更</button><button type="button" data-v39-equip-remove="${slot}"${item ? "" : " disabled"}>外す</button></footer>`}</section>`;
+      return `<section><header><span>${slot}</span><strong>${escapeHtml(item?.name || "なし")}${item ? ` [${escapeHtml(item.qualityLabel)}]` : ""}</strong></header>${itemDetail(item)}${!canV39ChangeUnitEquipmentSlot(unit,slot) ? "" : `<footer><select data-v39-equip-pick="${slot}"><option value="">在庫から選択</option>${options}</select><button type="button" data-v39-equip-apply="${slot}"${options ? "" : " disabled"}>変更</button><button type="button" data-v39-equip-remove="${slot}"${item ? "" : " disabled"}>外す</button></footer>`}</section>`;
     }).join("")}</div>${mob ? `<div class="v39-equip-reroll"><label>レア度<select id="v39-equip-reroll-rarity">${V39_EQUIPMENT_RARITIES.map(row => `<option value="${row.key}">${row.label}</option>`).join("")}</select></label><button type="button" id="v39-equip-reroll">レア度一新</button></div>` : ""}`;
 }
 
@@ -78,9 +109,33 @@ function costText(cost) {
   return Object.entries(cost?.material || {}).filter(([, value]) => number(value) > 0).map(([key, value]) => `${key} ${value}`).join(" / ") || "なし";
 }
 
+function craftItemCategory(row) {
+  if (row.武器分類 === "盾") return "防具";
+  if (row.装備箇所 === "武器") return "武器";
+  return row.装備箇所 === "装飾" ? "装飾" : "防具";
+}
+
 function craftPanel() {
-  const catalog = getV39EquipmentCatalog();
-  return `<div class="v39-equip-craft"><label>装備<select id="v39-equip-craft-name">${catalog.map(row => `<option value="${escapeHtml(row.name)}">${escapeHtml(row.name)}</option>`).join("")}</select></label><label>レア度<select id="v39-equip-craft-rarity">${V39_EQUIPMENT_RARITIES.map(row => `<option value="${row.key}">${row.label} / 鍛冶Lv${row.level}</option>`).join("")}</select></label><label>個数<input id="v39-equip-craft-count" type="number" min="1" max="99" value="1"></label><output id="v39-equip-craft-cost"></output><button type="button" id="v39-equip-craft">生成</button></div>`;
+  const catalog = getV39EquipmentCatalog().filter(({row}) => craftItemCategory(row) === craftCategory);
+  if (!catalog.some(row => row.name === craftRequest.name)) craftRequest.name = catalog[0]?.name || "";
+  return `<div class="v39-equip-craft-layout">
+    <div id="v39-equip-craft-preview" class="v39-equip-detail" aria-label="生成予定の装備"></div>
+    <div class="v39-equip-craft">
+    <label>装備<select id="v39-equip-craft-name">${catalog.map(row => `<option value="${escapeHtml(row.name)}"${row.name === craftRequest.name ? " selected" : ""}>${escapeHtml(row.name)}</option>`).join("")}</select></label>
+    <div class="v39-equip-craft-fields">
+      <label>種別<select id="v39-equip-craft-category">${["武器","防具","装飾"].map(name => `<option${name === craftCategory ? " selected" : ""}>${name}</option>`).join("")}</select></label>
+      <label>レア度<select id="v39-equip-craft-rarity">${V39_EQUIPMENT_RARITIES.map(row => `<option value="${row.key}"${row.key === craftRequest.rarity ? " selected" : ""}>${escapeHtml(row.label)}</option>`).join("")}</select></label>
+      <label>個数<input id="v39-equip-craft-count" type="number" min="1" max="99" value="${escapeHtml(craftRequest.count)}"></label>
+    </div>
+    <output id="v39-equip-craft-cost"></output><button type="button" id="v39-equip-craft">生成</button>
+    </div>
+  </div>`;
+}
+
+export function renderV39EnchantmentOptions(options, actionAttribute, toggle=false) {
+  return `<div class="v39-enchant-options">${options.map(row => `<button type="button" ${actionAttribute}="${escapeHtml(row.name)}"
+    class="${row.selected ? "active" : ""}"${row.available ? "" : " disabled"}${toggle?` aria-pressed="${!!row.selected}"`:''}>
+    <b>${escapeHtml(row.name)}${toggle?` Lv${number(row.row?.Lv)}`:""}</b><span>${row.available ? `素材 ${escapeHtml(costText(row.cost))}` : escapeHtml(row.reason)}</span></button>`).join("") || '<p class="v39-equip-empty">付与候補がありません</p>'}</div>`;
 }
 
 function enchantPanel(current) {
@@ -90,25 +145,41 @@ function enchantPanel(current) {
   const options = selected ? getV39EnchantmentOptions(current, selected.key, window.getV39GameState?.()?.timeline?.turnNumber) : [];
   if (!options.some(row => row.name === selectedEnchantmentName)) selectedEnchantmentName = options[0]?.name || "";
   const option = options.find(row => row.name === selectedEnchantmentName) || null;
-  return `<div class="v39-enchant-layout"><div class="v39-enchant-form"><label>対象装備<select id="v39-enchant-target">${rows.map(row => `<option value="${escapeHtml(row.key)}"${row.key === selectedInventoryKey ? " selected" : ""}>${escapeHtml(row.name)} [${escapeHtml(row.qualityLabel)}] 残${row.remainingCount}</option>`).join("")}</select></label><div class="v39-enchant-options">${options.map(row => `<button type="button" data-v39-enchant-option="${escapeHtml(row.name)}" class="${row.name === selectedEnchantmentName ? "active" : ""}"${row.available ? "" : " disabled"}><b>${escapeHtml(row.name)}</b><span>${row.available ? `素材 ${escapeHtml(costText(row.cost))}` : escapeHtml(row.reason)}</span></button>`).join("") || '<p class="v39-equip-empty">付与候補がありません</p>'}</div><button type="button" id="v39-enchant-apply"${option?.available ? "" : " disabled"}>付与を実行</button></div><div class="v39-equip-detail">${itemDetail(selected?.item)}${option ? `<h4>選択付与</h4><p>${escapeHtml(option.name)} / Lv${number(option.row?.Lv)} / ${escapeHtml(costText(option.cost))}</p>` : ""}</div></div>`;
+  return `<div class="v39-enchant-layout"><div class="v39-enchant-form"><label>対象装備<select id="v39-enchant-target">${rows.map(row => `<option value="${escapeHtml(row.key)}"${row.key === selectedInventoryKey ? " selected" : ""}>${escapeHtml(row.name)} [${escapeHtml(row.qualityLabel)}] 残${row.remainingCount}</option>`).join("")}</select></label>${renderV39EnchantmentOptions(options.map(row => ({...row,selected:row.name === selectedEnchantmentName})), "data-v39-enchant-option")}<button type="button" id="v39-enchant-apply"${option?.available ? "" : " disabled"}>付与を実行</button></div><div class="v39-equip-detail">${itemDetail(selected?.item)}${option ? `<h4>選択付与</h4><p>${escapeHtml(option.name)} / Lv${number(option.row?.Lv)} / ${escapeHtml(costText(option.cost))}</p>` : ""}</div></div>`;
 }
 
 function updateCraftCost() {
-  const name = document.getElementById("v39-equip-craft-name")?.value;
-  const rarity = document.getElementById("v39-equip-craft-rarity")?.value;
-  const count = document.getElementById("v39-equip-craft-count")?.value;
   const output = document.getElementById("v39-equip-craft-cost");
-  if (output) output.textContent = `必要素材: ${costText(getV39EquipmentCraftCost(name, rarity, count))}`;
+  if (!output) return;
+  craftRequest = {
+    name:document.getElementById("v39-equip-craft-name").value,
+    rarity:document.getElementById("v39-equip-craft-rarity").value,
+    count:document.getElementById("v39-equip-craft-count").value
+  };
+  const check = inspectV39EquipmentCraft(player(), craftRequest);
+  const preview = document.getElementById("v39-equip-craft-preview");
+  const item = check.item ?? createV39EquipmentEntry(craftRequest.name, craftRequest.rarity);
+  preview.innerHTML = item ? itemDetail(item, {preview:true}) : '<p class="v39-equip-empty">生成する装備を選択してください</p>';
+  output.textContent = craftRequest.name ? [check.cost && `必要素材 ${costText(check.cost)}`, check.reason].filter(Boolean).join("  ·  ") : "";
+  document.getElementById("v39-equip-craft").disabled = !check.ok;
 }
 
 function render() {
   const modal = document.getElementById("equipmentModal");
   const body = modal?.querySelector(".modal-body");
   const current = player();
-  if (!(body instanceof HTMLElement) || !current) return;
-  body.className = "modal-body v39-equipment-body";
+  if (!(body instanceof HTMLElement)) return;
+  if (!current) {
+    body.innerHTML = '<p class="v39-equip-empty">ゲーム開始後に装備を確認できます。</p>';
+    return;
+  }
   const tabs = [["inventory", "一覧"], ["unit", "キャラ装備"], ["craft", "生成"], ["enchant", "付与"]];
-  body.innerHTML = `<div class="modal-tabs">${tabs.map(([key, label]) => `<button type="button" class="${key === activeTab ? "active" : ""}" data-v39-equipment-tab="${key}">${label}</button>`).join("")}</div><div class="v39-equipment-content">${activeTab === "inventory" ? inventoryPanel(current) : activeTab === "unit" ? unitPanel(current) : activeTab === "craft" ? craftPanel() : enchantPanel(current)}</div><output class="v39-equip-status">${escapeHtml(statusText)}</output>`;
+  const scrollTop = body.querySelector(".v39-equipment-content")?.scrollTop || 0;
+  const listScrollTop = body.querySelector(".v39-equip-list")?.scrollTop || 0;
+  body.innerHTML = `<nav class="v39-equipment-tabs" aria-label="装備メニュー">${tabs.map(([key, label]) => `<button type="button" aria-pressed="${key === activeTab}" data-v39-equipment-tab="${key}">${label}</button>`).join("")}</nav><div class="v39-equipment-content">${activeTab === "inventory" ? inventoryPanel(current) : activeTab === "unit" ? unitPanel(current) : activeTab === "craft" ? craftPanel() : enchantPanel(current)}</div><output class="v39-equip-status" aria-live="polite">${escapeHtml(statusText)}</output>`;
+  body.querySelector(".v39-equipment-content").scrollTop = scrollTop;
+  const list = body.querySelector(".v39-equip-list");
+  if (list) list.scrollTop = listScrollTop;
   if (activeTab === "craft") updateCraftCost();
 }
 
@@ -121,30 +192,25 @@ function commit(result, success) {
   render();
 }
 
-function installStyles() {
-  const style = document.createElement("style");
-  style.textContent = `.v39-equipment-body{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:7px}.v39-equipment-content{min-height:0;overflow:hidden}.v39-equip-columns,.v39-enchant-layout{height:100%;display:grid;grid-template-columns:minmax(250px,1fr) minmax(280px,1fr);gap:8px}.v39-equip-list,.v39-equip-detail,.v39-enchant-form{min-height:0;overflow:auto;border:1px solid #34474e;border-radius:8px;background:#111b20;padding:7px}.v39-equip-row{width:100%;min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #354950;border-radius:6px;background:#17252a;color:#edf4f2;padding:7px;margin-bottom:5px;font-size:var(--font-body);text-align:left}.v39-equip-row.active{border:2px solid #e4c46b;background:#2e2a18}.v39-equip-row span{color:#b9c6c7;white-space:nowrap}.v39-equip-detail h3{font-size:var(--font-size-18);margin:2px 0 10px}.v39-equip-detail h3 small{font-size:var(--font-size-14);color:#d9c276}.v39-equip-detail h4,.v39-equip-slots h4{margin:8px 0 4px}.v39-equip-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.v39-equip-stat{display:grid;gap:2px;border:1px solid #34464d;border-radius:5px;padding:5px}.v39-equip-stat span{font-size:var(--font-secondary);color:#9eafb2}.v39-equip-stat b{font-size:var(--font-size-16)}.v39-equip-chips{display:flex;gap:5px;flex-wrap:wrap}.v39-equip-chips span{border:1px solid #43555b;border-radius:5px;padding:4px 6px;font-size:var(--font-size-14)}.v39-equip-empty{color:#9cadb0}.v39-equip-unit-bar{display:flex;align-items:center;gap:12px;margin-bottom:6px}.v39-equip-unit-bar label,.v39-equip-craft label,.v39-equip-reroll label,.v39-enchant-form label{display:flex;align-items:center;gap:6px;font-size:var(--font-body)}.v39-equip-unit-bar select,.v39-equip-craft select,.v39-equip-craft input,.v39-equip-reroll select,.v39-equip-slots select,.v39-enchant-form select{min-height:36px;border:1px solid #40565e;border-radius:6px;background:#101c21;color:#edf4f2;padding:5px;font-size:var(--font-body)}.v39-equip-slots{height:calc(100% - 48px);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;overflow:auto}.v39-equip-slots section{border:1px solid #35484f;border-radius:7px;background:#111b20;padding:7px}.v39-equip-slots header{display:flex;justify-content:space-between;gap:8px}.v39-equip-slots header span{color:#9db0b3}.v39-equip-slots .v39-equip-detail{border:0;padding:5px 0;overflow:visible}.v39-equip-slots footer{display:flex;gap:5px}.v39-equip-slots footer select{min-width:0;flex:1}.v39-equip-slots button,.v39-equip-reroll button,.v39-equip-craft button,#v39-enchant-apply{min-height:36px;border:1px solid #806b39;border-radius:6px;background:#302916;color:#f1d889;padding:5px 10px;font-size:var(--font-body)}.v39-equip-slots button:disabled,#v39-enchant-apply:disabled{opacity:.35}.v39-equip-reroll{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}.v39-equip-craft{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;align-content:start;border:1px solid #35484f;border-radius:8px;background:#111b20;padding:10px}.v39-equip-craft label{display:grid}.v39-equip-craft output{grid-column:1/-1;font-size:var(--font-body)}.v39-equip-craft button{grid-column:3}.v39-enchant-form{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px}.v39-enchant-form label{display:grid}.v39-enchant-options{min-height:0;overflow:auto;display:grid;align-content:start;gap:5px}.v39-enchant-options button{display:grid;gap:2px;text-align:left;border:1px solid #40545b;border-radius:6px;background:#17252a;color:#edf4f2;padding:7px;font-size:var(--font-body)}.v39-enchant-options button.active{border:2px solid #e4c46b;background:#302916}.v39-enchant-options button:disabled{opacity:.45}.v39-enchant-options span{font-size:var(--font-secondary);color:#a9b9bb}.v39-equip-status{min-height:20px;color:#e7cf8b;font-size:var(--font-body)}@media(max-width:700px){.v39-equip-columns,.v39-enchant-layout{grid-template-columns:1fr;grid-template-rows:1fr 1fr}.v39-equip-slots{grid-template-columns:1fr}.v39-equip-craft{grid-template-columns:1fr}.v39-equip-craft output,.v39-equip-craft button{grid-column:1}}`;
-  document.head.appendChild(style);
-}
-
 function install() {
-  installStyles();
-  document.querySelectorAll('[data-open="equipment"]').forEach(button => button.addEventListener("click", event => {
+  document.addEventListener("click", event => {
+    if (!(event.target instanceof Element) || !event.target.closest('[data-open="equipment"]')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     statusText = "";
     document.getElementById("equipmentModal")?.classList.add("open");
     render();
-  }, true));
+  }, true);
   document.getElementById("equipmentModal")?.addEventListener("click", event => {
     const element = event.target instanceof Element ? event.target : null;
     const tab = element?.closest("[data-v39-equipment-tab]");
-    if (tab) { activeTab = tab.dataset.v39EquipmentTab; statusText = ""; render(); return; }
+    if (tab) { activeTab = tab.dataset.v39EquipmentTab; statusText = ""; element.closest(".v39-equipment-body").querySelector(".v39-equipment-content").scrollTop = 0; render(); return; }
     const row = element?.closest("[data-v39-equip-item]");
     if (row) { selectedInventoryKey = row.dataset.v39EquipItem; render(); return; }
     const apply = element?.closest("[data-v39-equip-apply]");
     if (apply) {
       const picker = document.querySelector(`[data-v39-equip-pick="${apply.dataset.v39EquipApply}"]`);
+      if (!picker?.value) return;
       const [name, rarity] = text(picker?.value).split("::");
       const state = window.getV39GameState?.();
       const current = player();
@@ -168,7 +234,7 @@ function install() {
     if (element?.closest("#v39-equip-craft")) {
       const state = window.getV39GameState?.();
       const current = player();
-      commit(craftV39Equipment(state, current?.id, { name:document.getElementById("v39-equip-craft-name")?.value, rarity:document.getElementById("v39-equip-craft-rarity")?.value, count:document.getElementById("v39-equip-craft-count")?.value }), "装備を生成しました");
+      commit(craftV39Equipment(state, current?.id, craftRequest), "装備を生成しました");
       return;
     }
     const enchantOption = element?.closest("[data-v39-enchant-option]");
@@ -182,7 +248,11 @@ function install() {
     const element = event.target instanceof Element ? event.target : null;
     if (element?.id === "v39-equip-unit") { selectedUnitId = element.value; render(); return; }
     if (element?.id === "v39-enchant-target") { selectedInventoryKey = element.value; selectedEnchantmentName = ""; render(); return; }
+    if (element?.id === "v39-equip-craft-category") { craftCategory = element.value; render(); return; }
     if (element?.closest(".v39-equip-craft")) updateCraftCost();
+  });
+  document.getElementById("equipmentModal")?.addEventListener("input", event => {
+    if (event.target?.id === "v39-equip-craft-count") updateCraftCost();
   });
   window.addEventListener("v39:game-state-changed", () => {
     if (document.getElementById("equipmentModal")?.classList.contains("open")) render();

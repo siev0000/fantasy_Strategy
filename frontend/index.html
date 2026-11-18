@@ -4384,23 +4384,9 @@ html,body{
 </div></div>
 
 <!-- Equipment -->
-<div class="modal-backdrop" id="equipmentModal"><div class="modal">
-  <div class="modal-head"><h2>道具一覧</h2><button class="close" data-close>×</button></div>
-  <div class="modal-body equipment-layout">
-    <section class="inventory-pane">
-      <div class="inventory-filters"><button class="active">すべて</button><button>武器</button><button>防具</button><button>装飾</button><button>その他</button></div>
-      <div class="inventory-grid" id="inventoryGrid">
-        <button class="inv active" data-item="長剣" data-rarity="U">🗡<em>U</em><small>残2</small></button><button class="inv" data-item="盾" data-rarity="C">🛡<em>C</em><small>3</small></button><button class="inv" data-item="鉄兜" data-rarity="C">⛑<em>C</em><small>1</small></button><button class="inv" data-item="鎖帷子" data-rarity="U">🥋<em>U</em><small>残1</small></button><button class="inv" data-item="護符" data-rarity="R">💍<em>R</em><small>1</small></button>
-        <button class="inv">🪓<em>C</em><small>4</small></button><button class="inv">🏹<em>U</em><small>2</small></button><button class="inv">🔨<em>C</em><small>2</small></button><button class="inv">👢<em>C</em><small>3</small></button><button class="inv">📿<em>R</em><small>1</small></button>
-      </div>
-    </section>
-    <aside class="equip-detail">
-      <div class="equip-pane-tabs"><button class="active" data-equip-tab="detail">詳細</button><button data-equip-tab="craft">生成</button><button data-equip-tab="enchant">付与</button></div>
-      <section id="equipDetail"><h3 id="equipName">長剣 [U]</h3><div class="detail-grid"><div class="detail-card"><span>部位</span><b>武器1 / 武器2</b></div><div class="detail-card"><span>威力</span><b>86</b></div><div class="detail-card"><span>AP</span><b>12</b></div><div class="detail-card"><span>在庫</span><b>2</b></div><div class="detail-card"><span>装備中</span><b>1</b></div></div></section>
-      <section id="equipCraft" style="display:none"><h3>装備生成</h3><div class="craft-form"><label>種別<select><option>武器</option><option>防具</option></select></label><label>装備<select><option>長剣</option><option>槍</option><option>斧</option><option>鎧</option></select></label><label>レア度<select><option>コモン</option><option selected>アンコモン</option><option>レア</option></select></label><label>個数<input type="number" value="1" min="1"></label><div class="costs"><span class="cost">木材系：🪵 木材 x20</span><span class="cost">鉱石系：⚙ 鉄 x20</span></div><button class="primary" data-toast="長剣 [U] を生成（仮）">武器を生成</button></div></section>
-      <section id="equipEnchant" style="display:none"><h3>装備付与</h3><p style="font-size:var(--font-size-9);color:#94a3a7">選択: 長剣 [U] / 付与済み 0/3</p><div class="costs"><button class="cost">炎属性 Lv1</button><button class="cost">鋭利 Lv1</button><button class="cost">耐久 Lv1</button></div><h4>必要コスト</h4><div class="costs"><span class="cost">貴金属：💎 宝石 x2</span><span class="cost">鉱石系：⚙ 鉄 x5</span></div><button class="primary" style="width:100%;margin-top:8px" data-toast="付与を実行（仮）">付与を実行</button></section>
-    </aside>
-  </div>
+<div class="modal-backdrop" id="equipmentModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="equipmentModalTitle">
+  <div class="modal-head"><h2 id="equipmentModalTitle">装備</h2><button type="button" class="close" data-close aria-label="閉じる">×</button></div>
+  <div class="modal-body v39-equipment-body"><p class="v39-equip-empty">装備データを読み込み中</p></div>
 </div></div>
 
 <!-- Build -->

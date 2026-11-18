@@ -1,4 +1,5 @@
 import {advanceV39SquadRallies,orderV39SquadMovement,v39SquadMoveMode,v39SquadMoveLabel,v39SquadAutomaticDuty} from '../../lib/v39-squad-coordination.js';
+import {getV39GolemBoardingTargets,GOLEM_BOARD_AP,isV39GolemPilot,operateV39GolemBoarding} from '../../lib/v39-golem-boarding.js';
 import {playV39UnitMovementPath} from './v39-unit-movement.js';
 import './v39-squad-coordination-ui.css';
 
@@ -24,6 +25,22 @@ export function renderV39SquadCoordination(unit,faction) {
   const button=(action,label,icon,description,current=false)=>`<button type="button" class="technique-card technique-select-card system-action-card v39-squad-order-card" data-squad-coordination="${action}" data-squad-id="${escape(squad.id)}" data-member-id="${escape(unit.id)}"${current?' disabled aria-pressed="true"':''}><span class="technique-summary"><span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">${icon}</span></span><b class="technique-name">${label}</b>${current?'<small class="technique-ap">現在</small>':''}</span><span class="v39-squad-order-description">${description}</span></button>`;
   return `<details class="v39-squad-coordination" data-unit-id="${escape(unit.id)}"${collapsedUnits.has(String(unit.id))?'':' open'} aria-label="部隊行動"><summary>部隊行動：${escape(v39SquadMoveLabel(unit))}${pending.length?` · 集合 ${ready}/${ready+pending.length}`:''}</summary><div>${button('follow','追従','↪','移動先頭に合わせて移動する',mode==='follow')}${button('independent','単独行動','➜','部隊に所属したまま個別に移動する',mode==='independent')}${button('scatter','全員散開','↗','部隊の全員を単独行動にする')}${button('gather','先頭へ集合','↩','部隊の移動先頭に集まる')}${button('pick','集合先を指定','⌖','フィールドのマスを選んで集合する')}${pending.length?button('cancel','集合を中止','×','未到着メンバーの集合を取り消す'):''}</div>${unit.squadGather?.reason?`<p>${escape(unit.squadGather.reason)}</p>`:''}</details>`;
 }
+export function renderV39GolemBoarding(unit,faction,map){
+  const card=(golemId,label,pilotId,disabled=false)=>`<button type="button"
+    class="technique-card technique-select-card system-action-card v39-squad-order-card"
+    data-golem-board="${escape(golemId)}" data-golem-pilot="${escape(pilotId)}" ${disabled?'disabled':''}>
+    <span class="technique-summary"><b class="technique-name">${escape(label)}</b></span></button>`;
+  if(unit.boardingPilot){
+    return `<details class="v39-squad-coordination" open><summary>搭乗中　${escape(unit.boardingPilot.name)}</summary>${card(unit.id,'降車','')}</details>`;
+  }
+  if(!isV39GolemPilot(unit))return '';
+  const targets=getV39GolemBoardingTargets(faction?.units||[],unit,map);
+  if(!targets.length)return '';
+  const ap=unit=>Number(unit.ap??unit.currentAp)||0;
+  return `<details class="v39-squad-coordination" open><summary>搭乗（双方AP${GOLEM_BOARD_AP}）</summary>
+    ${targets.map(target=>card(target.id,`${target.name}に搭乗`,unit.id,ap(unit)<GOLEM_BOARD_AP||ap(target)<GOLEM_BOARD_AP)).join('')}</details>`;
+}
+
 async function advanceActive({move=true}={}) {
   if(move&&window.isV39MapInputLocked?.())return false;
   const state=window.getV39GameState({includeWorlds:false}),runtime=window.__v39FieldRuntime;
@@ -52,6 +69,19 @@ async function command(squadId,action,unitId='',point=null) {
   return true;
 }
 document.addEventListener('click',event=>{
+  const boarding=event.target.closest?.('[data-golem-board]');
+  if(boarding){
+    if(boarding.disabled||window.isV39MapInputLocked?.())return;
+    const state=window.getV39GameState({includeWorlds:false});
+    const {golemBoard:golemId,golemPilot:pilotId}=boarding.dataset;
+    const result=operateV39GolemBoarding(state,window.__v39FieldRuntime?.mapData,{pilotId,golemId,disembark:!pilotId});
+    if(result.reason){window.showV39TurnBanner?.(result.reason);return;}
+    window.cancelV39SelectedUnitMove?.();
+    window.cancelV39SelectedUnitAttack?.();
+    window.setV39GameState({players:result.state.players},{reason:pilotId?'golem-boarded':'golem-disembarked'});
+    window.refreshV39SquadDerivedUI?.();
+    return;
+  }
   const button=event.target.closest?.('[data-squad-coordination]');if(!button)return;
   if(button.dataset.squadCoordination==='pick') {
     const state=window.getV39GameState({includeWorlds:false});

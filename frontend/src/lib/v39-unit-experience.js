@@ -327,6 +327,7 @@ export function resolveV39ExperienceRecipientIds(factionState = {}, attackerIdRa
 }
 
 export function grantV39UnitExperience(unit = {}, amountRaw = 0) {
+  if(unit.golemBuild)return {unit,amount:0,fromLevel:unit.level,toLevel:unit.level,leveledUp:false};
   if(isV39AnimalArmy(unit))return grantAnimalArmyExperience(unit,amountRaw);
   const multiplier=resolveV39ArmyExpMultiplier(unit);
   if(multiplier===1)return grantUnitExperienceBase(unit,amountRaw);

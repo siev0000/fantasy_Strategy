@@ -1,5 +1,5 @@
 import { getV39EquipmentSlotCandidates, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
-import { isMobUnit } from "../../composables/unitCoreUtils.js";
+import {canV39ChangeUnitEquipmentSlot} from "../../lib/v39-equipment-rules.js";
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { getV39UnitEquipmentStock, changeV39UnitEquipmentFromStock } from "./v39-unit-equipment-access.js";
 import "./v39-equipment-picker.css";
@@ -74,7 +74,7 @@ function render() {
 export function openV39EquipmentPicker(unitId, slot, onChanged) {
   const player = window.getV39ActivePlayer?.();
   const unit = player?.factionState?.units?.find(row => row.id === unitId);
-  if (!unit || isMobUnit(unit) || !(unit.hp > 0)) return false;
+  if (!canV39ChangeUnitEquipmentSlot(unit,slot) || !(unit.hp > 0)) return false;
   let dialog = document.getElementById("v39-equipment-picker");
   if (!dialog) {
     dialog = document.createElement("dialog");

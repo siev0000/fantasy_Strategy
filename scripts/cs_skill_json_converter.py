@@ -444,6 +444,7 @@ def convert(
     duplicate_mode: str = "first",
 ) -> Dict[str, Any]:
     records: List[Dict[str, Any]] = []
+    golem_additions: List[Dict[str, Any]] = []
     infos: List[Dict[str, Any]] = []
     by_name: Dict[str, List[Tuple[int, Dict[str, Any]]]] = defaultdict(list)
 
@@ -479,6 +480,9 @@ def convert(
                 rec["発動"] = _clean_text(row.get(trigger_col))
             infos.append(info)
             if rec is None:
+                continue
+            if rec.get("追加元"):
+                golem_additions.append(rec)
                 continue
             by_name[rec["名前"]].append((row_no, rec))
 
@@ -519,6 +523,12 @@ def convert(
         json.dumps(records, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+    golem_output_path = output_path.with_name("ゴーレム追加スキル.json")
+    if golem_additions or golem_output_path.exists():
+        golem_output_path.write_text(
+            json.dumps(golem_additions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
 
     report = {
         "converter_version": VERSION,

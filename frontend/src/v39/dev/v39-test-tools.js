@@ -1,10 +1,12 @@
 import {startV39SkillTriggerTest,selectV39SkillTriggerTestSide} from './v39-skill-trigger-test.js';
 import {renderV39NpcDiagnostics,handleV39NpcDiagnosticEvent} from './v39-npc-diagnostics.js';
+import {advanceV39GolemOrders} from '../../lib/v39-golem-workshop.js';
+import {withV39WorldContext} from '../core/v39-world-context.js';
 import {openV39AiSimulation} from './v39-ai-simulation.js';
 import './v39-terrain-destruction-test.js';
 import './v39-wall-test.js';
 import { applyV39DerivedCharacterData } from "../unit/v39-character-derived-rules.js";
-import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { FOOD_RESOURCE_KEYS, MATERIAL_RESOURCE_KEYS, inspectV39NeutralVillageEconomy, normalizeV39Village, completeV39QueuedConstruction } from "../../lib/v39-economy-rules.js";
 import { buildV39PopulationMaintenanceStock } from "../../lib/v39-population-economy.js";
 import { addResearchExperience } from "../../lib/research-progress.js";
 import { getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
@@ -366,17 +368,60 @@ async function advanceTurn(count = 1) {
   }
 }
 
-function advanceProductionTurns() {
-  const { faction } = context();
+async function advanceProductionTurns() {
+  const { faction, player } = context();
   const pending = (faction?.settlements || []).flatMap(village => [
     ...(village.constructionQueue || []),
     ...Object.values(village.territoryTileConversionMap || {}),
     ...Object.values(village.territoryResidentialUpgradeQueueMap || {}),
     village.developmentProject
   ].filter(Boolean));
-  const turns = Math.max(0, ...pending.map(item => Math.ceil(number(item.remainingTurns))));
-  if (!turns) return setStatus("制作・建設待ちはありません");
-  return advanceTurn(turns);
+  const orders = faction?.golemOrders || [];
+  const turns = Math.max(0, ...[...pending,...orders].map(item => Math.ceil(number(item.remainingTurns))));
+  if (!turns) return setStatus(orders.length ? 'ゴーレム完成・配置待ち' : '制作・建設待ちはありません');
+  const orderIds = new Set(orders.map(order=>order.id));
+  await advanceTurn(turns);
+  const outstanding = (context().state?.players?.find(row=>row.id===player?.id)?.factionState?.golemOrders || []).filter(order=>orderIds.has(order.id));
+  const waiting = outstanding.filter(order=>number(order.remainingTurns)>0).length;
+  const message = [orders.length-outstanding.length ? `ゴーレム作成完了 ${orders.length-outstanding.length}体` : '',
+    outstanding.length-waiting ? `ゴーレム完成・配置待ち ${outstanding.length-waiting}体` : '',
+    waiting ? `ゴーレム作成中 ${waiting}体` : ''].filter(Boolean);
+  if(message.length)setStatus(message.join(' / '));
+}
+
+async function completeTestConstruction(){
+  const playerId=context().player?.id;
+  if(!playerId||advancingTestTurns||!testModeEnabled())return;
+  advancingTestTurns=true;
+  try {
+    const message=await withV39WorldContext('surface',()=>{
+      const state=window.getV39GameState({includeWorlds:false});
+      const map=window.__v39FieldRuntime?.mapData;
+      if(!map?.grid||map.isUnderground)return '地上マップを読み込めません';
+      const countOrders=state=>state.players.find(row=>row.id===playerId)?.factionState?.golemOrders||[];
+      const started=countOrders(state).length;
+      const construction=completeV39QueuedConstruction(state,map,playerId);
+      const built=advanceV39GolemOrders(construction.state,map,state.timeline?.turnNumber||1,{completeForPlayerId:playerId});
+      const outstanding=countOrders(built);
+      const waiting=outstanding.filter(order=>order.remainingTurns===0).length;
+      const pending=outstanding.length-waiting;
+      if(built!==state){
+        window.setV39GameState({players:built.players,facilitiesByTile:built.facilitiesByTile,settlements:built.settlements},
+          {reason:'test-construction-complete',returnState:false});
+      }
+      return [construction.count?`建設・発展・用途変更を${construction.count}件完了`:'',
+        started>outstanding.length?`ゴーレム作成完了 ${started-outstanding.length}体`:'',
+        waiting?`ゴーレム完成・配置待ち ${waiting}体`:'',
+        pending?`工房が使えず作成待ち ${pending}体`:''].filter(Boolean).join(' / ')||'制作・建設待ちはありません';
+    },{allUnits:true});
+    window.renderV39Visibility?.();
+    window.renderV39SettlementPanel?.();
+    window.refreshV39SquadDerivedUI?.();
+    setStatus(message);
+  } finally {
+    advancingTestTurns=false;
+    render();
+  }
 }
 
 function addTestFaction(kind) {
@@ -749,11 +794,11 @@ function panelHtml() {
     <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
       ${renderV39VillagePlanTestTools(state)}      ${window.__v39FieldRuntime?.mapData?.wallTestFixture?`<details class="v39-test-section" data-test-section="walls" open><summary>壁・結界の比較</summary><div class="v39-test-section-body"><button data-test-action="wall-build-open">壁建築を試す（未建築の拠点）</button><p>部隊から移動・攻撃を試せます。3マス都市・7マス大都市の辺別HPを確認。魔法壁・結界は5T継続。</p><div class="v39-test-button-row">${(window.__v39FieldRuntime.mapData.wallTestSamples||[]).map(sample=>{const group=window.__v39FieldRuntime.mapData.defenseStructures?.filter(row=>(sample.structureIds||[sample.structureId]).includes(row.id)&&row.hp>0)||[];const wall=group[0];return `<button data-test-action="wall-sample-${escapeHtml(sample.id)}">${escapeHtml(sample.name)} (${sample.x},${sample.y}) ${wall?`${sample.structureIds?`${group.length}辺 / 1辺HP${wall.hp}/${wall.maxHp}`:`HP${wall.hp}/${wall.maxHp}`}`:'終了'}</button>`;}).join('')}</div></div></details>`:''}
       ${renderV39NegotiationHubTestTools(state)}
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><button data-test-action="ai-simulation">AI長期シミュレーション</button>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="skill-trigger-test-start">スキル動作確認</button>${window.__v39FieldRuntime?.mapData?.skillTriggerTestFixture?'<button data-test-action="skill-trigger-side-a">検証Aを操作</button><button data-test-action="skill-trigger-side-b">検証Bを操作</button>':''}<button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="teleport-test-start">転移テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="ground-test-start">地形破壊テスト</button><button data-test-action="wall-test-start">壁・結界テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><button data-test-action="ai-simulation">AI長期シミュレーション</button>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="skill-trigger-test-start">スキル動作確認</button><button data-test-action="equipment-craft-test-start">武具作成テスト</button>${window.__v39FieldRuntime?.mapData?.skillTriggerTestFixture?'<button data-test-action="skill-trigger-side-a">検証Aを操作</button><button data-test-action="skill-trigger-side-b">検証Bを操作</button>':''}<button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="teleport-test-start">転移テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="ritual-test-golem">ゴーレム作成</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="ground-test-start">地形破壊テスト</button><button data-test-action="wall-test-start">壁・結界テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
-      <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
+      <details class="v39-test-section" data-test-section="turns"${testSectionOpenAttribute("turns")}><summary>制作・ターン進行</summary><div class="v39-test-section-body"><div class="v39-test-form-row"><input id="v39-test-turn-count" aria-label="進めるターン数" type="number" min="1" max="100" step="1" value="${bulkTurnCount}"${advancingTestTurns ? " disabled" : ""}><button data-test-action="turn-many"${advancingTestTurns ? " disabled" : ""}>指定ターン進行</button><button data-test-action="turn-production"${advancingTestTurns ? " disabled" : ""}>建設完了まで進行</button><button data-test-action="turn-production-now"${advancingTestTurns ? " disabled" : ""}>建設を即完了</button><button data-test-action="turn-stop"${advancingTestTurns ? "" : " disabled"}>停止</button></div><p>施設建設・拠点発展・土地用途変更・ゴーレム作成の待ちターンをまとめて進行。収入・消費・敵AIも通常どおり進みます。</p></div></details>
        <details class="v39-test-section" data-test-section="field"${testSectionOpenAttribute("field")}><summary>フィールド</summary><div class="v39-test-section-body"><p>選択マス ${tileKey || "なし"}</p>${terrainTestHtml()}${fixedDisasterTestHtml(state)}${weatherTestHtml(tile)}${naturalDisasterTestHtml(state)}${typhoonRadiusControlsHtml()}<div class="v39-test-form-row"><select id="v39-test-disaster-id">${disasterOptions || '<option value="">災害データなし</option>'}</select><button data-test-action="disaster">選択マスで強制発生</button><button data-test-action="undead">アンデッド発生</button></div><div class="v39-test-button-row"><button data-test-action="eruption">選択マスを噴火</button><button data-test-action="lava">溶岩を1回進行</button><button data-test-action="snow-on">積雪ON</button><button data-test-action="snow-off">積雪OFF</button><button data-test-action="snowfall-on">降雪ON</button><button data-test-action="snowfall-off">降雪OFF</button><button data-test-action="turn">1ターン進行</button></div></div></details>
       <details class="v39-test-section" data-test-section="settlement-resources"${testSectionOpenAttribute("settlement-resources")}><summary>拠点・資源</summary><div class="v39-test-section-body"><p>${text(settlement?.name || settlement?.type) || "拠点なし"} / 人口 ${Math.floor(number(settlement?.population))}</p><div class="v39-test-form-row"><select id="v39-test-resource-key">${RESOURCE_KEYS.map(key => `<option value="${key}"${key === resource ? " selected" : ""}>${key}</option>`).join("")}</select><input id="v39-test-resource-amount" type="number" min="0" step="10" value="100"><button data-test-action="resource-minus">減らす</button><button data-test-action="resource-plus">増やす</button><button data-test-action="resource-all">全資源+</button></div><div class="v39-test-button-row"><button data-test-action="population-minus">人口-10</button><button data-test-action="population-plus">人口+10</button></div></div></details>
       <details class="v39-test-section" data-test-section="character"${testSectionOpenAttribute("character")}><summary>キャラクター</summary><div class="v39-test-section-body"><p>${text(unit?.name) || "未選択"} / Lv${Math.floor(number(unit?.level, 1))} / HP ${Math.floor(number(unit?.hp ?? unit?.currentHp))}/${Math.floor(number(unit?.maxHp ?? unit?.status?.HP))} / AP ${Math.floor(number(unit?.ap ?? unit?.currentAp))}/${Math.floor(number(unit?.maxAp, 100))}</p><div class="v39-test-button-row"><button data-test-action="level-minus">Lv-1</button><button data-test-action="level-plus">Lv+1</button><button data-test-action="level-plus10">Lv+10</button><button data-test-action="hp-full">HP全快</button><button data-test-action="hp-minus">HP-10</button><button data-test-action="hp-zero">HP0</button><button data-test-action="ap-full">AP全快</button><button data-test-action="ap-minus">AP-10</button></div></div></details>
@@ -834,6 +879,17 @@ async function startRitualTest(stage) {
   } catch(error) {
     window.openV39TestTools?.();setStatus(`儀式テストの起動に失敗: ${error.message}`);
     console.error('[儀式テスト]',error);
+  }
+}
+
+async function startGolemWorkshopTest() {
+  if(!window.confirm('現在のゲームをゴーレム作成の検証マップに置き換えます。開始しますか？'))return;
+  closePanel();
+  try {
+    const result=await window.startV39GolemWorkshopTest?.();
+    if(!result?.ok){window.openV39TestTools?.();setStatus(result?.reason||'ゴーレム作成テストを起動できませんでした');}
+  } catch(error){
+    window.openV39TestTools?.();setStatus(`ゴーレム作成テストの起動に失敗: ${error.message}`);
   }
 }
 
@@ -952,6 +1008,7 @@ function handleAction(action) {
     "undead-test-turn":()=>advanceTurn(),
     "teleport-test-start":()=>{if(window.confirm("現在のゲームを転移テストに置き換えます。開始しますか？"))window.startV39TeleportTest?.();},
     'skill-trigger-test-start':()=>{if(window.confirm('現在のゲームをスキル動作確認テストへ置き換えます。開始しますか？')){closePanel();void startV39SkillTriggerTest();}},
+    'equipment-craft-test-start':()=>{if(window.confirm('現在のゲームを武具作成テストへ置き換えます。開始しますか？')){closePanel();void startV39SkillTriggerTest({craftEquipment:true});}},
     'skill-trigger-side-a':()=>{closePanel();selectV39SkillTriggerTestSide(0);},
     'skill-trigger-side-b':()=>{closePanel();selectV39SkillTriggerTestSide(1);},
     "call-test-start":()=>{if(window.confirm("現在のゲームを召喚・呼集テストに置き換えます。開始しますか？"))window.startV39CallTest?.();},
@@ -959,6 +1016,7 @@ function handleAction(action) {
     "ritual-test-one":()=>startRitualTest(1),
     "ritual-test-two":()=>startRitualTest(2),
     "ritual-test-three":()=>startRitualTest(3),
+    "ritual-test-golem":startGolemWorkshopTest,
     "fusion-test-start":()=>{if(window.confirm("現在のゲームを合体テストに置き換えます。開始しますか？"))window.startV39FusionTest?.();},
     "animal-army-test-start":()=>{if(window.confirm('現在のゲームを動物軍隊テストに置き換えます。開始しますか？')){closePanel();window.startV39AnimalArmyTest?.();}},
     "disaster-test-start":()=>{if(window.confirm('現在のゲームを11種類の災害検証マップに置き換えます。開始しますか？')){closePanel();window.startV39DisasterTest?.();}},
@@ -992,6 +1050,7 @@ function handleAction(action) {
     turn:() => advanceTurn(),
     "turn-many":() => advanceTurn(bulkTurnCount),
     "turn-production":advanceProductionTurns,
+    "turn-production-now":completeTestConstruction,
     "turn-stop":() => { stopTestTurns = true; },
     "resource-minus":() => changeResource(-1), "resource-plus":() => changeResource(1), "resource-all":addAllResources,
     "population-minus":() => changePopulation(-10), "population-plus":() => changePopulation(10),
