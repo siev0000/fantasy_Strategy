@@ -1786,3 +1786,44 @@ NPCもプレイヤーと同じFog・索敵・発見情報を使い、未発見�
 | 10 | P | 機体同調 | 条件:搭乗 効果:搭乗中全スキル |
 
 - 機体同調を習得すると、搭乗者が他クラスや種族から習得したアクティブもゴーレムから使える。APと武器などの発動条件はゴーレム側で判定する。未習得のときは搭乗専用のアクティブが使える。
+
+
+## GitHub Issue一覧（Codex参照用・2026-11-18）
+
+GitHub Issueで管理するタスクの索引。**Issue本文は設計・課題の記録であり、実装済みを意味しない**。現行の実装状況はコード・データ・設定と個別の現行ルールを照合すること。Issue #31には過去案と変更履歴が混在するため、新しい確定事項を優先する。Codexは必要なIssue本文をGitHubから取得すること。
+
+対象：ui/mobile-responsive-port-20260912 ブランチの文書に追記。Issue検索で確認できた33件。
+
+- [#3 v39 UIへのゲーム機能復旧タスク](https://github.com/siev0000/fantasy_Strategy/issues/3)
+- [#4 v39復旧: カスタム設定画面 → フィールド生成](https://github.com/siev0000/fantasy_Strategy/issues/4)
+- [#5 v39復旧: 画面の縮小・拡大（ズーム）](https://github.com/siev0000/fantasy_Strategy/issues/5)
+- [#6 v39復旧: フィールドのドラッグ移動](https://github.com/siev0000/fantasy_Strategy/issues/6)
+- [#7 v39復旧: タイル選択](https://github.com/siev0000/fantasy_Strategy/issues/7)
+- [#8 v39復旧: ユニット配置・表示](https://github.com/siev0000/fantasy_Strategy/issues/8)
+- [#9 v39復旧: Fog・索敵・探索済み表示](https://github.com/siev0000/fantasy_Strategy/issues/9)
+- [#10 v39復旧: 領土・勢力境界表示](https://github.com/siev0000/fantasy_Strategy/issues/10)
+- [#11 v39復旧: 移動範囲・経路・移動処理](https://github.com/siev0000/fantasy_Strategy/issues/11)
+- [#12 v39復旧: 攻撃範囲・対象選択・攻撃処理](https://github.com/siev0000/fantasy_Strategy/issues/12)
+- [#13 v39復旧: 戦闘システム接続](https://github.com/siev0000/fantasy_Strategy/issues/13)
+- [#14 v39復旧: ターン進行・自動ターン・時間処理](https://github.com/siev0000/fantasy_Strategy/issues/14)
+- [#15 v39復旧: 部隊編成・ユニット詳細UI接続](https://github.com/siev0000/fantasy_Strategy/issues/15)
+- [#16 v39復旧: 土地・土地データ・村/開発UI接続](https://github.com/siev0000/fantasy_Strategy/issues/16)
+- [#17 v39復旧: 資源・人口・経済表示接続](https://github.com/siev0000/fantasy_Strategy/issues/17)
+- [#18 v39復旧: 研究ツリー・研究進行UI接続](https://github.com/siev0000/fantasy_Strategy/issues/18)
+- [#19 v39復旧: ユニット作成・装備・所持品UI接続](https://github.com/siev0000/fantasy_Strategy/issues/19)
+- [#20 v39復旧: 敵生成・敵行動・勢力処理](https://github.com/siev0000/fantasy_Strategy/issues/20)
+- [#21 v39復旧: 管理・ログ・各種モーダル接続](https://github.com/siev0000/fantasy_Strategy/issues/21)
+- [#22 v39復旧: セーブ・復元・ゲーム状態同期](https://github.com/siev0000/fantasy_Strategy/issues/22)
+- [#23 v39復旧: PC/スマホ最終レスポンシブ・入力検証](https://github.com/siev0000/fantasy_Strategy/issues/23)
+- [#24 32pxモンスタードット絵：初回対応候補の整理・制作](https://github.com/siev0000/fantasy_Strategy/issues/24)
+- [#25 出現敵をクラス構成方式へ移行し、敵生成まで動作させる](https://github.com/siev0000/fantasy_Strategy/issues/25)
+- [#26 ユニット操作UIを3分類化し、特殊交流を3段階通知する](https://github.com/siev0000/fantasy_Strategy/issues/26)
+- [#27 村の資源開拓・中継拠点化](https://github.com/siev0000/fantasy_Strategy/issues/27)
+- [#28 NPC魂資源確保・一般村襲撃・拠点制圧](https://github.com/siev0000/fantasy_Strategy/issues/28)
+- [#29 技能判定式を実装する：技能 + 関連ステータス×0.25 を基準に乱数判定](https://github.com/siev0000/fantasy_Strategy/issues/29)
+- [#30 【暫定実装・残件あり】怯みAPダメージ・体幹転倒の戦闘仕様](https://github.com/siev0000/fantasy_Strategy/issues/30)
+- [#31 [設計・未実装] スパイ／諜報・工作・防諜システム（確定仕様と未決定事項）](https://github.com/siev0000/fantasy_Strategy/issues/31)
+- [#32 ゴーレムクラフター：共通・種別固有の攻撃スキル付与（仕様設計・実装）](https://github.com/siev0000/fantasy_Strategy/issues/32)
+- [#33 [不具合調査・修正] 攻撃スキルの「対象」未設定で攻撃できない問題](https://github.com/siev0000/fantasy_Strategy/issues/33)
+- [#34 [不具合・仕様確認] モンクの素手攻撃不可と立ち絵誤表示](https://github.com/siev0000/fantasy_Strategy/issues/34)
+- [#35 [ゲームバランス] 人口増加倍率を初期設定可能にする](https://github.com/siev0000/fantasy_Strategy/issues/35)
