@@ -5,7 +5,7 @@ import {
   isAliveEnemyAiUnit,
   planNextEnemyAction
 } from "../../lib/v39-enemy-ai-planner.js";
-import { currentV39TurnNumber, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn, resolveV39SkillCooldownTurns } from "../../lib/v39-turn-timing.js";
+import { currentV39TurnNumber, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn, resolveV39SkillCooldownTurns, V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 import { FOOD_RESOURCE_KEYS, NORMAL_FOOD_RESOURCE_KEYS } from "../../lib/v39-economy-rules.js";
 import { updateV39TurnLoading } from "../ui/v39-turn-loading.js";
 import { prepareV39EnemyExploration } from "../../lib/v39-enemy-exploration.js";
@@ -24,6 +24,10 @@ const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 const MAX_AI_LOGS_PER_FACTION = 200;
 const WORKER_REPLY_TIMEOUT_MS = 120000;
 const FALLBACK_YIELD_INTERVAL = 8;
+const ENEMY_PRECOMPUTE_DELAY_MS = 450;
+let precomputeTimer;
+let precomputeWorker;
+let precomputeWorldId;
 const movedEnemyIdsThisTurn = new Set();
 
 const enemyTurnState = () => window.getV39EnemyTurnState?.() || window.getV39GameState?.();
@@ -427,8 +431,65 @@ function buildWorkerMapData(mapData = window.__v39FieldRuntime?.mapData) {
   };
 }
 
+function enemyPrecomputeEnabled() {
+  return window.getV39DisplaySettings?.()?.precomputeEnemyAi !== false;
+}
+
+function stopEnemyPrecompute() {
+  window.clearTimeout(precomputeTimer);
+  precomputeWorker?.postMessage({ type:"pause-precompute" });
+}
+
+function discardEnemyPrecompute() {
+  window.clearTimeout(precomputeTimer);
+  precomputeWorker?.terminate();
+  precomputeWorker = null;
+  precomputeWorldId = null;
+}
+
+function startEnemyPrecompute() {
+  if (!enemyPrecomputeEnabled() || document.hidden || window.__v39AiSimulationRunning) return;
+  const state = enemyTurnState();
+  const map = window.__v39FieldRuntime?.mapData;
+  if (state?.timeline?.phase !== V39_TURN_PHASE.PLAYER || !map?.grid
+    || !state.enemies?.some(isAliveEnemyAiUnit)) return;
+  const worldId = state.activeWorldId || "surface";
+  if (precomputeWorker && precomputeWorldId !== worldId) discardEnemyPrecompute();
+  try {
+    if (!precomputeWorker) {
+      const worker = new EnemyAiWorker();
+      worker.addEventListener("error", () => {
+        if (precomputeWorker === worker) discardEnemyPrecompute();
+      });
+      precomputeWorker = worker;
+      precomputeWorldId = worldId;
+    }
+    precomputeWorker.postMessage({
+      type:"precompute", state:buildWorkerState(state), mapData:buildWorkerMapData(map), turnNumber:state.timeline.turnNumber
+    });
+  } catch {
+    discardEnemyPrecompute();
+  }
+}
+
+function scheduleEnemyPrecompute() {
+  if (typeof Worker !== "function" || !enemyPrecomputeEnabled() || document.hidden
+    || window.__v39AiSimulationRunning || enemyTurnState()?.timeline?.phase !== V39_TURN_PHASE.PLAYER) return;
+  window.clearTimeout(precomputeTimer);
+  precomputeTimer = window.setTimeout(startEnemyPrecompute, ENEMY_PRECOMPUTE_DELAY_MS);
+}
+
+function takeEnemyTurnWorker() {
+  const worldId = enemyTurnState()?.activeWorldId || "surface";
+  if (!enemyPrecomputeEnabled() || precomputeWorldId !== worldId || !precomputeWorker) return new EnemyAiWorker();
+  const worker = precomputeWorker;
+  precomputeWorker = null;
+  precomputeWorldId = null;
+  return worker;
+}
+
 async function runWorkerPlans(turnNumber, actionLimit, totalEnemies, presentationEvents, progressId) {
-  const worker = new EnemyAiWorker();
+  const worker = takeEnemyTurnWorker();
   let processed = 0;
   let workerCalculationMs = 0;
   let mainApplyMs = 0;
@@ -606,3 +667,27 @@ window.inspectV39EnemyAi = inspectEnemyAi;
 window.getV39EnemyAiRules = () => ({ actionMode:"until-ap-exhausted", ...V39_ENEMY_AI_CONFIG });
 
 installEnemyAggroTracking();
+
+window.addEventListener("v39:game-state-changed", event => {
+  const reason = event.detail?.reason;
+  if (reason === "save-loaded") discardEnemyPrecompute();
+  if (reason !== "activity-log") scheduleEnemyPrecompute();
+});
+window.addEventListener("v39:field-generated", () => {
+  discardEnemyPrecompute();
+  scheduleEnemyPrecompute();
+});
+window.addEventListener("v39:field-data-updated", scheduleEnemyPrecompute);
+window.addEventListener("v39:turn-phase-changed", event => {
+  if (event.detail?.phase === V39_TURN_PHASE.PLAYER) scheduleEnemyPrecompute();
+  else stopEnemyPrecompute();
+});
+window.addEventListener("v39:display-settings-changed", event => {
+  if (!event.detail?.changedKeys?.includes("precomputeEnemyAi")) return;
+  if (enemyPrecomputeEnabled()) scheduleEnemyPrecompute();
+  else discardEnemyPrecompute();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopEnemyPrecompute();
+  else scheduleEnemyPrecompute();
+});

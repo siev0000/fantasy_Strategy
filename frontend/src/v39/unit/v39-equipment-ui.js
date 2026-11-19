@@ -1,6 +1,6 @@
 import "./v39-enchantment-options.css";
 import "./v39-equipment-ui.css";
-import {renderV39EquipmentRarityBadge,resolveV39EquipmentIcon as inventoryIcon} from "../ui/v39-equipment-display.js";
+import {renderV39EquipmentRarityBadge,renderV39EquipmentIcon} from "../ui/v39-equipment-display.js";
 import {
   V39_EQUIPMENT_RARITIES,
   applyV39EquipmentEnchantment,
@@ -12,22 +12,19 @@ import {
   inspectV39EquipmentCraft,
   getV39EquipmentInventoryView,
   getV39EnchantmentOptions,
-  getV39EquipmentSlotCandidates,
-  normalizeV39EquipmentInventory,
   normalizeV39EquipmentItem,
   rerollV39MobEquipment
 } from "../../lib/v39-equipment-rules.js";
 import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 import { isMobUnit } from "../../composables/unitCoreUtils.js";
-import { getSelectedSettlement } from "../../lib/settlement-state.js";
+import { openV39EquipmentPicker } from "./v39-equipment-picker.js";
+import { readV39ItemListAction, renderV39ItemListScreen1 } from "../ui/v39-item-list-screen-1.js";
 
 let activeTab = "inventory";
 let selectedInventoryKey = "";
 let selectedUnitId = "";
 let selectedEnchantmentName = "";
 let statusText = "";
-let craftCategory = "武器";
-let choosingCraftItem = false;
 let craftRequest = {name:"", rarity:V39_EQUIPMENT_RARITIES[0]?.key, count:1};
 
 const text = value => String(value ?? "").trim();
@@ -39,13 +36,25 @@ function player() {
   return window.getV39ActivePlayer?.() ?? null;
 }
 
+function equipmentStats(item) {
+  return [
+    ["威力", item.power], ["魔力", item.statusBonus?.魔力], ["ガード", item.guard],
+    ["攻撃AP", item.attackAp], ["魔法AP", item.magicAp], ["射撃", item.shot], ["射程", item.range],
+    ["Cr率", item.criticalRate, "%"], ["Cr威力", item.criticalPower, "%"], ["ペナルティ", item.penalty]
+  ].filter(([, value]) => number(value) !== 0);
+}
+
+function equipmentResistanceLabels(item) {
+  return Object.entries(item.resistanceBonus || {}).filter(([, value]) => number(value) !== 0)
+    .map(([key, value]) => `${key} ${number(value) > 0 ? "+" : ""}${value}`);
+}
+
 function itemDetail(item, {preview = false} = {}) {
   if (!item) return '<p class="v39-equip-empty">装備を選択してください</p>';
   const traits = (item.traits || []).map(value => `<span>${escapeHtml(value)}</span>`).join("");
-  const resistances = Object.entries(item.resistanceBonus || {}).filter(([, value]) => number(value) !== 0)
-    .map(([key, value]) => `<span>${escapeHtml(key)} ${number(value) > 0 ? "+" : ""}${number(value)}</span>`).join("");
-  return `<h3${preview ? ' class="v39-equip-preview-title"' : ""}>${preview ? `<span class="v39-equip-icon" aria-hidden="true">${inventoryIcon(item, item.name)}</span>` : ""}${escapeHtml(item.name)} <small${preview ? ` class="v39-equip-preview-rarity" data-quality="${escapeHtml(item.quality)}"` : ""}>[${escapeHtml(item.qualityLabel)}]</small></h3>
-    <div class="v39-equip-stats">${stat("威力", item.power)}${stat("魔力", item.statusBonus?.魔力)}${stat("ガード", item.guard)}${stat("攻撃AP", item.attackAp)}${stat("魔法AP", item.magicAp)}${stat("射撃", item.shot)}${stat("射程", item.range)}${stat("Cr率", item.criticalRate, "%")}${stat("Cr威力", item.criticalPower, "%")}${stat("ペナルティ", item.penalty)}</div>
+  const resistances = equipmentResistanceLabels(item).map(label => `<span>${escapeHtml(label)}</span>`).join("");
+  return `<h3${preview ? ' class="v39-equip-preview-title"' : ""}>${preview ? `<span class="v39-equip-icon" aria-hidden="true">${renderV39EquipmentIcon(item, item.name)}</span>` : ""}${escapeHtml(item.name)} <small${preview ? ` class="v39-equip-preview-rarity" data-quality="${escapeHtml(item.quality)}"` : ""}>[${escapeHtml(item.qualityLabel)}]</small></h3>
+    <div class="v39-equip-stats">${equipmentStats(item).map(([label,value,suffix]) => stat(label,value,suffix)).join("")}</div>
     ${resistances ? `<h4>耐性</h4><div class="v39-equip-chips">${resistances}</div>` : ""}
     ${(item.enchantments || []).length ? `<h4>付与</h4><div class="v39-equip-chips">${item.enchantments.map(value => `<span>${escapeHtml(value)}</span>`).join("")}</div>` : ""}
     ${traits ? `<h4>特性</h4><div class="v39-equip-chips">${traits}</div>` : ""}`;
@@ -59,16 +68,10 @@ function inventoryPanel(current) {
     const label = `${row.name} ${row.qualityLabel} 在庫${row.remainingCount}${row.equippedCount ? ` 装備中${row.equippedCount}` : ""}`;
     return `<button type="button" class="v39-equip-tile" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-pressed="${row.key === selectedInventoryKey}" data-v39-equip-item="${escapeHtml(row.key)}">
       <span class="v39-equip-rank" aria-hidden="true">${renderV39EquipmentRarityBadge(row.quality)}</span>
-      <span class="v39-equip-icon" aria-hidden="true">${inventoryIcon(row.item, row.name)}</span>
+      <span class="v39-equip-icon" aria-hidden="true">${renderV39EquipmentIcon(row.item, row.name)}</span>
       <span class="v39-equip-count" aria-hidden="true">${row.equippedCount ? "残" : ""}${row.remainingCount}</span>
     </button>`;
   }).join("") || '<p class="v39-equip-empty">装備はありません</p>'}</div></div><div class="v39-equip-detail">${itemDetail(selected?.item)}</div></div>`;
-}
-
-function compatibleOptions(current, slot) {
-  return normalizeV39EquipmentInventory(getSelectedSettlement(current?.factionState)?.equipmentInventory)
-    .filter(row => getV39EquipmentSlotCandidates(row.item?.source || row.name).includes(slot))
-    .map(row => `<option value="${escapeHtml(row.key)}">${escapeHtml(row.name)} [${escapeHtml(row.qualityLabel)}] 残${row.count}</option>`).join("");
 }
 
 function unitPanel(current) {
@@ -76,14 +79,14 @@ function unitPanel(current) {
   if (!units.some(unit => unit.id === selectedUnitId)) selectedUnitId = current.factionState?.selectedUnitId || units[0]?.id || "";
   const unit = units.find(row => row.id === selectedUnitId) || units[0] || null;
   if (!unit) return '<p class="v39-equip-empty">キャラクターがいません</p>';
+  selectedUnitId = unit.id;
   const equipment = (unit.equipment || []).map(normalizeV39EquipmentItem).filter(Boolean);
   const mob = isMobUnit(unit);
   const canChangeWeapons=mob&&canV39ChangeUnitEquipmentSlot(unit,"武器1");
   return `<div class="v39-equip-unit-bar"><label>キャラ<select id="v39-equip-unit">${units.map(row => `<option value="${escapeHtml(row.id)}"${row.id === unit.id ? " selected" : ""}>${escapeHtml(row.name)} / ${isMobUnit(row) ? "モブ" : "ネームド"}</option>`).join("")}</select></label>${canChangeWeapons ? '<b>武器は在庫装備を使用</b>' : mob ? '<b>固定プリセット装備</b>' : '<b>在庫装備を使用</b>'}</div>
     <div class="v39-equip-slots">${EQUIPMENT_SLOT_KEYS.map(slot => {
       const item = equipment.find(row => row.slot === slot);
-      const options = compatibleOptions(current, slot);
-      return `<section><header><span>${slot}</span><strong>${escapeHtml(item?.name || "なし")}${item ? ` [${escapeHtml(item.qualityLabel)}]` : ""}</strong></header>${itemDetail(item)}${!canV39ChangeUnitEquipmentSlot(unit,slot) ? "" : `<footer><select data-v39-equip-pick="${slot}"><option value="">在庫から選択</option>${options}</select><button type="button" data-v39-equip-apply="${slot}"${options ? "" : " disabled"}>変更</button><button type="button" data-v39-equip-remove="${slot}"${item ? "" : " disabled"}>外す</button></footer>`}</section>`;
+      return `<section><header><span>${slot}</span><strong>${escapeHtml(item?.name || "なし")}${item ? ` [${escapeHtml(item.qualityLabel)}]` : ""}</strong></header>${itemDetail(item)}${!canV39ChangeUnitEquipmentSlot(unit,slot) ? "" : `<footer><button type="button" data-v39-equip-change="${slot}"${unit.hp > 0 ? "" : " disabled"}>変更</button></footer>`}</section>`;
     }).join("")}</div>${mob ? `<div class="v39-equip-reroll"><label>レア度<select id="v39-equip-reroll-rarity">${V39_EQUIPMENT_RARITIES.map(row => `<option value="${row.key}">${row.label}</option>`).join("")}</select></label><button type="button" id="v39-equip-reroll">レア度一新</button></div>` : ""}`;
 }
 
@@ -97,34 +100,72 @@ function craftItemCategory(row) {
   return row.装備箇所 === "装飾" ? "装飾" : "防具";
 }
 
-function craftItemPicker() {
-  const candidates = getV39EquipmentCatalog().filter(({row}) => craftItemCategory(row) === craftCategory);
-  const cards = candidates.map(({name}) => {
+function openCraftItemPicker() {
+  if (document.getElementById("v39-craft-item-picker")) return;
+  const tabs = ["武器", "防具", "装飾"].map(name => ({id:name, label:name}));
+  const catalog = getV39EquipmentCatalog().flatMap(({name, row}) => {
     const item = createV39EquipmentEntry(name, craftRequest.rarity);
-    if (!item) return "";
-    const values = [
-      ["威力", item.power], ["魔力", item.statusBonus?.魔力], ["ガード", item.guard],
-      ["攻撃AP", item.attackAp], ["魔法AP", item.magicAp], ["射撃", item.shot], ["射程", item.range],
-      ...Object.entries(item.resistanceBonus || {})
-    ].filter(([, value]) => number(value) !== 0);
-    return `<button type="button" class="v39-equip-candidate" data-v39-craft-item="${escapeHtml(name)}" aria-pressed="${name === craftRequest.name}">
-      <span class="v39-equip-candidate-name"><span class="v39-equip-icon" aria-hidden="true">${inventoryIcon(item, name)}</span><strong>${escapeHtml(name)}</strong></span>
-      <span class="v39-equip-candidate-stats">${values.map(([label,value]) => `<span>${escapeHtml(label)} ${escapeHtml(value)}</span>`).join("")}</span>
-      ${item.traits?.length ? `<span class="v39-equip-candidate-traits">${escapeHtml(item.traits.join(" / "))}</span>` : ""}
-    </button>`;
-  }).join("");
-  return `<div class="v39-equip-picker">
-    <div class="v39-equip-picker-head">
-      <button type="button" data-v39-craft-back>戻る</button>
-      <span class="v39-equip-preview-rarity" data-quality="${escapeHtml(craftRequest.rarity)}">${escapeHtml(V39_EQUIPMENT_RARITIES.find(row => row.key === craftRequest.rarity)?.label)}</span>
-      <nav aria-label="装備の種別">${["武器","防具","装飾"].map(name => `<button type="button" data-v39-craft-category="${name}" aria-pressed="${name === craftCategory}">${name}</button>`).join("")}</nav>
-    </div>
-    <div class="v39-equip-candidate-list">${cards || '<p class="v39-equip-empty">この種別の装備はありません</p>'}</div>
-  </div>`;
+    if (!item) return [];
+    const metrics = [["威",item.power],["守",item.guard],["AP",item.attackAp]]
+      .filter(([, value]) => number(value) !== 0).map(([label,value]) => `${label}${value}`);
+    return [{id:name, label:name, item, category:craftItemCategory(row), icon:renderV39EquipmentIcon(item), metrics}];
+  });
+  let selected = catalog.find(row => row.id === craftRequest.name);
+  let category = selected?.category ?? tabs[0].id;
+  const dialog = document.createElement("dialog");
+  dialog.id = "v39-craft-item-picker";
+  dialog.setAttribute("aria-labelledby", "v39-craft-item-picker-title");
+
+  function renderPicker({keepPosition = false} = {}) {
+    const rows = catalog.filter(row => row.category === category);
+    selected = rows.find(row => row.id === selected?.id) ?? rows[0];
+    const scrollTop = keepPosition ? dialog.querySelector(".list-pane")?.scrollTop ?? 0 : 0;
+    let detail = {kind:"item", selectedId:selected?.id, emptyText:"この種別の装備はありません"};
+    if (selected) {
+      const {item, icon, label} = selected;
+      const facts = equipmentStats(item).filter(([label]) => !["威力","ガード","攻撃AP"].includes(label))
+        .map(([label, value, suffix = ""]) => ({label, value:`${value}${suffix}`}));
+      detail = {...detail, heading:label, icon, facts:[{label:"レア度", value:item.qualityLabel}, ...facts],
+        sections:[{label:"耐性",lines:equipmentResistanceLabels(item)},{label:"特性",lines:item.traits || []}]
+          .filter(({lines}) => lines.length)};
+    }
+    dialog.innerHTML = renderV39ItemListScreen1({
+      title:"装備を選ぶ", titleId:"v39-craft-item-picker-title", tabs, activeTab:category, rows, detail,
+      actions:[{id:"back",label:"戻る",destination:"craft"},{id:"confirm",label:"決定",destination:"craft",disabled:!selected}]
+    });
+    dialog.querySelector(".list-pane").scrollTop = scrollTop;
+  }
+
+  dialog.addEventListener("close", () => dialog.remove(), {once:true});
+  dialog.addEventListener("keydown", event => { if (event.key === "Escape") event.stopPropagation(); });
+  dialog.addEventListener("click", event => {
+    const action = readV39ItemListAction(event.target);
+    if (!action) return;
+    if (action.id === "close" || action.id === "back") { dialog.close(); return; }
+    if (action.id === "confirm" && selected) {
+      craftRequest.name = selected.id;
+      dialog.close();
+      render();
+      document.querySelector("#equipmentModal [data-v39-craft-picker]")?.focus();
+      return;
+    }
+    if (action.id === "tab") {
+      category = action.value;
+      renderPicker();
+      dialog.querySelector('[data-v39-item-list-tab][aria-pressed="true"]')?.focus({preventScroll:true});
+    }
+    if (action.id === "candidate") {
+      selected = catalog.find(row => row.id === action.value);
+      renderPicker({keepPosition:true});
+      dialog.querySelector('.v39-item-list-compact-card[aria-pressed="true"]')?.focus({preventScroll:true});
+    }
+  });
+  document.body.append(dialog);
+  renderPicker();
+  dialog.showModal();
 }
 
 function craftPanel() {
-  if (choosingCraftItem) return craftItemPicker();
   return `<div class="v39-equip-craft-layout">
     <div id="v39-equip-craft-preview" class="v39-equip-detail" aria-label="生成予定の装備"></div>
     <div class="v39-equip-craft">
@@ -210,30 +251,16 @@ function install() {
   document.getElementById("equipmentModal")?.addEventListener("click", event => {
     const element = event.target instanceof Element ? event.target : null;
     const tab = element?.closest("[data-v39-equipment-tab]");
-    if (tab) { activeTab = tab.dataset.v39EquipmentTab; choosingCraftItem = false; statusText = ""; element.closest(".v39-equipment-body").querySelector(".v39-equipment-content").scrollTop = 0; render(); return; }
-    if (element?.closest("[data-v39-craft-picker]")) { choosingCraftItem = true; render(); return; }
-    if (element?.closest("[data-v39-craft-back]")) { choosingCraftItem = false; render(); return; }
-    const craftFilter = element?.closest("[data-v39-craft-category]");
-    if (craftFilter) { craftCategory = craftFilter.dataset.v39CraftCategory; render(); return; }
-    const craftItem = element?.closest("[data-v39-craft-item]");
-    if (craftItem) { craftRequest.name = craftItem.dataset.v39CraftItem; choosingCraftItem = false; render(); return; }
+    if (tab) { activeTab = tab.dataset.v39EquipmentTab; statusText = ""; element.closest(".v39-equipment-body").querySelector(".v39-equipment-content").scrollTop = 0; render(); return; }
+    if (element?.closest("[data-v39-craft-picker]")) { openCraftItemPicker(); return; }
     const row = element?.closest("[data-v39-equip-item]");
     if (row) { selectedInventoryKey = row.dataset.v39EquipItem; render(); return; }
-    const apply = element?.closest("[data-v39-equip-apply]");
-    if (apply) {
-      const picker = document.querySelector(`[data-v39-equip-pick="${apply.dataset.v39EquipApply}"]`);
-      if (!picker?.value) return;
-      const [name, rarity] = text(picker?.value).split("::");
-      const state = window.getV39GameState?.();
-      const current = player();
-      commit(changeV39UnitEquipment(state, current?.id, { unitId:selectedUnitId, slot:apply.dataset.v39EquipApply, name, rarity, inventoryKey:text(picker?.value) }), "装備を変更しました");
-      return;
-    }
-    const remove = element?.closest("[data-v39-equip-remove]");
-    if (remove) {
-      const state = window.getV39GameState?.();
-      const current = player();
-      commit(changeV39UnitEquipment(state, current?.id, { unitId:selectedUnitId, slot:remove.dataset.v39EquipRemove }), "装備を外しました");
+    const change = element?.closest("[data-v39-equip-change]");
+    if (change) {
+      openV39EquipmentPicker(selectedUnitId, change.dataset.v39EquipChange, () => {
+        statusText = "装備を更新しました";
+        render();
+      });
       return;
     }
     if (element?.closest("#v39-equip-reroll")) {

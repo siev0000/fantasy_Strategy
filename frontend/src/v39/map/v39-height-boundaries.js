@@ -50,32 +50,11 @@ function levelAt(data, x, y) {
   return Number.isFinite(value) ? value : null;
 }
 
-function drawEdge(graphics, p, edgeIndex, difference, highCenter) {
-  const edgeVertices = [
-    [0, 1],
-    [1, 2],
-    [2, 3],
-    [3, 4],
-    [4, 5],
-    [5, 0]
-  ];
-  const pair = edgeVertices[edgeIndex];
-  if (!pair) return;
-
-  const [aIndex, bIndex] = pair;
-  const ax = p[aIndex * 2];
-  const ay = p[(aIndex * 2) + 1];
-  const bx = p[bIndex * 2];
-  const by = p[(bIndex * 2) + 1];
-
-  // Keep the actual border available for ownership colors; draw the contour uphill.
-  const dx=highCenter.x-(ax+bx)/2,dy=highCenter.y-(ay+by)/2;
-  const length=Math.hypot(dx,dy)||1,offset=3;
-  const ox=dx/length*offset,oy=dy/length*offset;
-  graphics.lineStyle(difference>=2?3:2.5,0x15232a,0.9);
-  graphics.lineBetween(ax+ox,ay+oy,bx+ox,by+oy);
-  graphics.lineStyle(difference>=2?1.3:0.8,0xe6ddd0,difference>=2?0.95:0.8);
-  graphics.lineBetween(ax+ox,ay+oy,bx+ox,by+oy);
+function drawEdge(graphics, points, edgeIndex, difference) {
+  const a = edgeIndex * 2;
+  const b = (edgeIndex + 1) * 2;
+  graphics.lineStyle(difference, 0xe6ddd0, 0.95);
+  graphics.lineBetween(points[a], points[a + 1], points[b], points[b + 1]);
 }
 
 function renderHeightBoundaries() {
@@ -87,7 +66,6 @@ function renderHeightBoundaries() {
   destroyOldLayer(scene);
   const graphics = scene.add.graphics().setDepth(2).setName(LAYER_NAME);
 
-  let differenceOneCount = 0;
   let differenceTwoPlusCount = 0;
 
   for (let y = 0; y < Number(data.h || 0); y += 1) {
@@ -107,12 +85,10 @@ function renderHeightBoundaries() {
         const other = levelAt(data, neighbor.x, neighbor.y);
         if (other === null) continue;
         const difference = Math.abs(current - other);
-        if (difference < 1) continue;
+        if (difference < 2) continue;
 
-        const highPoints=current>other?p:hexPoints(neighbor.x,neighbor.y);
-        drawEdge(graphics, p, neighbor.edge, difference,{x:highPoints[0],y:(highPoints[1]+highPoints[7])/2});
-        if (difference >= 2) differenceTwoPlusCount += 1;
-        else differenceOneCount += 1;
+        drawEdge(graphics, p, neighbor.edge, difference);
+        differenceTwoPlusCount += 1;
       }
     }
   }
@@ -123,9 +99,8 @@ function renderHeightBoundaries() {
 
   window.__v39HeightBoundaryStatus = {
     rendered: true,
-    differenceOneCount,
     differenceTwoPlusCount,
-    rule: "uphill-inset-3px-outlined-contour"
+    rule: "shared-edge-width-by-height-difference"
   };
   return true;
 }

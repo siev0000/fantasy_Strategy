@@ -31,13 +31,34 @@ function renderControls(controls) {
   ).join("")}</div>`;
 }
 
+function renderIcon(icon) {
+  return icon ? `<span class="v39-item-list-icon" aria-hidden="true">${icon}</span>` : "";
+}
+
+function renderIconLabel(icon, label) {
+  return `<span class="v39-item-list-icon-label">${renderIcon(icon)}<b>${escapeHtml(label)}</b></span>`;
+}
+
+function renderItemDetail({heading, icon, facts = [], sections = []}) {
+  return `<div class="summon-scroll">${heading ? `<h4>${renderIconLabel(icon, heading)}</h4>` : ""}
+    ${facts.length ? `<dl class="v39-item-list-facts">${facts.map(({label,value}) =>
+      `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`
+    ).join("")}</dl>` : ""}
+    ${sections.map(({label,lines}) => `<h4>${escapeHtml(label)}</h4>${renderLines(lines)}`).join("")}</div>`;
+}
+
 function renderCandidates(rows, {selectedId, candidateAttribute, cardAttribute, emptyText}) {
-  return rows.map(({id,unit,label,meta,unavailable,badge}) => {
+  return rows.map(({id,unit,label,meta,unavailable,badge,icon,metrics}) => {
     const selected = id === selectedId;
     const action = {id:"candidate",value:id,attribute:candidateAttribute};
     const content = unit ? renderV39UnitCard(unit, {
       id, character:true, portrait:true, attribute:cardAttribute || "data-v39-item-list-card", selected, position:meta ?? ""
-    }) : button({id:"candidate",value:id,label,selected});
+    }) : icon || metrics?.length ? `<button type="button" class="v39-summon-action v39-item-list-compact-card${icon ? " has-icon" : ""}"${actionData(action)} aria-pressed="${selected}">
+      ${renderIcon(icon)}<span class="v39-item-list-compact-main">
+        <b>${escapeHtml(label)}</b>
+        ${metrics?.length ? `<span class="v39-item-list-compact-metrics">${metrics.map(metric => `<span>${escapeHtml(metric)}</span>`).join("")}</span>` : ""}
+      </span>
+    </button>` : button({id:"candidate",value:id,label,selected});
     return `<div${actionData(action)} class="${unavailable ? "unavailable" : ""}">${content}${badge
       ? `<small class="v39-item-list-candidate-badge"><span aria-hidden="true">${escapeHtml(badge.icon)}</span> ${escapeHtml(badge.label)}</small>` : ""}</div>`;
   }).join("") || `<p>${escapeHtml(emptyText || "候補がありません")}</p>`;
@@ -101,6 +122,7 @@ export function renderV39ItemListScreen1({
     : renderCandidates(rows,detail)}`;
   const main = detail.kind === "enhancement" ? renderEnhancements(detail)
     : detail.kind === "review" ? `<h4>${escapeHtml(detail.heading)}</h4><div class="summon-scroll">${renderLines(detail.lines)}</div>`
+    : detail.kind === "item" ? renderItemDetail(detail)
     : renderUnitDetail(detail);
   const buttons = enhancement ? [...actions,{id:"enhance",label:"付与へ進む",...enhancement}] : actions;
   return `<section class="modal v39-item-list-screen-1" role="dialog" aria-modal="true" aria-labelledby="${headingId}">

@@ -1,13 +1,55 @@
-import { applyEnemyPlanToSimulation, planNextEnemyAction } from "../lib/v39-enemy-ai-planner.js";
+import { applyEnemyPlanToSimulation, attachEnemyAiPlanningCache, isAliveEnemyAiUnit, planNextEnemyAction, precomputeEnemyAiCandidates } from "../lib/v39-enemy-ai-planner.js";
 
 let state = null;
 let mapData = null;
 let turnNumber = 1;
 let processed = 0;
 
+let fieldSignature;
+let planningCache;
+let precomputeTimer;
+
+function stopPrecompute() {
+  clearTimeout(precomputeTimer);
+}
+
+function reusePlanningCache(map) {
+  const signature = JSON.stringify(map);
+  if (signature !== fieldSignature) {
+    fieldSignature = signature;
+    planningCache = { sight:new Map(), detection:new Map(), movement:new Map(), exploration:new Map() };
+  }
+  attachEnemyAiPlanningCache(map, planningCache);
+}
+
+function startPrecompute(snapshot, map, turn) {
+  stopPrecompute();
+  reusePlanningCache(map);
+  const enemies = snapshot.enemies.filter(isAliveEnemyAiUnit);
+  let index = 0;
+  const batch = () => {
+    const deadline = performance.now() + 6;
+    while (index < enemies.length && performance.now() < deadline) {
+      precomputeEnemyAiCandidates(snapshot, map, turn, enemies[index++]);
+    }
+    if (index < enemies.length) precomputeTimer = setTimeout(batch, 16);
+  };
+  if (enemies.length) precomputeTimer = setTimeout(batch, 0);
+}
+
 self.addEventListener("message", event => {
   const message = event.data || {};
+  if (message.type === "precompute") {
+    startPrecompute(message.state, message.mapData, message.turnNumber);
+    return;
+  }
+  if (message.type === "pause-precompute") {
+    stopPrecompute();
+    return;
+  }
   if (message.type === "initialize") {
+    stopPrecompute();
+    if (planningCache) reusePlanningCache(message.mapData);
     state = message.state;
     mapData = message.mapData;
     turnNumber = message.turnNumber;

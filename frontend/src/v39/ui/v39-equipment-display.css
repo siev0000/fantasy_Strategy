@@ -42,3 +42,11 @@
 .v39-equipment-display-icon { font-size: 17px; line-height: 1; text-align: center; }
 .v39-equipment-display-name { white-space: normal; overflow-wrap: anywhere; }
 .v39-equipment-display-slot { color: #b8c9cd; white-space: nowrap; }
+
+.v39-equipment-icon-sprite {
+  display: inline-block;
+  inline-size: 1em;
+  block-size: 1em;
+  vertical-align: middle;
+  background-repeat: no-repeat;
+}

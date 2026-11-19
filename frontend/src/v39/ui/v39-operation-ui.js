@@ -310,6 +310,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
               <label class="display-setting"><span class="display-setting-title">地図の拡大縮小ボタン <input type="checkbox" id="v39-show-zoom-controls" checked></span><small>地図左下の＋−ボタンを表示します。</small></label>
               <label class="display-setting"><span class="display-setting-title">画面の動きを減らす <input type="checkbox" id="v39-reduce-motion"></span><small>点滅や画面切替アニメーションを抑えます。</small></label>
               <label class="display-setting"><span class="display-setting-title">ターン終了時に未行動キャラを確認 <input type="checkbox" id="v39-focus-unacted-units" checked></span><small>未行動キャラを選択して地図を合わせます。待機済みは対象外。OFFならそのまま終了します。</small></label>
+              <label class="display-setting"><span class="display-setting-title">敵AIの先行計算 <input type="checkbox" id="v39-precompute-enemy-ai" checked></span><small>操作中に敵ユニットの索敵と移動候補を計算します。</small></label>
               <button type="button" id="v39-display-settings-reset" class="display-setting display-setting-reset"><span class="display-setting-title">表示設定を初期値へ戻す</span><small>文字100%、高度濃淡ON、高低差境界のみONへ戻します。</small></button>
             </div>
           </section>

@@ -343,16 +343,16 @@ function skillRangeBonus(row) {
   return match ? Number(match[1]) : null;
 }
 
-function effectiveRangeValue(skillRow, unit, mapData) {
+function effectiveRangeValue(skillRow, unit, mapData, state) {
   const raw=resolveAttackRawRange(skillRow,unit);
   if(raw<=0)return raw;
   const caveRange=mapData?.isUnderground?raw*V39_CAVE_BALANCE.attackRangeMultiplier:raw;
-  const state=globalThis.window?.getV39GameState?.({includeWorlds:false});
-  return caveRange*(resolveV39SpatialDistortionPercent(unit,state)??100)/100;
+  const currentState = state === undefined ? globalThis.window?.getV39GameState?.({includeWorlds:false}) : state;
+  return caveRange*(resolveV39SpatialDistortionPercent(unit,currentState)??100)/100;
 }
 
-export function resolveAttackRange(skillRow, unit, mapData = null) {
-  return resolveV39RangeTiles(effectiveRangeValue(skillRow,unit,mapData),1);
+export function resolveAttackRange(skillRow, unit, mapData = null, state) {
+  return resolveV39RangeTiles(effectiveRangeValue(skillRow,unit,mapData,state),1);
 }
 
 export function resolveAttackRangeScale(skillRow, unit, distance, mapData = null) {

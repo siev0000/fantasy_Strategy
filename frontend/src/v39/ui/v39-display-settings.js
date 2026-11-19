@@ -21,6 +21,7 @@ const DEFAULTS = Object.freeze({
   showTerritoryOwnership: true,
   reduceMotion: false,
   focusUnactedUnits: true,
+  precomputeEnemyAi: true,
   testMode: false,
   playerColors: {},
   atmosphereOpacityByKind:{},
@@ -43,6 +44,7 @@ function loadSettings() {
       ...DEFAULTS,
       ...saved,
       mapQuality:normalizeV39MapQuality(saved.mapQuality),
+      precomputeEnemyAi:saved.precomputeEnemyAi !== false,
       fontScalePercent: clamp(
         saved.fontScalePercent ?? (Number.isFinite(legacyFont) ? legacyFont * 100 : DEFAULTS.fontScalePercent),
         80,
@@ -206,6 +208,8 @@ function applySettings({ emit = true, changedKeys } = {}) {
   if (reduceMotion) reduceMotion.checked = !!settings.reduceMotion;
   const focusUnacted = document.getElementById("v39-focus-unacted-units");
   if (focusUnacted) focusUnacted.checked = settings.focusUnactedUnits !== false;
+  const precomputeEnemyAi = document.getElementById("v39-precompute-enemy-ai");
+  if (precomputeEnemyAi) precomputeEnemyAi.checked = settings.precomputeEnemyAi;
   if (testMode) {
     testMode.checked = testModeEnabled;
   }
@@ -291,6 +295,9 @@ function bindControls() {
   });
   document.getElementById("v39-show-coordinate-ruler")?.addEventListener("change", event => {
     updateControlSetting("showCoordinateRuler", !!event.target.checked);
+  });
+  document.getElementById("v39-precompute-enemy-ai")?.addEventListener("change", event => {
+    updateControlSetting("precomputeEnemyAi", event.target.checked);
   });
   document.getElementById("v39-focus-unacted-units")?.addEventListener("change", event => {
     updateControlSetting("focusUnactedUnits", !!event.target.checked);

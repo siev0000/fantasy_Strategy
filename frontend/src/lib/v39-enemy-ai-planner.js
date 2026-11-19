@@ -20,6 +20,38 @@ const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(
 const integer = (value, fallback = 0) => Math.floor(number(value, fallback));
 const distance = getHexDistance;
 
+// A worker may reuse terrain evaluations across snapshots of the same field.
+const planningCaches = new WeakMap();
+
+export function attachEnemyAiPlanningCache(mapData, cache) {
+  planningCaches.set(mapData, cache);
+}
+
+function remember(cache, key, calculate, limit = 32768) {
+  if (cache.has(key)) return cache.get(key);
+  const value = calculate();
+  if (cache.size >= limit) cache.delete(cache.keys().next().value);
+  cache.set(key, value);
+  return value;
+}
+
+function enemyLineOfSight(mapData, from, to, options) {
+  const cache = planningCaches.get(mapData)?.sight;
+  const calculate = () => hasV39CaveLineOfSight(mapData, from, to, options);
+  if (!cache) return calculate();
+  const key = JSON.stringify([from.x, from.y, to.x, to.y, options?.showWall === true]);
+  return remember(cache, key, calculate);
+}
+
+function enemyDetectsTarget(options) {
+  const { mapData, from, to, scout, stealth, distance, visionRange, inRange, gameSettings } = options;
+  if (inRange === false) return false;
+  const cache = planningCaches.get(mapData)?.detection;
+  if (!cache) return isDetectedByScout(options);
+  const key = JSON.stringify([from.x, from.y, to.x, to.y, scout, stealth, distance, visionRange, gameSettings]);
+  return remember(cache, key, () => isDetectedByScout(options));
+}
+
 export function isAliveEnemyAiUnit(unit) {
   return number(unit?.hp, unit?.currentHp) > 0 && text(unit?.state || unit?.statusName, "生存") !== "死亡";
 }
@@ -153,17 +185,18 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
   }
   const enemyScout = resolveDetectionScoutValue(enemy,mapData);
   const visible = [];
+  const visionRange = visionRadius(enemy, mapData);
   for (const group of targetsByTile.values()) {
-    if(!hasV39CaveLineOfSight(mapData,enemy,group[0]))continue;
     const targetDistance = distance(enemy, group[0]);
+    if (targetDistance > visionRange || !enemyLineOfSight(mapData, enemy, group[0])) continue;
     const targetSense = resolveDetectionGroupSense(group, { turnNumber,mapData });
-    if (!isDetectedByScout({
+    if (!enemyDetectsTarget({
       scout:enemyScout,
       stealth:targetSense.stealth,
       distance:targetDistance,
       mapData,
-      from:enemy,to:group[0],visionRange:visionRadius(enemy,mapData),
-      inRange:targetDistance <= visionRadius(enemy, mapData),
+      from:enemy,to:group[0],visionRange,
+      inRange:true,
       gameSettings:state.gameSettings
     })) continue;
     visible.push(...group);
@@ -187,10 +220,15 @@ function availableEnemyMoves(state, mapData, enemy) {
     ...(state.neutralVillages || []).flatMap(village => village?.defenseUnits || []).filter(isAliveEnemyAiUnit),
     ...(state.settlements || [])
   ].map(row => coordKey(row.x, row.y)));
-  return getHexNeighborCoords(mapData.w, mapData.h, enemy?.x, enemy?.y, mapData?.worldWrapEnabled !== false)
-    .filter(tile => !occupied.has(tile.key))
-    .map(tile => ({ ...tile, cost:enemyMoveStepCost(mapData, enemy, tile),hazardRisk:v39HazardRiskAt(mapData,enemy,tile.x,tile.y) }))
-    .filter(tile => Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap)&&tile.hazardRisk<number(enemy.hp??enemy.currentHp)*0.5);
+  const cache = planningCaches.get(mapData)?.movement;
+  // Remaining AP gates valid steps below, but does not change the terrain's AP cost.
+  const profile = cache && JSON.stringify({ ...enemy, ap:undefined, currentAp:undefined, explorationState:undefined });
+  const steps = () => getHexNeighborCoords(mapData.w, mapData.h, enemy?.x, enemy?.y, mapData?.worldWrapEnabled !== false)
+    .filter(tile => cache || !occupied.has(tile.key))
+    .map(tile => ({ ...tile, cost:enemyMoveStepCost(mapData, enemy, tile), hazardRisk:v39HazardRiskAt(mapData,enemy,tile.x,tile.y) }));
+  const neighbors = cache ? remember(cache, profile, steps, 2048) : steps();
+  return neighbors.filter(tile => (!cache || !occupied.has(tile.key))
+    && Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap)&&tile.hazardRisk<number(enemy.hp??enemy.currentHp)*0.5);
 }
 
 function movePlan(state, mapData, enemy, target, turnNumber, mode, stopDistance = 1, enemyPatch = {}) {
@@ -305,6 +343,20 @@ function factionFoodNames(state, enemy, ownerId) {
   return [...names];
 }
 
+function visibleExplorerTiles(mapData, enemy, radius) {
+  const calculate = () => {
+    const tiles = [];
+    for (let y = 0; y < integer(mapData?.h); y += 1) for (let x = 0; x < integer(mapData?.w); x += 1) {
+      const tile = { x, y };
+      if (distance(enemy, tile) <= radius && hasV39CaveLineOfSight(mapData, enemy, tile, { showWall:true })) tiles.push(tile);
+    }
+    return tiles;
+  };
+  const cache = planningCaches.get(mapData)?.exploration;
+  if (!cache) return calculate();
+  return remember(cache, JSON.stringify([enemy.x, enemy.y, radius]), calculate, 512);
+}
+
 function observeForExplorer(state, mapData, enemy, turnNumber) {
   const current = normalizeV39EnemyExplorerState(enemy?.explorationState);
   if (!current.active) return null;
@@ -313,8 +365,7 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
   const territoryByTile = {};
   const foodCandidatesByTile = {};
   const visitedTileKeys = [];
-  for (let y = 0; y < integer(mapData?.h); y += 1) for (let x = 0; x < integer(mapData?.w); x += 1) {
-    if (distance(enemy, { x, y }) > radius || !hasV39CaveLineOfSight(mapData,enemy,{x,y},{showWall:true})) continue;
+  for (const { x, y } of visibleExplorerTiles(mapData, enemy, radius)) {
     const key = coordKey(x, y);
     visitedTileKeys.push(key);
     terrainByTile[key] = terrainLabel(mapData?.grid?.[y]?.[x]);
@@ -330,7 +381,7 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
   const nearbyUnits = [
     ...(state?.enemies || []).filter(row => text(row?.id) !== text(enemy?.id)),
     ...targetsFor(state)
-  ].filter(row => isAliveEnemyAiUnit(row) && distance(enemy, row) <= radius && hasV39CaveLineOfSight(mapData,enemy,row));
+  ].filter(row => isAliveEnemyAiUnit(row) && distance(enemy, row) <= radius && enemyLineOfSight(mapData,enemy,row));
   const unitsByTile = new Map();
   for (const unit of nearbyUnits) {
     const key = coordKey(unit?.x, unit?.y);
@@ -340,7 +391,7 @@ function observeForExplorer(state, mapData, enemy, turnNumber) {
   const visibleUnits = [];
   for (const group of unitsByTile.values()) {
     const targetSense = resolveDetectionGroupSense(group, { turnNumber,mapData });
-    if (isDetectedByScout({
+    if (enemyDetectsTarget({
       scout:resolveDetectionScoutValue(enemy,mapData),
       stealth:targetSense.stealth,
       distance:distance(enemy, group[0]),
@@ -493,6 +544,14 @@ export function inspectEnemyAiState(state, enemyId, turnNumber, mapData = null) 
     lastActionTurn, pendingSkillName:text(pending?.skillName), pendingTurns:pending ? remainingV39Turns(pending.resolvesAtTurn, turnNumber) : 0,
     cooldowns:Object.fromEntries(Object.entries(cooldowns).map(([name, deadline]) => [name, remainingV39Turns(deadline, turnNumber)]).filter(([, turns]) => turns > 0))
   };
+}
+
+export function precomputeEnemyAiCandidates(state, mapData, turnNumber, enemy) {
+  // Prepare terrain and line-of-sight candidates using the same planner as the enemy turn.
+  const targets = targetsFor(state, enemy);
+  selectEnemyTarget(state, enemy, targets, turnNumber, mapData);
+  if (normalizeV39EnemyExplorerState(enemy.explorationState).active) visibleExplorerTiles(mapData, enemy, visionRadius(enemy, mapData));
+  availableEnemyMoves(state, mapData, enemy);
 }
 
 export function planNextEnemyAction(state, mapData, turnNumber) {
