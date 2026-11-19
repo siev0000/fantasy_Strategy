@@ -24,6 +24,7 @@ const RaceSelectModal = defineAsyncComponent(() => import("./components/RaceSele
 const ClassSelectModal = defineAsyncComponent(() => import("./components/ClassSelectModal.vue"));
 const CharacterStatusModal = defineAsyncComponent(() => import("./components/CharacterStatusModal.vue"));
 const CharacterNameModal = defineAsyncComponent(() => import("./components/CharacterNameModal.vue"));
+const EquipmentIconReferenceModal = defineAsyncComponent(() => import("./components/EquipmentIconReferenceModal.vue"));
 
 const DEFAULT_RACE_STATS = { hp: 100, atk: 20 };
 const RACES = Array.isArray(raceSelectionDb)
@@ -258,6 +259,7 @@ const showClassModal = ref(false);
 const showCharacterStatusModal = ref(false);
 const showCharacterNameModal = ref(false);
 const showGameStartSetupModal = ref(false);
+const showEquipmentIconReference = ref(false);
 const skillTreeCategories = ref([...RESEARCH_CATEGORY_ORDER]);
 const skillTreeInitialCategory = ref("");
 const researchProgress = ref({
@@ -1819,6 +1821,11 @@ watch(gameOnlyMode, () => {
       @game-view-size-change="handleGameViewSizeChange"
     />
 
+    <button v-if="!gameSetupReady" type="button" class="equip-icon-title-launch"
+      @click="showEquipmentIconReference = true">装備アイコン一覧（番号確認）</button>
+    <equipment-icon-reference-modal v-if="showEquipmentIconReference" :show="showEquipmentIconReference"
+      @close="showEquipmentIconReference = false" />
+
     <room-modal
       :show="showRoomModal"
       :socket-ready="socketReady"
@@ -1989,6 +1996,7 @@ watch(gameOnlyMode, () => {
         </label>
         <div class="game-start-total">合計勢力: {{ gameStartTotalFactions }} / 最大 {{ GAME_START_MAX_FACTIONS }}</div>
         <div class="game-start-actions">
+          <button type="button" class="secondary" @click="showEquipmentIconReference = true">装備アイコン一覧</button>
           <button type="button" class="secondary" @click="cancelGameStartSetup">閉じる</button>
           <button type="button" class="secondary" @click="confirmGameStartSetup">次へ</button>
         </div>
@@ -2049,6 +2057,16 @@ watch(gameOnlyMode, () => {
 </template>
 
 <style scoped>
+.equip-icon-title-launch {
+  position:fixed; right:18px; bottom:18px; z-index:1100;
+  padding:10px 16px; min-height:42px;
+  border:1px solid #cfab65; border-radius:8px;
+  background:rgba(37,32,23,.95);color:#f5dda7;
+  box-shadow:0 5px 18px rgba(0,0,0,.38);cursor:pointer;
+  font-size:14px;font-weight:700;
+}
+.equip-icon-title-launch:focus-visible {outline:2px solid #ffe1a0;outline-offset:2px;}
+@media(max-width:600px){.equip-icon-title-launch {right:10px;bottom:10px;padding:8px 12px;font-size:13px;}}
 .game-start-backdrop {
   position: fixed;
   inset: 0;
