@@ -11,7 +11,7 @@ import {getV39EditableSquads} from './v39-squad-edit-rules.js';
 import {mergeV39Cargo} from './v39-logistics-state.js';
 import {v39SquadMoveMode} from './v39-squad-coordination.js';
 import initialEquipment from '../../../config/v39-summon-equipment.json';
-import {createV39EquipmentEntry} from './v39-equipment-rules.js';
+import {createV39EquipmentEntry,normalizeV39EquipmentRarity} from './v39-equipment-rules.js';
 import {applyV39DerivedCharacterData} from '../v39/unit/v39-character-derived-rules.js';
 import {resolveV39RitualSummonEffects,recordV39FacilitySummonLosses} from './v39-ritual-facilities.js';
 import {advanceV39FacilitySummonUpkeep} from './v39-facility-summon-costs.js';
@@ -62,20 +62,51 @@ function catalogComposition(entry,bonusLevel) {
   levels[race]+=bonusLevel;
   return {race,className:names.at(-1),levels};
 }
-function summonEquipment(entry,row,random=null) {
-  if(!entry.catalog)return buildV39SummonEquipment(entry.spec.target,row,random);
-  const slots={'武器':'武器1','副武器':'武器2','胴':'体','頭':'頭','足':'足','装飾1':'装飾1','装飾2':'装飾2'};
-  const gear=[];
-  for(const [field,slot] of Object.entries(slots)) {
-    const text=String(entry.catalog[field]||'').trim();
-    if(!text||text==='×')continue;
-    const choices=text.replace(/（.*）/g,'').split('/').map(name=>name.trim()).filter(Boolean);
-    if(!choices.length)continue;
-    const index=random?Math.min(choices.length-1,Math.floor(random()*choices.length)):0;
-    const item=createV39EquipmentEntry(choices[index],'common',slot);
-    if(item)gear.push(item);
+const summonEquipmentSlots={'武器':'武器1','副武器':'武器2','胴':'体','頭':'頭','足':'足','装飾1':'装飾1','装飾2':'装飾2'};
+
+function catalogEquipmentGroups(catalog) {
+  const groups=[];
+  for(const [field,slot] of Object.entries(summonEquipmentSlots)) {
+    const value=String(catalog[field]||'').trim();
+    if(!value||value==='×')continue;
+    const annotation=value.match(/\s*[（(]([^（）()]*)[）)]$/u);
+    const fallback=normalizeV39EquipmentRarity(annotation?.[1].split('・').at(-1));
+    const items=value.slice(0,annotation?.index??value.length).split(/[/／]/).map(choice=>{
+      const token=choice.trim(),separator=token.lastIndexOf('_');
+      const rarity=separator>0?normalizeV39EquipmentRarity(token.slice(separator+1),''):'';
+      const name=rarity?token.slice(0,separator).trim():token;
+      return createV39EquipmentEntry(name,rarity||fallback,slot);
+    }).filter(item=>item?.slot===slot);
+    if(items.length)groups.push({slot,items});
   }
-  return gear.length?gear:buildV39SummonEquipment(entry.spec.target,{},random);
+  return groups;
+}
+
+function legacyEquipmentGroups(target,row) {
+  const equipment=buildV39ClassEquipment(row);
+  const groups=equipment.flatMap(({slot,name})=>{
+    const item=createV39EquipmentEntry(name,undefined,slot);
+    return item?[{slot:item.slot,items:[item]}]:[];
+  });
+  const rule=initialEquipment[target];
+  if(rule&&!equipment.some(item=>item.slot==='武器1')){
+    const items=rule.武器候補.map(name=>createV39EquipmentEntry(name,rule.品質,'武器1')).filter(Boolean);
+    if(items.length)groups.push({slot:'武器1',items});
+  }
+  return groups;
+}
+
+function resolveSummonEquipmentGroups(entry,row) {
+  const catalogGroups=entry.catalog?catalogEquipmentGroups(entry.catalog):[];
+  return catalogGroups.length?catalogGroups:legacyEquipmentGroups(entry.spec.target,entry.catalog?{}:row);
+}
+
+function selectSummonEquipment(groups,random) {
+  return groups.map(({items})=>items[random&&items.length>1?Math.min(items.length-1,Math.max(0,Math.floor(random()*items.length))):0]);
+}
+
+function summonEquipment(entry,row,random=null) {
+  return selectSummonEquipment(resolveSummonEquipmentGroups(entry,row),random);
 }
 export function buildV39SummonPreview(entry,bonusLevel=0) {
   if(!entry?.spec)return null;
@@ -111,13 +142,7 @@ export function buildV39SummonPreview(entry,bonusLevel=0) {
 }
 
 export function buildV39SummonEquipment(target,row,random=null) {
-  const equipment=buildV39ClassEquipment(row),rule=initialEquipment[target];
-  if(!rule||equipment.some(item=>item.slot==='武器1'))return equipment;
-  const candidates=rule.武器候補.map(name=>createV39EquipmentEntry(name,rule.品質,'武器1')).filter(Boolean);
-  if(!candidates.length)return equipment;
-  // プレビューで再抽選しない。実際の生成時のみ、各ユニットに対して抽選する。
-  const index=random?Math.min(candidates.length-1,Math.max(0,Math.floor(random()*candidates.length))):0;
-  return [...equipment,candidates[index]];
+  return selectSummonEquipment(legacyEquipmentGroups(target,row),random);
 }
 
 export function createV39SummonedUnit(entry,preview,random=Math.random) {
@@ -127,9 +152,10 @@ export function createV39SummonedUnit(entry,preview,random=Math.random) {
   return {...derived,maxHp,hp:maxHp,currentHp:maxHp};
 }
 
-export function describeV39SummonEquipment(target) {
-  const rule=initialEquipment[target];
-  return rule?`初期武器: コモンの${rule.武器候補.join('・')}からランダム1個（プレビューは${rule.武器候補[0]}）`:'';
+export function getV39SummonEquipmentGroups(entry,preview) {
+  if(!entry?.spec)return [];
+  const row=getGameDataRows('クラス').find(item=>item.名前===preview?.className);
+  return resolveSummonEquipmentGroups(entry,row);
 }
 export function resolveV39SummonPlacements(state,map,caster,preview,excludedIds=new Set()) {
   const world=state.activeWorldId || 'surface';

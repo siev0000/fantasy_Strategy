@@ -149,10 +149,10 @@ export async function playV39MapEffect(request = {}) {
   const y = number(request.y ?? request.tileY, Number.NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
   const areaTiles=request.areaTiles || [];
+  const tileVisible = tile => window.isV39TileInCurrentVision?.(tile.x,tile.y) !== false;
+  if (request.allowInFog !== true && !(areaTiles.length ? areaTiles.some(tileVisible) : tileVisible({x,y}))) return false;
   const area=areaTiles.length>1 || (request.fitArea && areaTiles.length)
     ? resolveV39EffectAreaGeometry(areaTiles,MAP_ENTITY_SIZE_RULES.defenseField.coverageScale) : null;
-  const visionTiles=areaTiles.length ? areaTiles : [{x,y}];
-  if (request.allowInFog !== true && !visionTiles.some(tile=>window.isV39TileInCurrentVision?.(tile.x,tile.y) !== false)) return false;
   const position = area || (request.worldX !== undefined && request.worldY !== undefined
     ? { x:number(request.worldX), y:number(request.worldY) }
     : tileCenter(x, y));
@@ -167,12 +167,21 @@ export async function playV39MapEffect(request = {}) {
   const endpoint=request.worldX !== undefined && request.worldY !== undefined ? {x:number(request.worldX),y:number(request.worldY)} : tileCenter(x,y);
   const beam=resolveV39EffectBeam(playbackSettings,origin,endpoint);
   const perTile = !beam && playbackSettings.areaDisplay === 'tiles' && areaTiles.length > 0;
-  const visibleTiles = [...new Map(areaTiles.filter(tile => Number.isFinite(tile.x) && Number.isFinite(tile.y)
-    && (request.allowInFog === true || window.isV39TileInCurrentVision?.(tile.x,tile.y) !== false))
-    .map(tile => [String(tile.x)+','+tile.y,tile])).values()];
-  const instances = perTile ? visibleTiles.map(tile => resolveV39EffectTransform(playbackSettings,
-    tileCenter(tile.x,tile.y), attackAngle, request.angleDeg)) : undefined;
-  if (perTile && !instances.length) return false;
+  let instances;
+  if (perTile) {
+    const visitedTiles = new Set();
+    instances = [];
+    for (const tile of areaTiles) {
+      if (!Number.isFinite(tile.x) || !Number.isFinite(tile.y)) continue;
+      const key = `${tile.x},${tile.y}`;
+      if (visitedTiles.has(key)) continue;
+      visitedTiles.add(key);
+      if (request.allowInFog !== true && !tileVisible(tile)) continue;
+      instances.push(resolveV39EffectTransform(playbackSettings,
+        tileCenter(tile.x,tile.y), attackAngle, request.angleDeg));
+    }
+    if (!instances.length) return false;
+  }
   const transform = beam || resolveV39EffectTransform(area ? {...playbackSettings,offsetX:0,offsetY:0} : playbackSettings, position, attackAngle, request.angleDeg);
   const angleDeg = transform.angleDeg;
   const sequence = resolveSequence(playbackSettings.sequenceName,playbackSettings.sequenceSteps);
@@ -202,7 +211,7 @@ export async function playV39MapEffect(request = {}) {
     "gradientSpeedPercentPerSecond",
     playbackSettings.gradientSpeedPercentPerSecond
   );
-  console.info("[エフェクト再生]", {
+  if (window.__v39EffectPlaybackDebug === true) console.info("[エフェクト再生]", {
     元アニメーション:requestedEffectName,
     選択方法:combatEffect?.reason || "直接指定",
     基本カテゴリ:combatEffect?.categoryId || "",

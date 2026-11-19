@@ -110,16 +110,8 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
       .v39-move-confirm-actions button:disabled{opacity:.45;cursor:not-allowed}
       #footSquad .equipment-list{display:grid;gap:2px}
       #footSquad .equipment-card{
-        width:100%;min-width:0;border:1px solid #34484f;border-radius:5px;background:#121e23;color:#e8efec;
-        padding:0;text-align:left;cursor:pointer;overflow:hidden
+        width:100%;padding:0;text-align:left;cursor:pointer;overflow:hidden
       }
-      #footSquad .equipment-summary{
-        min-height:32px;display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;align-items:center;
-        gap:5px;padding:4px 6px
-      }
-      #footSquad .equipment-icon{font-size:var(--font-size-19);line-height:1;text-align:center}
-      #footSquad .equipment-name{min-width:0;font-size:var(--font-compact);white-space:normal;overflow-wrap:anywhere}
-      #footSquad .equipment-slot,#footSquad .equipment-quality{font-size:var(--font-size-10);color:#98aaae;white-space:nowrap}
       #footSquad .equipment-detail{display:none;border-top:1px solid #31434a;padding:5px 7px;background:#0d171b}
       #footSquad .equipment-card.is-expanded .equipment-detail{display:grid;gap:4px}
       #footSquad .equipment-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}

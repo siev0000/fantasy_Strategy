@@ -1,0 +1,44 @@
+.v39-equipment-rarity-badge {
+  --v39-rarity-color: #b8b8b8;
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.6em;
+  min-height: 1.6em;
+  padding-inline: 3px;
+  box-sizing: border-box;
+  border: 1px solid var(--v39-rarity-color);
+  border-radius: 4px;
+  background: #142027;
+  color: var(--v39-rarity-color);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="uncommon"] { --v39-rarity-color: #97e39c; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="rare"] { --v39-rarity-color: #7bc3ff; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="epic"] { --v39-rarity-color: #d6a2ff; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="legendary"] { --v39-rarity-color: #ffd18b; }
+
+.v39-equipment-display-row {
+  --v39-rarity-color: #b8b8b8;
+  min-width: 0;
+  border: 1px solid var(--v39-rarity-color);
+  border-radius: 5px;
+  background: #121e23;
+  color: #e8efec;
+}
+
+.v39-equipment-display-summary {
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  font-size: var(--font-body, 14px);
+}
+
+.v39-equipment-display-icon { font-size: 17px; line-height: 1; text-align: center; }
+.v39-equipment-display-name { white-space: normal; overflow-wrap: anywhere; }
+.v39-equipment-display-slot { color: #b8c9cd; white-space: nowrap; }

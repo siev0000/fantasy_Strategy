@@ -14,10 +14,6 @@ function currentState() {
   return window.getV39GameState?.({ includeWorlds:false }) || window.getV39GameState?.() || null;
 }
 
-function currentPhase() {
-  return text(currentState()?.timeline?.phase).toLowerCase();
-}
-
 function targetPoint(value) {
   const x = number(value?.tileX ?? value?.x, Number.NaN);
   const y = number(value?.tileY ?? value?.y, Number.NaN);
@@ -52,10 +48,12 @@ function snapshotPendingActions(turnNumber) {
 }
 
 function matchingPendingAction(request) {
-  if (replaying || currentPhase() !== "resolution") return null;
+  if (replaying || !pendingAtResolution.length) return null;
   const target = targetPoint(request);
   if (!target) return null;
-  const worldId = text(currentState()?.activeWorldId, "surface");
+  const timeline = window.getV39TimelineState?.() ?? currentState()?.timeline;
+  if (text(timeline?.phase).toLowerCase() !== "resolution") return null;
+  const worldId = text(window.getV39ActiveWorldId?.() ?? currentState()?.activeWorldId, "surface");
   return pendingAtResolution.find(row => !row.captured
     && row.worldId === worldId
     && row.target.x === target.x

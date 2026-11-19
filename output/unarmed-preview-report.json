@@ -1,0 +1,50 @@
+{
+  "version": "1.1.0",
+  "input": "output\\game-data-unarmed-source.xlsx",
+  "output_dir": "output\\unarmed-preview",
+  "dry_run": false,
+  "allow_missing_formula_cache": false,
+  "converted_sheets": [
+    "装備",
+    "クラス"
+  ],
+  "source_sheets": {
+    "装備": "装備",
+    "クラス": "クラス"
+  },
+  "excluded_workbook_sheets": [
+    "CS",
+    "イベント",
+    "スキル一覧"
+  ],
+  "summary": {
+    "sheets": 2,
+    "records": 500,
+    "warnings": 0,
+    "errors": 0
+  },
+  "sheets": [
+    {
+      "sheet": "装備",
+      "output": "装備.json",
+      "input_rows": 1000,
+      "records": 35,
+      "skipped_blank_rows": 964,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 1,
+      "warnings": [],
+      "errors": []
+    },
+    {
+      "sheet": "クラス",
+      "output": "クラス.json",
+      "input_rows": 1272,
+      "records": 465,
+      "skipped_blank_rows": 569,
+      "skipped_repeated_header_rows": 0,
+      "skipped_missing_key_rows": 238,
+      "warnings": [],
+      "errors": []
+    }
+  ]
+}

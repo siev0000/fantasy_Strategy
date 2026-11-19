@@ -942,7 +942,7 @@ function drawWanderers(scene, container, groups, activePlayerId) {
   }
 }
 
-function drawDefenseStructures(scene, container, imageContainer) {
+function drawDefenseStructures(scene, container, imageContainer, faction) {
   const { width, height, rowStep } = tileMetrics();
   const wallVisual=MAP_ENTITY_SIZE_RULES.wall,pillars=new Map();
   const structures=window.__v39FieldRuntime?.mapData?.defenseStructures||[];
@@ -1007,8 +1007,7 @@ function drawDefenseStructures(scene, container, imageContainer) {
       .strokeCircle(point.x,point.y,wallVisual.pillarRadiusPx);
     container.add(graphic);
   }
-  const state=gameState(),owner=state?.players?.find(p=>p.id===state.activePlayerId);
-  for(const base of getFactionSettlements(owner?.factionState))for(const [index,item] of (base.wallConstructionQueue||[]).entries()){
+  for(const base of getFactionSettlements(faction))for(const [index,item] of (base.wallConstructionQueue||[]).entries()){
     const [a,b]=resolveV39WallEdgeSegment(item.edge,tileCenter,tileMetrics());
     const graphic=scene.add.graphics().setName('v39-wall-construction');
     graphic.lineStyle(3,index===0?0xe3b95f:0x9faeae,.5);
@@ -1022,8 +1021,8 @@ function drawDefenseStructures(scene, container, imageContainer) {
   }
 }
 
-function renderConstructionPreview(){
-  const scene=activeScene(),state=gameState(),current=window.getV39LandConstructionPreview?.();
+function renderConstructionPreview(scene = activeScene(), state = gameState()){
+  const current=window.getV39LandConstructionPreview?.();
   const planned=getV39ConstructionPlanPreviews(state);
   const previews=[...planned,...(current&&!planned.some(plan=>plan.tileKey===current.tileKey&&plan.facilityName===current.facilityName)?[current]:[])];
   const signature=JSON.stringify([previews,markerArtworkVersion,state?.activeWorldId]);
@@ -1073,13 +1072,15 @@ function drawConstructionGhost(scene,container,preview){
 
 function renderMarkers() {
   const scene = activeScene();
+  if (!scene) return false;
   const state = gameState();
-  const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0];
+  const activePlayer = state?.players?.find(row => row.id === state.activePlayerId);
+  const player = activePlayer || state?.players?.[0];
   const faction = player?.factionState;
   const worldId = state?.activeWorldId || 'surface';
-  if (!scene || !faction) return false;
+  if (!faction) return false;
 
-  renderConstructionPreview();
+  renderConstructionPreview(scene, state);
   const signature = markerRenderSignature(faction, state);
   if (signature === lastMarkerRenderSignature && hasActiveMarkerContainers(scene)) return true;
   lastMarkerRenderSignature = signature;
@@ -1097,7 +1098,7 @@ function renderMarkers() {
     drawSettlementTileMarkers(scene, structureContainer, faction);
     drawSettlementTileMarkers(scene, structureContainer, {}, {settlements:(state.neutralVillages||[]).filter(v=>!v.abandoned),visibleOnly:true});
   }
-  drawDefenseStructures(scene, constructionLabelContainer, structureContainer);
+  drawDefenseStructures(scene, constructionLabelContainer, structureContainer, activePlayer?.factionState);
   const ground=window.__v39FieldRuntime?.mapData?.terrainDamage||{};
   for(const k of new Set([...Object.keys(ground.cells||{}),...Object.keys(ground.pendingByTile||{}),...Object.keys(ground.rubbleByTile||{})])){
     if(ground.pendingByTile?.[k]?.hiddenWarning&&!ground.rubbleByTile?.[k]&&!ground.cells?.[k])continue;
@@ -1184,7 +1185,7 @@ function scheduleRefresh(delay = 0) {
 }
 
 function install() {
-  window.addEventListener('v39:construction-preview-changed',renderConstructionPreview);
+  window.addEventListener('v39:construction-preview-changed',()=>renderConstructionPreview());
   window.addEventListener("v39:field-generated", () => {
     lastMarkerRenderSignature = null;
     scheduleRefresh(60);

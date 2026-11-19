@@ -694,26 +694,23 @@ function renderVisibilityLayers() {
   // Facility placement shares the existing tile-selection highlight renderer.
   const developmentSelection = window.getV39FacilitySummonSelection?.() || window.getV39SettlementDevelopmentSelection?.() || null;
   const playerColor = resolveV39PlayerColor(state,player.id);
-  const showOwnership=window.getV39DisplaySettings?.().showTerritoryOwnership!==false;
+  const displaySettings = window.getV39DisplaySettings?.();
+  const showOwnership=displaySettings?.showTerritoryOwnership!==false;
   const ownership=showOwnership?buildV39TerritoryOverlayGroups(state,data,{testMode,explored,activePlayerId:player.id}):[];
   const fogSignature = [
-    window.getV39DisplaySettings?.().mapQuality,
+    displaySettings?.mapQuality,
     `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
     testMode ? 1 : 0,
     initialPlacement ? 1 : 0,
     sortedSetSignature(explored)
   ].join(";");
   const renderSignature = [
-    window.getV39DisplaySettings?.().mapQuality,
+    fogSignature,
     showOwnership,JSON.stringify(ownership),
-    JSON.stringify(window.getV39DisplaySettings?.().atmosphereOpacityByKind||{}),
+    JSON.stringify(displaySettings?.atmosphereOpacityByKind||{}),
     state.activeWorldId||'surface',data.isUnderground===true?1:0,
     JSON.stringify(activeV39AtmosphereDisasters(state)),v39AtmosphereArtworkVersion(scene),JSON.stringify(v39AtmospherePalette()),
     JSON.stringify(data.fogMap||[]),JSON.stringify(data.specialMap||[]),
-    `${data.w}x${data.h}:${data.worldWrapEnabled === true ? 1 : 0}`,
-    testMode ? 1 : 0,
-    initialPlacement ? 1 : 0,
-    sortedSetSignature(explored),
     sortedSetSignature(currentVision),
     factionSightings,
     sortedSetSignature(detectedEntityIds),

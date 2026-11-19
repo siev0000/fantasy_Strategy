@@ -95,7 +95,7 @@
   padding: 3px 5px;
   line-height: 1.15;
 }
-#equipmentModal .v39-equip-rank { justify-self: start; color: #f1cb79; }
+#equipmentModal .v39-equip-rank { justify-self: start; }
 #equipmentModal .v39-equip-icon { place-self: center; font-size: 22px; }
 #equipmentModal .v39-equip-count { justify-self: end; color: #edf4f2; }
 #equipmentModal .v39-equip-grid > .v39-equip-empty { grid-column: 1 / -1; }
@@ -138,13 +138,55 @@
 #equipmentModal .v39-equip-preview-rarity[data-quality="rare"] { color: #7bc3ff; }
 #equipmentModal .v39-equip-preview-rarity[data-quality="epic"] { color: #d6a2ff; }
 #equipmentModal .v39-equip-preview-rarity[data-quality="legendary"] { color: #ffd18b; }
-#equipmentModal .v39-equip-craft-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 5rem); }
+#equipmentModal .v39-equip-craft-fields { grid-template-columns: minmax(0, 12rem) minmax(0, 5rem); }
 #equipmentModal :is(.v39-equip-craft, .v39-enchant-form) label { display: grid; gap: 4px; min-width: 0; }
 #equipmentModal :is(.v39-equip-craft, .v39-enchant-form) :is(select, input) { width: 100%; }
 #equipmentModal .v39-equip-craft button { justify-self: start; min-width: 90px; }
 #equipmentModal .v39-equip-status { color: #e7cf8b; }
 #equipmentModal .v39-equip-status:empty { display: none; }
 #equipmentModal .v39-enchant-form { display: grid; align-content: start; gap: 8px; }
+
+#equipmentModal .v39-equip-picker {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  height: 100%;
+}
+
+#equipmentModal .v39-equip-picker-head,
+#equipmentModal .v39-equip-picker-head nav,
+#equipmentModal .v39-equip-candidate-name,
+#equipmentModal .v39-equip-candidate-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+#equipmentModal .v39-equip-candidate-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  align-content: start;
+  gap: 6px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+#equipmentModal .v39-equip-candidate {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 8px;
+  text-align: left;
+}
+
+#equipmentModal .v39-equip-candidate-stats > span {
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: #101c21;
+}
+
+#equipmentModal .v39-equip-candidate-traits { color: #c4d8dd; }
 
 @media (max-width: 700px) {
   #equipmentModal :is(.v39-enchant-layout, .v39-equip-slots) {

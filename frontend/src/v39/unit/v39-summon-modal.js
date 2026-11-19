@@ -1,5 +1,6 @@
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
-import {getV39SummonEntries,inspectV39Summon,summonV39Units,describeV39SummonEquipment} from "../../lib/v39-summon-rules.js";
+import {readV39ItemListAction,renderV39ItemListScreen1} from '../ui/v39-item-list-screen-1.js';
+import {getV39SummonEntries,inspectV39Summon,summonV39Units,getV39SummonEquipmentGroups} from "../../lib/v39-summon-rules.js";
 import {renderV39UnitCard} from "./v39-unit-card.js";
 import {renderV39UnitAbility,renderV39DetailTabs} from "./v39-unit-detail.js";
 import {renderV39UnitSkills} from "./v39-unit-skills.js";
@@ -74,13 +75,6 @@ function renderCall(host,state,caster) {
         <button data-call-confirm ${check.available?'':'disabled'}>呼び寄せる</button></footer>
     </div></div></section>`);
 }
-export function renderV39SummonPicker({title,closeAttribute,candidates,detail}) {
-  return `<section class="modal" role="dialog" aria-modal="true" aria-labelledby="v39-summon-title">
-    <header class="modal-header"><h3 id="v39-summon-title">${escape(title)}</h3><button type="button" ${closeAttribute} class="v39-summon-action" aria-label="閉じる">×</button></header>
-    <div class="modal-body character-layout"><div class="list-pane">${candidates}</div>
-    <div class="summon-detail squad-detail-pane">${detail}</div></div></section>`;
-}
-
 function render() {
   const state=window.getV39GameState(),caster=state.players.find(row=>row.id===session?.playerId)?.factionState.units.find(row=>row.id===session?.unitId);
   if(!session||state.activePlayerId!==session.playerId||state.activeWorldId!==session.worldId||state.timeline.turnNumber!==session.turn||state.timeline.phase!=='player'){close();return;}
@@ -91,14 +85,15 @@ function render() {
     if(!host){host=document.createElement('div');host.id='v39-summon-modal';host.className='modal-backdrop open';document.body.append(host);}
     renderCall(host,state,caster);return;
   }
-  let entries,checks,selector='';
+  let entries,checks,listControls=[];
   if(session.mode==='facility') {
     const slots=getV39FacilitySummonSlots(state,session.playerId);
     if(!slots.some(slot=>slot.id===session.slotId))session.slotId=slots[0]?.id;
     const slot=slots.find(slot=>slot.id===session.slotId);
     entries=getV39FacilitySummonEntries(slot);
     checks=entries.map(entry=>inspectV39FacilitySummon(state,session.playerId,session.slotId,entry.row.名前,window.__v39FieldRuntime.mapData));
-    selector=`<label>召喚施設<select data-facility-slot aria-label="召喚施設">${slots.map(item=>`<option value="${escape(item.id)}" ${item.id===session.slotId?'selected':''}>${escape(item.base.name)} / ${escape(item.row.施設名)} / ${item.activeUnitIds.length?'活動中'+item.activeUnitIds.length+'駒':item.remainingTurns?'残'+item.remainingTurns+'T':'空き'}</option>`).join('')}</select></label>`;
+    listControls=[{id:'facility',label:'召喚施設',attribute:'data-facility-slot',value:session.slotId,
+      options:slots.map(item=>({value:item.id,label:`${item.base.name} / ${item.row.施設名} / ${item.activeUnitIds.length?'活動中'+item.activeUnitIds.length+'駒':item.remainingTurns?'残'+item.remainingTurns+'T':'空き'}`}))}];
   } else {
     entries=getV39SummonEntries(caster);
     checks=entries.map(entry=>inspectV39Summon(state,session.playerId,session.unitId,entry.row.名前,window.__v39FieldRuntime.mapData));
@@ -112,27 +107,47 @@ function render() {
     check=inspectV39FacilitySummon(state,session.playerId,session.slotId,session.skillName,window.__v39FieldRuntime.mapData,batchRequest());
     checks=checks.map(item=>item.entry.row.名前===session.skillName?check:item);
   }
-  const entry=check?.entry,displayEntry=check?.creationEntry||entry;
+  const entry=check?.entry;
   let host=document.getElementById('v39-summon-modal');
   if(!host){host=document.createElement('div');host.id='v39-summon-modal';host.className='modal-backdrop open';document.body.append(host);}
   const facilityMode=session.mode==='facility';
-  const materialSummary=(costs)=>Object.entries(costs||{}).map(([name,amount])=>`${name}${amount}（所持${getV39SummonMaterialStock(check.slot?.base||check.paymentBase,name)}）`).join(' / ');
-  const countryBonus=check?.facility?.countryBonus||0,cityBonus=check?.facility?.cityBonus||0,facilityBonus=(check?.facility?.bonusLevel||0)-countryBonus-cityBonus;
-  const levelBonusLabel=[facilityBonus?`＋施設${facilityBonus}`:'',countryBonus?`＋国${countryBonus}`:'',cityBonus?`＋都市${cityBonus}`:''].join('');
-  const details=entry?`${facilityMode?`<div class="v39-summon-batch-controls"><label>召喚数<select data-summon-count aria-label="召喚数">${check.batchOptions.map(option=>`<option value="${option.count}"${option.count===check.count?' selected':''}>${option.count}体${option.count>1?`（元Lv${option.maximumLevel}以下）`:''}</option>`).join('')}</select></label><label>編成<select data-summon-formation aria-label="召喚編成"${check.count===1?' disabled':''}><option value="split"${check.formation==='split'?' selected':''}>個別</option><option value="army"${check.formation==='army'?' selected':''}>軍隊1駒</option></select></label></div>`:''}<p>Lv${check.preview?.level??entry.spec?.level??'-'}${check.facility?.bonusLevel?`（元Lv${entry.spec.level}${levelBonusLabel}）`:''} / ${displayEntry.spec.members?`軍隊${displayEntry.spec.members}人`:'個人'} / ${displayEntry.spec.count}ユニット</p>
-    <p>${facilityMode?`召喚 ${check.goldCost}金（所持${check.goldHeld}） / 維持 ${check.goldCost}金・${check.upkeepIntervalTurns}Tごと<br>施設ごとに同種1組 / 効果時間なし / 全員消滅後${check.slot?.row.施設召喚再使用T??0}T`:`AP ${check.cost} ${check.hpCost?'/ HP '+check.hpCost:''} / ⌛${check.duration}`}</p>
-    ${Object.keys(check.initialMaterials||{}).length?`<p>必要資材: ${escape(materialSummary(facilityMode?check.initialMaterials:check.initialPayment))}</p>`:''}
-    ${Object.keys(check.upkeepMaterials||{}).length?`<p>維持素材: ${escape(materialSummary(facilityMode?check.totalUpkeepMaterials:check.upkeepMaterials))} / ${check.upkeepIntervalTurns||resolveV39FacilitySummonCosts(check.preview).upkeepIntervalTurns}Tごと${facilityMode?'・合計':'・1体あたり'}</p>`:''}
-    <p>${facilityMode?'施設':'スキル'}上限Lv${check.facility.maximumLevel} / ${escape(check.facility.family||'全般')}${facilityMode?` / ${check.radius?'周囲'+check.radius+'マス以内':'施設マスのみ'}`:''}</p>`:'';
-  updateView(host,renderV39SummonPicker({
-    title:facilityMode?'施設召喚':'召喚',closeAttribute:'data-summon-close',
-    candidates:`${selector}${checks.map(item=>`<div data-summon-option="${escape(item.entry.row.名前)}" class="${item.available?'':'unavailable'}">${item.preview?renderV39UnitCard(item.preview,{id:item.entry.row.名前,character:true,portrait:true,attribute:'data-summon-card',selected:item.entry.row.名前===session.skillName,position:`${item.entry.spec.members?item.entry.spec.members+'人編成 / ':''}${item.entry.spec.count}ユニット`}):`<button>${escape(item.entry.row.名前)}（設定不正）</button>`}</div>`).join('')||'<p>召喚条件を満たす候補がありません</p>'}`,
-    detail:`<h4>${escape(entry?.spec.target||'候補を選択')}</h4>
-    ${describeV39SummonEquipment(entry?.spec.target)?`<p class="summon-equipment-note">${escape(describeV39SummonEquipment(entry.spec.target))}</p>`:''}${details}
-    ${renderV39DetailTabs([['ability','能力'],['skills','スキル']],tab,'data-summon-tab')}
-    <div class="summon-scroll">${check?.preview?(tab==='ability'?renderV39UnitAbility(check.preview):renderV39UnitSkills(check.preview)):''}</div>
-    <footer><p role="status">${escape(message||(check?.available?'召喚先を確保できます':check?.reasons.join(' / '))||'召喚施設を選択してください')}</p>
-    <button data-summon-confirm ${check?.available?'':'disabled'}>${facilityMode?'召喚先を選ぶ':'召喚する'}</button></footer>`
+  const getStock=name=>getV39SummonMaterialStock(check?.slot?.base||check?.paymentBase,name);
+  const shortages=Object.fromEntries(Object.entries(check?.initialPayment||{}).filter(([name,amount])=>getStock(name)<amount));
+  const reasons=check?.reasons.filter(reason=>!reason.startsWith('召喚素材不足:'))||[];
+  const upkeep=facilityMode
+    ? {...check?.totalUpkeepMaterials,金:(check?.totalUpkeepMaterials?.金||0)+(check?.goldCost||0)}
+    : check?.upkeepMaterials;
+  const controls=[];
+  if(entry&&facilityMode){
+    controls.push({id:'count',label:'召喚する体数',attribute:'data-summon-count',value:check.count,
+      options:check.batchOptions.map(({count})=>({value:count,label:`${count}体`}))});
+    if(check.count>1)controls.push({id:'formation',label:'配置',attribute:'data-summon-formation',value:check.formation,
+      options:[{value:'split',label:'1体ずつ配置'},{value:'army',label:'軍隊1駒にまとめる'}]});
+  }
+  const help=facilityMode&&check?[
+    `${check.slot?.row.施設名||'召喚施設'}　召喚上限Lv${check.facility.maximumLevel}（${check.facility.family||'全般'}）`,
+    `配置先は${check.radius?`施設から周囲${check.radius}マス以内`:'施設マス'}です。`,
+    `施設ごとに同種1組を維持できます。召喚体に期限はなく、全員が消滅してから${check.slot?.row.施設召喚再使用T??0}T後に再召喚できます。`
+  ]:[];
+  const costs=[];
+  if(entry){
+    costs.push({label:'召喚時',amounts:check.initialPayment,
+      summary:facilityMode?'':`AP ${check.cost}${check.hpCost?` / HP ${check.hpCost}`:''} / 持続 ${check.duration}T`});
+    if(Object.values(upkeep||{}).some(amount=>amount>0))costs.push({
+      label:`維持（${check.upkeepIntervalTurns||resolveV39FacilitySummonCosts(check.preview).upkeepIntervalTurns}Tごと${facilityMode?'':'・1体あたり'}）`,amounts:upkeep});
+  }
+  if(Object.keys(shortages).length)costs.push({label:'素材不足',amounts:shortages,
+    stock:Object.fromEntries(Object.keys(shortages).map(name=>[name,getStock(name)]))});
+  updateView(host,renderV39ItemListScreen1({
+    title:facilityMode?'施設召喚':'召喚',titleId:'v39-summon-title',closeAttribute:'data-summon-close',help,listControls,costs,
+    rows:checks.map(item=>({id:item.entry.row.名前,unit:item.preview,unavailable:!item.available,
+      label:`${item.entry.row.名前}（設定不正）`,
+      meta:facilityMode?'':(item.entry.spec.members?`${item.entry.spec.members}人編成`:item.entry.spec.count>1?`${item.entry.spec.count}体`:'')})),
+    detail:{selectedId:session.skillName,candidateAttribute:'data-summon-option',cardAttribute:'data-summon-card',
+      emptyText:'召喚条件を満たす候補がありません',unit:check?.preview,activeDetailTab:tab,detailTabAttribute:'data-summon-tab',controls,
+      equipment:getV39SummonEquipmentGroups(entry,check?.preview)},
+    status:message||reasons.join(' / '),
+    actions:[{id:'summon',label:facilityMode?'召喚先を選ぶ':'召喚する',attribute:'data-summon-confirm',disabled:!check?.available}]
   }));
 }
 function open(unitId,mode='summon',slotId=null) {
@@ -158,6 +173,8 @@ document.addEventListener('click',event=>{
   const callTrigger=el?.closest('[data-v39-call-open]');if(callTrigger){open(callTrigger.dataset.v39CallOpen,'call');return;}
   const host=el?.closest('#v39-summon-modal');if(!host)return;
   if(el.closest('[data-summon-close]')||el===host){close();return;}
+  if(el.closest('select'))return;
+  const action=readV39ItemListAction(el);
   const callOption=el.closest('[data-call-option]');if(callOption){
     const state=window.getV39GameState(),check=inspectV39Call(state,session.playerId,session.unitId,session.skillName,window.__v39FieldRuntime.mapData,session.selectedIds);
     const id=callOption.dataset.callOption,item=check.candidates.find(item=>item.unit.id===id);session.previewId=id;message='';
@@ -168,14 +185,15 @@ document.addEventListener('click',event=>{
     }
     render();return;
   }
-  const option=el.closest('[data-summon-option]');if(option){session.skillName=option.dataset.summonOption;message='';render();return;}
+  if(action?.id==='candidate'){session.skillName=action.value;message='';render();return;}
+  if(action?.id==='detail-tab'){tab=action.value;render();return;}
   const selectedTab=el.closest('[data-summon-tab]');if(selectedTab){tab=selectedTab.dataset.summonTab;render();return;}
   if(el.closest('[data-call-confirm]')) {
     const result=callV39Units(window.getV39GameState(),session.playerId,session.unitId,session.skillName,window.__v39FieldRuntime.mapData,session.selectedIds);
     if(!result.ok){message=result.reason;render();return;}
     close();window.setV39GameState({players:result.state.players},{reason:'call-completed'});window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();window.showV39TurnBanner?.(result.message);return;
   }
-  if(el.closest('[data-summon-confirm]')) {
+  if(action?.id==='summon') {
     if(session.mode==='facility'){beginPlacement();return;}
     const result=summonV39Units(window.getV39GameState(),session.playerId,session.unitId,session.skillName,window.__v39FieldRuntime.mapData);
     if(!result.ok){message=result.reason;render();return;}
@@ -184,11 +202,14 @@ document.addEventListener('click',event=>{
   }
 });
 document.addEventListener('change',event=>{
-  if(!session||!(event.target instanceof Element))return;
-  if(event.target.matches('#v39-summon-modal [data-summon-count]')){session.count=Number(event.target.value);message='';render();return;}
-  if(event.target.matches('#v39-summon-modal [data-summon-formation]')){session.formation=event.target.value;message='';render();return;}
-  if(event.target.matches('#v39-summon-modal [data-facility-slot]')){session.slotId=event.target.value;session.skillName=null;message='';render();return;}
-  if(event.target.matches('#v39-summon-modal [data-call-skill]')){session.skillName=event.target.value;session.selectedIds=[];message='';render();}
+  if(!session||!(event.target instanceof Element)||!event.target.closest('#v39-summon-modal'))return;
+  const action=readV39ItemListAction(event.target);
+  if(action?.id==='count')session.count=Number(action.value);
+  else if(action?.id==='formation')session.formation=action.value;
+  else if(action?.id==='facility'){session.slotId=action.value;session.skillName=null;}
+  else if(event.target.matches('[data-call-skill]')){session.skillName=event.target.value;session.selectedIds=[];}
+  else return;
+  message='';render();
 });
 window.addEventListener('v39:tile-selected',event=>{
   if(!session?.picking)return;event.stopImmediatePropagation();
@@ -212,17 +233,7 @@ window.addEventListener('v39:game-state-changed',()=>{
 for(const name of ['v39:unit-selected','v39:save-loaded','v39:field-generated'])window.addEventListener(name,()=>{if(session)close();});
 window.openV39FacilitySummonModal=slotId=>open(null,'facility',slotId);
 const style=document.createElement('style');style.textContent=`
-.v39-summon-batch-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
-.v39-summon-batch-controls label{display:grid;min-width:0;gap:2px}
-.v39-summon-batch-controls select{width:100%;min-width:0;box-sizing:border-box;min-height:32px;background:#14252b;color:#e6eeeb;border:1px solid #56737c;border-radius:5px;font:inherit}
 #v39-facility-summon-placement{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:calc(100vw - 16px);width:max-content;padding:8px;background:#102025;border:2px solid #79d4e8;border-radius:8px;color:#eef9f9;font-size:var(--font-body)}
 #v39-facility-summon-placement span{flex:1 1 100%}#v39-facility-summon-placement button{padding:6px 9px;background:#19353f;border:1px solid #6aa9b8;border-radius:6px;color:#eef9f9;font-size:var(--font-body)}#v39-facility-summon-placement button:disabled{opacity:.45}
 #v39-summon-modal{position:fixed;inset:0;z-index:2100;background:#0009;display:grid;place-items:center}
-:is(#v39-summon-modal,#v39-golem-workshop) .modal{width:min(900px,96vw);height:min(780px,94svh);display:flex;flex-direction:column;background:#102025;border:1px solid #65858b;border-radius:10px;color:#e6eeeb;overflow:hidden;font-size:var(--font-body)}
-:is(#v39-summon-modal,#v39-golem-workshop) .modal-header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;flex-shrink:0}:is(#v39-summon-modal,#v39-golem-workshop) h3,:is(#v39-summon-modal,#v39-golem-workshop) h4,:is(#v39-summon-modal,#v39-golem-workshop) p{margin:4px 0}
-:is(#v39-summon-modal,#v39-golem-workshop) .character-layout{flex:1;min-height:0;height:auto;overflow:hidden;display:grid;grid-template-columns:minmax(150px,190px) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:7px;padding:8px}
-:is(#v39-summon-modal,#v39-golem-workshop) .list-pane label{display:flex;flex-direction:column;gap:4px}:is(#v39-summon-modal,#v39-golem-workshop) .list-pane select{max-width:100%;min-height:34px;color:#e6eeeb;background:#19353f}:is(#v39-summon-modal,#v39-golem-workshop) .list-pane{overflow:auto;min-width:0;display:flex;flex-direction:column;gap:5px}:is(#v39-summon-modal,#v39-golem-workshop) .squad-card{width:100%}:is(#v39-summon-modal,#v39-golem-workshop) .unavailable{opacity:.55}
-:is(#v39-summon-modal,#v39-golem-workshop) .summon-detail{min-width:0;min-height:0;display:flex;flex-direction:column;padding:7px;border:1px solid #35535b;border-radius:7px}:is(#v39-summon-modal,#v39-golem-workshop) .summon-scroll{overflow:auto;flex:1;min-height:0}:is(#v39-summon-modal,#v39-golem-workshop) footer{border-top:1px solid #35535b;padding-top:6px;flex-shrink:0}
-:is(#v39-summon-modal,#v39-golem-workshop) button{font-size:var(--font-body);color:#e6eeeb}:is(#v39-summon-modal,#v39-golem-workshop) [data-summon-confirm],:is(#v39-summon-modal,#v39-golem-workshop) [data-call-confirm],:is(#v39-summon-modal,#v39-golem-workshop) .v39-summon-action,:is(#v39-summon-modal,#v39-golem-workshop) [data-summon-close]{background:#19353f;border:1px solid #6aa9b8;border-radius:6px;min-height:34px;padding:6px 12px}:is(#v39-summon-modal,#v39-golem-workshop) button:disabled{opacity:.45}
-@media(max-width:600px){:is(#v39-summon-modal,#v39-golem-workshop) .character-layout{grid-template-columns:minmax(110px,40%) minmax(0,1fr);gap:5px;padding:5px}:is(#v39-summon-modal,#v39-golem-workshop) .summon-detail{padding:5px}}
 `;document.head.append(style);

@@ -882,6 +882,7 @@ window.getV39ActivePlayer = getActivePlayer;
 window.getV39ActivePlayerId = () => state.activePlayerId;
 window.getV39ActiveFactionState = getActiveFactionState;
 window.getV39TimelineState = getTimelineState;
+window.getV39ActiveWorldId = () => state.activeWorldId;
 window.getV39GameSettings = () => ({...state.gameSettings});
 window.hasV39ActiveTeleportGates=()=>state.teleportGates.some(g=>g.worldId===state.activeWorldId&&g.expiresAtTurn>state.timeline.turnNumber);
 window.getV39ExplorationWorldIds = () => Object.keys(state.explorationWorlds).filter(id => state.explorationWorlds[id]?.map);

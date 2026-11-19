@@ -4,7 +4,7 @@
 
 vite v6.4.1 building for production...
 transforming...
-✓ 1009 modules transformed.
+✓ 1230 modules transformed.
 rendering chunks...
 computing gzip size...
 ../web-vue-dist/assets/剣使い-DVDFlZT-.webp                                      4.10 kB
@@ -31,6 +31,7 @@ computing gzip size...
 ../web-vue-dist/assets/肉体-BnP4rdUq.webp                                       4.91 kB
 ../web-vue-dist/assets/村-DGXVd6pf.webp                                        4.92 kB
 ../web-vue-dist/assets/赤黒鋼-BBPa3qSP.webp                                      5.02 kB
+../web-vue-dist/assets/突き・刺突2-DWEa1fNf.webp                                   5.11 kB
 ../web-vue-dist/assets/木材-DDSZGVVt.webp                                       5.14 kB
 ../web-vue-dist/assets/地-BYmhc5Y3.webp                                        5.18 kB
 ../web-vue-dist/assets/力場-FBlLmupt.webp                                       5.21 kB
@@ -49,6 +50,7 @@ computing gzip size...
 ../web-vue-dist/assets/pipo-fog019-DpVEQ8Jk.webp                              5.67 kB
 ../web-vue-dist/assets/森司祭-_Gycmxao.webp                                      5.68 kB
 ../web-vue-dist/assets/滝-7xXMOt-5.webp                                        5.68 kB
+../web-vue-dist/assets/一閃1-DTb-Jlmd.webp                                      5.68 kB
 ../web-vue-dist/assets/気功-Bl5Qh1w8.webp                                       5.72 kB
 ../web-vue-dist/assets/毒-n9gZdMY4.webp                                        5.75 kB
 ../web-vue-dist/assets/宇宙-1tl2-SXS.webp                                       5.77 kB
@@ -76,6 +78,7 @@ computing gzip size...
 ../web-vue-dist/assets/吸血鬼-Co2FiBzq.webp                                      6.50 kB
 ../web-vue-dist/assets/月-B05Omvap.webp                                        6.54 kB
 ../web-vue-dist/assets/蟲人-DHHGyu7e.webp                                       6.55 kB
+../web-vue-dist/assets/ガン連射2-B3wlbfRp.webp                                    6.60 kB
 ../web-vue-dist/assets/銃-BC_Ox6Fp.webp                                        6.61 kB
 ../web-vue-dist/assets/風-48p3UwU9.webp                                        6.71 kB
 ../web-vue-dist/assets/小人-CTzoAsCe.webp                                       6.72 kB
@@ -105,21 +108,25 @@ computing gzip size...
 ../web-vue-dist/assets/森人-DOoc0Gze.webp                                       7.65 kB
 ../web-vue-dist/assets/魂導者-DXtOHVIR.webp                                      7.66 kB
 ../web-vue-dist/assets/土-CcdX05kn.webp                                        7.76 kB
+../web-vue-dist/assets/電気びりびり2-BCapXfqB.webp                                  7.84 kB
 ../web-vue-dist/assets/重力-BoZzUwpk.webp                                       7.88 kB
 ../web-vue-dist/assets/半悪魔-BKb5CnYp.webp                                      7.90 kB
 ../web-vue-dist/assets/狩人 - コピー-8nA_YCH8.webp                                 7.97 kB
 ../web-vue-dist/assets/骸骨-DQLIElIb.webp                                       8.12 kB
 ../web-vue-dist/assets/氷-BZQf-GTT.webp                                        8.20 kB
+../web-vue-dist/assets/稲妻5-B4HN86q-.webp                                      8.24 kB
 ../web-vue-dist/assets/念動力-CwnVQhmW.webp                                      8.29 kB
 ../web-vue-dist/assets/魔術-BfCtaDJM.webp                                       8.41 kB
 ../web-vue-dist/assets/動物-DvdDFXpX.webp                                       8.42 kB
 ../web-vue-dist/assets/大鬼-DvwbRLrv.webp                                       8.45 kB
 ../web-vue-dist/assets/光-DsSCVoS8.webp                                        8.48 kB
 ../web-vue-dist/assets/半吸血鬼-CShOuQKQ.webp                                     8.69 kB
+../web-vue-dist/assets/電気びりびり-Coe5dWXO.webp                                   8.73 kB
 ../web-vue-dist/assets/エンジェル2-G9bi2yr1.webp                                   8.77 kB
 ../web-vue-dist/assets/木人-Cmo0PQG2.webp                                       8.97 kB
 ../web-vue-dist/assets/食人鬼-CUFm9_xb.webp                                      9.04 kB
 ../web-vue-dist/assets/半天使-miOIfmMK.webp                                      9.19 kB
+../web-vue-dist/assets/稲妻2-bTL7xfxf.webp                                      9.23 kB
 ../web-vue-dist/assets/格闘家 - コピー-DZJ2VBik.webp                                9.32 kB
 ../web-vue-dist/assets/印-b9OlEyH3.webp                                        9.47 kB
 ../web-vue-dist/assets/闇-RGI62Bzf.webp                                        9.59 kB
@@ -127,10 +134,15 @@ computing gzip size...
 ../web-vue-dist/assets/精霊-BXKOzdPR.webp                                       9.99 kB
 ../web-vue-dist/assets/竜人-CKJgJf98.webp                                      10.65 kB
 ../web-vue-dist/assets/星-CUXRHjO1.webp                                       10.74 kB
+../web-vue-dist/assets/稲妻4-DbCSVegd.webp                                     10.97 kB
+../web-vue-dist/assets/稲妻3-iugXwBkO.webp                                     10.97 kB
+../web-vue-dist/assets/稲妻1-LvO61dav.webp                                     11.82 kB
+../web-vue-dist/assets/一閃2-CGfXgVFm.webp                                     12.47 kB
 ../web-vue-dist/assets/蟲-CaXmkc4j.webp                                       12.60 kB
 ../web-vue-dist/assets/選択-BtjbAxWz.webp                                      12.75 kB
 ../web-vue-dist/assets/粘体-Ca87h_di.webp                                      13.26 kB
 ../web-vue-dist/assets/pipo-fog018-CNNUPtke.webp                             13.55 kB
+../web-vue-dist/assets/台風_200-Bcn5oq--.webp                                  13.74 kB
 ../web-vue-dist/assets/特鋼-DzIPV1gQ.webp                                      15.31 kB
 ../web-vue-dist/assets/スライム-CzdaC6qG.webp                                    16.67 kB
 ../web-vue-dist/assets/レムレー-wfMu6a03.webp                                    18.37 kB
@@ -141,16 +153,25 @@ computing gzip size...
 ../web-vue-dist/assets/地の輪-D48Lj0Wv.webp                                     23.71 kB
 ../web-vue-dist/assets/風の輪-BeGbZZjF.webp                                     24.58 kB
 ../web-vue-dist/assets/バット-CRfuKNvw.webp                                     24.81 kB
+../web-vue-dist/assets/電気1つ-RlMLWyUn.webp                                    25.09 kB
+../web-vue-dist/assets/十字斬り・ニ段斬り2-CkPkFlfz.webp                              25.26 kB
+../web-vue-dist/assets/落雷-CMDBUtYb.webp                                      25.61 kB
 ../web-vue-dist/assets/光の輪-CRIX1bx4.webp                                     26.84 kB
+../web-vue-dist/assets/十字斬り・ニ段斬り4-T63Pr5_Y.webp                              28.30 kB
 ../web-vue-dist/assets/地中生物の巣-CbJMvlzi.webp                                  29.97 kB
 ../web-vue-dist/assets/炎の輪-QtwqwKS9.webp                                     30.30 kB
 ../web-vue-dist/assets/pipo-btleffect120a_sorted_result-Sr1xpz01.webp        31.39 kB
 ../web-vue-dist/assets/水の輪-PiTVSFht.webp                                     32.21 kB
+../web-vue-dist/assets/十字斬り・ニ段斬り5-DqM5Bj-e.webp                              33.02 kB
+../web-vue-dist/assets/十字斬り・ニ段斬り1-ojROt7BX.webp                              35.33 kB
 ../web-vue-dist/assets/クアジット-Bgf2U8FM.webp                                   37.55 kB
 ../web-vue-dist/assets/死霊の巣-Bd-y9YpV.webp                                    37.76 kB
+../web-vue-dist/assets/台風-FIXtMYFJ.webp                                      37.84 kB
 ../web-vue-dist/assets/第二世代ver1-2-BrttKCMi.webp                              38.44 kB
 ../web-vue-dist/assets/default-LipUgoBd.webp                                 38.46 kB
+../web-vue-dist/assets/叩きつけ1-D3wCG_O-.webp                                   38.46 kB
 ../web-vue-dist/assets/飛竜の巣-Bd0GcLcN.webp                                    39.43 kB
+../web-vue-dist/assets/十字斬り・ニ段斬り3-CbObRt9E.webp                              39.56 kB
 ../web-vue-dist/assets/Bレイブン-CgKd5qPa.webp                                   39.57 kB
 ../web-vue-dist/assets/毒生成物の巣-DnwWcPEg.webp                                  39.99 kB
 ../web-vue-dist/assets/蟲系の巣-CwV14W7D.webp                                    40.45 kB
@@ -160,6 +181,7 @@ computing gzip size...
 ../web-vue-dist/assets/鳥系生物の巣-BCDbWga7.webp                                  41.71 kB
 ../web-vue-dist/assets/グレムリン-BhjH4oss.webp                                   42.78 kB
 ../web-vue-dist/assets/スパイダー-DveSNs4V.webp                                   43.57 kB
+../web-vue-dist/assets/氷-Dw18o9ks.webp                                       44.00 kB
 ../web-vue-dist/assets/tktk_Buff_3_sorted_result-Dxm42ygC.webp               44.27 kB
 ../web-vue-dist/assets/風の精霊-CRPcJi3f.webp                                    44.51 kB
 ../web-vue-dist/assets/太陽の山-UgXfcSLb.webp                                    44.84 kB
@@ -193,6 +215,7 @@ computing gzip size...
 ../web-vue-dist/assets/ニーデル-bNescI-6.webp                                    58.72 kB
 ../web-vue-dist/assets/黄昏の樹-D1cebaxT.webp                                    59.29 kB
 ../web-vue-dist/assets/ワイバーン-fNuontBj.webp                                   59.46 kB
+../web-vue-dist/assets/叩きつけ2-D_zYUhng.webp                                   59.47 kB
 ../web-vue-dist/assets/ユニコーン-CnXHWnPL.webp                                   59.53 kB
 ../web-vue-dist/assets/バイコーン-7Ogfrhzo.webp                                   59.60 kB
 ../web-vue-dist/assets/グレートホース-kXDmXVIC.webp                                 60.15 kB
@@ -251,6 +274,7 @@ computing gzip size...
 ../web-vue-dist/assets/光の昇る存在-Jy6HDZbo.webp                                  83.56 kB
 ../web-vue-dist/assets/シャドウ-removebg-preview-qkCbOply.webp                   84.07 kB
 ../web-vue-dist/assets/オーガボス-CuMNyj7-.webp                                   84.77 kB
+../web-vue-dist/assets/突進突き(回転)_-CtDyP_Nw.webp                               84.87 kB
 ../web-vue-dist/assets/オーガウィザード-DAlQ_t4Y.webp                                84.89 kB
 ../web-vue-dist/assets/断罪の悪魔-DYFLjdWQ.webp                                   86.89 kB
 ../web-vue-dist/assets/ソウルイーター-CDbb-uEZ.webp                                 87.49 kB
@@ -299,15 +323,17 @@ computing gzip size...
 ../web-vue-dist/assets/ユーテェ-OCWqCD-S.webp                                   123.05 kB
 ../web-vue-dist/assets/tor_上昇1_sorted_result-ClLgKI5B.webp                  123.78 kB
 ../web-vue-dist/assets/ピュリファイア_ブランド-9Se29_V5.webp                           124.09 kB
+../web-vue-dist/index.html                                                  125.40 kB │ gzip:  23.22 kB
 ../web-vue-dist/assets/ブレイザーver (1)-CIyxEa5N.webp                           126.07 kB
 ../web-vue-dist/assets/ゼルバーグ-D6d2ujaN.webp                                  127.72 kB
-../web-vue-dist/index.html                                                  129.60 kB │ gzip:  24.06 kB
 ../web-vue-dist/assets/ラージトレント-CdxAYWaG.webp                                130.71 kB
 ../web-vue-dist/assets/ピュリファイア_ガラン-DFx-ZUz2.webp                            134.03 kB
+../web-vue-dist/assets/火球-BN0dCh4M.webp                                     134.72 kB
 ../web-vue-dist/assets/tor_回復1_sorted_result-BTWna82u.webp                  135.55 kB
 ../web-vue-dist/assets/ブレイザーver (2)-BebVQIbi.webp                           136.79 kB
 ../web-vue-dist/assets/甲冑トリケラトプスの戦士-GZP7dV5h.webp                           137.33 kB
 ../web-vue-dist/assets/ブレイザー2-BglOOv1T.webp                                 137.75 kB
+../web-vue-dist/assets/突進突き_-C9j-HYfs.webp                                  140.55 kB
 ../web-vue-dist/assets/T-REX-j2kCSIzo.webp                                  140.97 kB
 ../web-vue-dist/assets/格闘家-CSEYJTW7.webp                                    141.29 kB
 ../web-vue-dist/assets/ブレイザーver (3)-CHjVdtPK.webp                           142.45 kB
@@ -337,6 +363,7 @@ computing gzip size...
 ../web-vue-dist/assets/ウルフマン_ユニット集-JkgWDT2J.webp                            196.12 kB
 ../web-vue-dist/assets/ゼルバーグ-旧removebg-preview-IIlwjppV.webp                198.23 kB
 ../web-vue-dist/assets/ゾンビ・スケルトン_ユニット集1-DUg5Opuz.webp                       198.54 kB
+../web-vue-dist/assets/竜巻ループ-Cw6VHRvQ.webp                                  200.07 kB
 ../web-vue-dist/assets/ラビットマン_ユニット集-CYQAUNMM.webp                           200.99 kB
 ../web-vue-dist/assets/建築_アイコン一覧2-aVceg0-O.webp                             204.62 kB
 ../web-vue-dist/assets/モリエール-C-I66FDi.webp                                  207.07 kB
@@ -344,9 +371,11 @@ computing gzip size...
 ../web-vue-dist/assets/粘体_ユニット集2-BosjcxR5.webp                              211.08 kB
 ../web-vue-dist/assets/ゾンビ・スケルトン_ユニット集2-DGRBdjjw.webp                       220.21 kB
 ../web-vue-dist/assets/ラットマン_ユニット集-COqUxiFx.webp                            222.48 kB
-../web-vue-dist/assets/オーガ_ユニット集-B6pXwwm8.webp                              224.02 kB
+../web-vue-dist/assets/星の光_回転-B4Za_kTl.webp                                 223.13 kB
 ../web-vue-dist/assets/エレメンタル_ユニット集2-D53WrsPf.webp                          224.41 kB
+../web-vue-dist/assets/星の光-BwtkNBdW.webp                                    226.41 kB
 ../web-vue-dist/assets/カブトムシ・クワガタ_ユニット集-BsuyFvv9.webp                       227.50 kB
+../web-vue-dist/assets/帯電1-Dq8IP8Fj.webp                                    228.21 kB
 ../web-vue-dist/assets/第五世代ver1-DelzYZ94.webp                               228.24 kB
 ../web-vue-dist/assets/エイプマン_ユニット集-CMetIIu0.webp                            230.03 kB
 ../web-vue-dist/assets/建築_アイコン一覧1-C3r-hGBV.webp                             230.11 kB
@@ -378,9 +407,10 @@ computing gzip size...
 ../web-vue-dist/assets/都市_アイコン一覧1-C2vPUSbR.webp                             278.56 kB
 ../web-vue-dist/assets/アンデッド・霊体系_ユニット集-CYo6RgHG.webp                        279.30 kB
 ../web-vue-dist/assets/エレファント・アルマジロ_ユニット集-8nLHxYz_.webp                     280.98 kB
+../web-vue-dist/assets/ジャイアント_ユニット集-_S-qRrP9.webp                           281.35 kB
 ../web-vue-dist/assets/トレント_ユニット集-BV9UwhEB.webp                             282.44 kB
-../web-vue-dist/assets/ジャイアント_ユニット集-CSl6O954.webp                           282.55 kB
 ../web-vue-dist/assets/地形レイヤー集-BTfvkL6v.webp                                284.27 kB
+../web-vue-dist/assets/デヴィル_召喚集-CpUXLKkJ.webp                               286.17 kB
 ../web-vue-dist/assets/亜人-DfAoNI-4.webp                                     289.83 kB
 ../web-vue-dist/assets/ライオン・ライノセラス_ユニット集-BzyX9i6y.webp                      290.31 kB
 ../web-vue-dist/assets/ドレイク_ユニット集-ChUpQ_tV.webp                             291.18 kB
@@ -393,38 +423,50 @@ computing gzip size...
 ../web-vue-dist/assets/ホーク・スネーク_ユニット集-DavVSRjg.webp                         302.24 kB
 ../web-vue-dist/assets/魔族-DbGEuUEu.webp                                     303.38 kB
 ../web-vue-dist/assets/ゴーレム_ユニット集-CS21_xQk.webp                             303.77 kB
+../web-vue-dist/assets/オーガ_ユニット集-9KzQkvj1.webp                              304.84 kB
 ../web-vue-dist/assets/魔獣_ユニット集2-DHlN0YpN.webp                              313.00 kB
 ../web-vue-dist/assets/ワイバーン_ユニット集-Cw17wcac.webp                            314.71 kB
 ../web-vue-dist/assets/神獣_ユニット集-DSJ_96fN.webp                               314.84 kB
+../web-vue-dist/assets/竜巻-CKexk6uO.webp                                     317.00 kB
+../web-vue-dist/assets/炎の爆発-C_bR0EiK.webp                                   332.19 kB
 ../web-vue-dist/assets/ワーム_ユニット集-Tr2zMi2e.webp                              338.48 kB
 ../web-vue-dist/assets/植物・水系_ユニット集-Dk6lDmhv.webp                            338.69 kB
+../web-vue-dist/assets/エンジェル_召喚集-BCJ9N3_j.webp                              342.60 kB
+../web-vue-dist/assets/悪魔_ネームド-BMQRSI1g.webp                                348.99 kB
 ../web-vue-dist/assets/妖怪_ユニット集2-DnYWmXpG.webp                              351.88 kB
 ../web-vue-dist/assets/ドラゴン成体_ユニット集-DTbxAibV.webp                           393.44 kB
+../web-vue-dist/assets/隕石-CRzrKHa3.webp                                     397.26 kB
 ../web-vue-dist/assets/tktk_Laser_4_sorted_result-DbKPkPpJ.webp             445.28 kB
-../web-vue-dist/assets/v39-enemy-ai-worker-BJ0lhDiP.js                      706.50 kB
-../web-vue-dist/assets/index-BC_-zFZa.css                                     1.81 kB │ gzip:   0.38 kB
-../web-vue-dist/assets/v39-expedition-tools-B5YDJa9k.css                      2.82 kB │ gzip:   0.92 kB
+../web-vue-dist/assets/片面シールド-BIZhWFfQ.webp                                 610.62 kB
+../web-vue-dist/assets/v39-enemy-ai-worker-DxICZCqM.js                    1,052.14 kB
+../web-vue-dist/assets/v39-equipment-picker-CskNuZj5.css                      3.14 kB │ gzip:   0.97 kB
+../web-vue-dist/assets/v39-expedition-tools-BlwPcrWQ.css                      3.29 kB │ gzip:   1.04 kB
+../web-vue-dist/assets/index-DuNkvU-7.css                                     4.36 kB │ gzip:   1.25 kB
 ../web-vue-dist/assets/CaveTestModal-BVtU_2MO.css                             5.74 kB │ gzip:   1.53 kB
-../web-vue-dist/assets/v39-soul-storage-D_6tQ-OY.css                          9.29 kB │ gzip:   2.25 kB
-../web-vue-dist/assets/v39-bootstrap-game-BxrZSJrt.css                       14.12 kB │ gzip:   3.36 kB
-../web-vue-dist/assets/v39-disaster-test-zdMfbTAU.css                        15.28 kB │ gzip:   3.20 kB
-../web-vue-dist/assets/v39-bootstrap-final-BI0bSJi5.css                      20.70 kB │ gzip:   4.37 kB
-../web-vue-dist/assets/v39-bootstrap-core-6UDMdi_C.css                       36.11 kB │ gzip:   6.30 kB
-../web-vue-dist/assets/index.js                                               7.12 kB │ gzip:   3.02 kB
-../web-vue-dist/assets/CaveTestModal-CziYCWi7.js                             12.24 kB │ gzip:   5.16 kB
+../web-vue-dist/assets/v39-class-progression-D_6tQ-OY.css                     9.29 kB │ gzip:   2.25 kB
+../web-vue-dist/assets/v39-bootstrap-final-B0_blF-U.css                      12.74 kB │ gzip:   3.12 kB
+../web-vue-dist/assets/v39-bootstrap-game-Dm2Pn-gH.css                       19.50 kB │ gzip:   4.29 kB
+../web-vue-dist/assets/v39-disaster-test-CDVjEK0I.css                        32.04 kB │ gzip:   6.01 kB
+../web-vue-dist/assets/v39-bootstrap-core-TOzYSy-9.css                       59.37 kB │ gzip:  10.67 kB
+../web-vue-dist/assets/v39-skill-trigger-test-DY3BZnCY.js                     4.81 kB │ gzip:   2.32 kB
+../web-vue-dist/assets/v39-equipment-picker-Cp6giMBH.js                       9.18 kB │ gzip:   3.84 kB
+../web-vue-dist/assets/CaveTestModal-g0BBfcoL.js                             12.38 kB │ gzip:   5.23 kB
+../web-vue-dist/assets/index-KNYAcLd8.js                                     17.13 kB │ gzip:   6.57 kB
 ../web-vue-dist/assets/vendor-socket-BcUbSB83.js                             31.34 kB │ gzip:   9.76 kB
-../web-vue-dist/assets/v39-turn-loading-cqIDeS_s.js                          52.05 kB │ gzip:  18.42 kB
+../web-vue-dist/assets/v39-turn-loading-p5wzf5QD.js                          44.83 kB │ gzip:  16.17 kB
+../web-vue-dist/assets/v39-map-focus-CC9AzJTq.js                            100.56 kB │ gzip:  35.28 kB
 ../web-vue-dist/assets/vendor-misc-CPyPDZKB.js                              120.27 kB │ gzip:  46.46 kB
-../web-vue-dist/assets/v39-soul-storage-BYZSz98I.js                         125.63 kB │ gzip:  40.31 kB
-../web-vue-dist/assets/v39-disaster-test-DTD8MZO8.js                        155.30 kB │ gzip:  53.82 kB
-../web-vue-dist/assets/v39-bootstrap-game-DYa4DbxO.js                       471.11 kB │ gzip: 146.48 kB
-../web-vue-dist/assets/v39-bootstrap-core-X5QFzuKx.js                       528.89 kB │ gzip: 157.29 kB
-../web-vue-dist/assets/v39-expedition-tools-dwI2pszK.js                   1,368.40 kB │ gzip: 367.53 kB
+../web-vue-dist/assets/v39-disaster-test-BbaHdq-h.js                        140.57 kB │ gzip:  48.92 kB
+../web-vue-dist/assets/v39-class-progression-Df9trkEO.js                    182.75 kB │ gzip:  61.45 kB
+../web-vue-dist/assets/v39-bootstrap-game-DBmKI3u0.js                       559.99 kB │ gzip: 178.98 kB
+../web-vue-dist/assets/v39-bootstrap-core-DtY42w9O.js                       656.82 kB │ gzip: 199.58 kB
+../web-vue-dist/assets/v39-expedition-tools-CBGaLpDy.js                     698.42 kB │ gzip: 262.71 kB
+../web-vue-dist/assets/v39-equipment-rules-DyapSFIh.js                    1,283.62 kB │ gzip: 256.11 kB
 ../web-vue-dist/assets/vendor-phaser-C1IXbtjv.js                          1,482.21 kB │ gzip: 340.02 kB
-../web-vue-dist/assets/v39-bootstrap-final-JsYzw7Ln.js                    1,962.25 kB │ gzip: 654.89 kB
+../web-vue-dist/assets/v39-bootstrap-final-C1Mn2-Z8.js                    2,580.19 kB │ gzip: 868.45 kB
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 7.96s
+✓ built in 7.69s

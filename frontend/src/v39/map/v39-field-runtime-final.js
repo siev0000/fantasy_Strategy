@@ -591,23 +591,35 @@ function installInput(scene, data) {
   playfield.appendChild(controls);
 }
 
-function terrainLayerSignature(data) {
-  const display=readDisplaySettings();
-  return JSON.stringify([data.w,data.h,data.isUnderground,data.grid,data.heightLevelMap,
-    data.specialMap,data.snowCoverMap,data.snowfallMap,data.riverData,data.lavaFlowData,
-    data.hegemonyAreaId,data.hegemonyZoneKeys,display.heightShading,display.heightOutlineOnly,display.mapQuality]);
-}
-
 function refreshWorldTerrain(entry) {
-  const scene=entry.scene,data=entry.data,signature=terrainLayerSignature(data);
-  if (!scene || entry.signature===signature) return;
-  scene.v39TerrainGraphics=drawTerrain(scene,data,scene.v39TerrainGraphics);
-  scene.v39SnowCoverGraphics=drawSnowCover(scene,data,scene.v39SnowCoverGraphics);
-  scene.v39RiverGraphics=drawRivers(scene,data.riverData,scene.v39RiverGraphics);
-  drawSpecialTerrain(scene,data);
-  scene.v39LavaGraphics=drawLava(scene,data,scene.v39LavaGraphics);
-  entry.signature=signature;
-  entry.terrainBuilds=(entry.terrainBuilds||0)+1;
+  const scene = entry?.scene;
+  if (!scene) return;
+  const data = entry.data;
+  const display = readDisplaySettings();
+  const dimensions = [data.w, data.h];
+  const signatures = {
+    terrain: JSON.stringify([dimensions, data.isUnderground, data.grid, data.heightLevelMap,
+      data.specialMap, data.hegemonyAreaId, data.hegemonyZoneKeys,
+      display.heightShading, display.heightOutlineOnly, display.mapQuality]),
+    snow: JSON.stringify([dimensions, data.snowCoverMap]),
+    special: JSON.stringify([dimensions, data.specialMap]),
+    lava: JSON.stringify(data.lavaFlowData)
+  };
+  const previous = entry.layerSignatures;
+  if (previous?.terrain !== signatures.terrain) {
+    scene.v39TerrainGraphics = drawTerrain(scene, data, scene.v39TerrainGraphics);
+    entry.terrainBuilds += 1;
+  }
+  if (previous?.snow !== signatures.snow) {
+    scene.v39SnowCoverGraphics = drawSnowCover(scene, data, scene.v39SnowCoverGraphics);
+  }
+  // The river layer compares its actual edge sets internally.
+  scene.v39RiverGraphics = drawRivers(scene, data.riverData, scene.v39RiverGraphics);
+  if (previous?.special !== signatures.special) drawSpecialTerrain(scene, data);
+  if (!previous || previous.lava !== signatures.lava) {
+    scene.v39LavaGraphics = drawLava(scene, data, scene.v39LavaGraphics);
+  }
+  entry.layerSignatures = signatures;
 }
 
 function resizeWorldCamera(scene,data) {
@@ -629,6 +641,7 @@ function restoreWorldCamera(entry) {
 function worldSceneConfig(entry) {
   return {key:entry.key,create(){
     entry.scene=this;
+    entry.layerSignatures=null;
     this.v39WorldId=entry.id;
     refreshWorldTerrain(entry);
     loadV39TerrainPatterns(this,()=>entry.data,readDisplaySettings);
@@ -636,7 +649,6 @@ function worldSceneConfig(entry) {
     const redraw=event=>{
       const keys=event.detail?.changedKeys;
       if(keys&&!keys.some(key=>['heightOutlineOnly','heightShading','mapQuality'].includes(key)))return;
-      entry.signature=null;
       if(this.sys.isActive())refreshWorldTerrain(entry);
     };
     const resize=()=>{if(this.sys.isActive())resizeWorldCamera(this,entry.data);};
@@ -654,7 +666,7 @@ function worldSceneConfig(entry) {
 }
 
 function newWorldLayer(id,data) {
-  const entry={id,key:`v39-world-${++worldLayerSequence}`,data,scene:null,signature:null,terrainBuilds:0};
+  const entry={id,key:`v39-world-${++worldLayerSequence}`,data,scene:null,layerSignatures:null,terrainBuilds:0};
   worldLayers.set(id,entry);
   return entry;
 }

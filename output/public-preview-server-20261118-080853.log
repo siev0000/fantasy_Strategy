@@ -1,0 +1,10 @@
+Fantasy Strategy server listening:
+  - http://127.0.0.1:3000
+[dev] browser reload -> change: data/source/export/json/ゴーレム追加スキル.json, change: data/source/export/json/スキル一覧.json (+0) [2 changes]
+[dev] browser reload -> change: data/source/export/json/スキル一覧.json [1 changes]
+[dev] browser reload -> change: data/source/export/json/スキル一覧.json, change: data/source/export/json/クラス.json (+0) [2 changes]
+[dev] browser reload -> change: data/source/export/json/ゴーレム追加スキル.json [1 changes]
+[dev] browser reload -> change: config/v39-skill-trigger-test.json [1 changes]
+[dev] browser reload -> change: data/source/export/json/装備.json, change: data/source/export/json/クラス.json (+1) [3 changes]
+[dev] browser reload -> add: assets/images/units/1ファイルまとめ/weapons.png [1 changes]
+[dev] browser reload -> add: assets/images/units/1ファイルまとめ/armory.png [1 changes]

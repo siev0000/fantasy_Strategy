@@ -29,6 +29,5 @@
   border-color:#8bd8e4;
   color:#fff;
 }
-#v39-golem-workshop .v39-golem-actions { display:flex; flex-wrap:wrap; gap:6px; }
 #v39-golem-workshop .v39-enchant-options button { width:100%; }
 #v39-golem-workshop footer p { overflow-wrap:anywhere; }

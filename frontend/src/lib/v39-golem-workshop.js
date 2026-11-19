@@ -65,6 +65,16 @@ export function getV39GolemWorkshopCreators(faction,tileKey){
   return (faction?.units||[]).filter(unit=>alive(unit)&&surface(unit)&&key(unit)===tileKey);
 }
 
+export function getV39OwnedGolemWorkshops(state,playerId){
+  const player=state.players?.find(row=>row.id===playerId);
+  return getFactionSettlements(player?.factionState).filter(base=>base.placed&&surface(base)).flatMap(base=>
+    Object.entries(base.tileFacilityMap||{}).filter(([tileKey])=>state.territoryOwnerByTile?.[tileKey]===playerId)
+      .flatMap(([tileKey,names])=>(Array.isArray(names)?names:[]).filter(name=>golemWorkshopSizes.includes(name)).map(facilityName=>({
+        id:JSON.stringify([idOf(base),tileKey,facilityName]),
+        settlementId:idOf(base),tileKey,facilityName,baseName:base.name,capacity:golemWorkshopSizes.indexOf(facilityName)
+      }))));
+}
+
 export function inspectV39GolemOrder(state,request,map){
   const {settlementId,tileKey,facilityName,size}=request;
   const player=state.players.find(row=>row.id===state.activePlayerId);
@@ -161,8 +171,9 @@ export function inspectV39GolemOrder(state,request,map){
   const {status,skillLevels,resistances,bodyWeaponValues}=collectV39PassiveBonuses(creationTargetRows);
   const buildBonuses={status,skillLevels,resistances,bodyWeaponValues};
   const turns=recipe?Math.max(1,recipe.turns-Math.floor(production/50)):0;
+  const additionalSkillSlots=new Set(additionalCandidates.filter(candidate=>!candidate.known).map(candidate=>candidate.source)).size;
   return {player,faction,base,creator,craftedByGolemCrafter:classLevel>0,recipe,turns,reasons,name,terrains,limit,used,material,food,selections,additionalCandidates,additionalSkillNames,buildBonuses,
-    enchantment:{quality,enchantmentsByPart,statusBonus,resistanceBonus}};
+    additionalSkillSlots,enchantment:{quality,enchantmentsByPart,statusBonus,resistanceBonus}};
 }
 
 export function orderV39Golem(state,request,map){

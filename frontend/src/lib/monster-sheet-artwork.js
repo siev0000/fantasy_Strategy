@@ -139,9 +139,23 @@ const golemArtworkSlots=new Map([
   ['マッドゴーレム',10]
 ]);
 
-const devilSummonSlots=new Map([['レムレ',1],['レムレー',1],['インプ',2]]);
+const devilSummonSlots=new Map([
+  ['レムレ',1],['レムレー',1],['インプ',2],['スパインド・デヴィル',3],['ヘルハウンド',4],
+  ['ナイトメア',5],['ビアデッド・デヴィル',6],['バーブド・デヴィル',7],['ボーン・デヴィル',8],
+  ['エリニュス',9],['アイス・デヴィル',10],['コントラクト・デヴィル',11],['ヘレシー・デヴィル',12]
+]);
+const angelSummonSlots=new Map([
+  ['カッシシアン',1],['クルビ',2],['エンジェルズ',3],['イオファナイト',4],
+  ['アークエンジェルズ',5],['エレリム',6],['プリンシパリティ',7],['バリッセ',8],
+  ['モナディック・デーヴァ',9],['デュナミス',10],['モヴァニック・デーヴァ',11],['パワード',12]
+]);
 
 function resolveReferenceFromEnemy(enemy) {
+  const summonName=text(enemy?.summon?.catalogName||(enemy?.id==='summon-preview'?enemy?.name:''));
+  const devilSlot=devilSummonSlots.get(summonName);
+  if(devilSlot)return {fileName:'デヴィル_召喚集.webp',slotNumber:devilSlot};
+  const angelSlot=angelSummonSlots.get(summonName);
+  if(angelSlot)return {fileName:'エンジェル_召喚集.webp',slotNumber:angelSlot};
   const undead=resolveUndeadArtworkReference(enemy);
   const yokaiReference=resolveYokaiArtworkReference(enemy);
   // Ghost/skeleton ingredients describe a fusion, not a resurrected corpse.
@@ -160,9 +174,6 @@ function resolveReferenceFromEnemy(enemy) {
   if(undead&&!namedGhostBeast&&!namedYokaiFusion)return undead;
   const fusionName=text(enemy?.fusionGrowth?.recipeName||enemy?.strongFusionResultName);
   if(fusionName==='ワイバーン')return {fileName:'ワイバーン_ユニット集.webp',slotNumber:1};
-  const summonName=text(enemy?.summon?.catalogName||(enemy?.id==='summon-preview'?enemy?.name:''));
-  const summonSlot=devilSummonSlots.get(summonName);
-  if(summonSlot)return {fileName:'デヴィル_召喚集.webp',slotNumber:summonSlot};
   const beastReference=resolveBeastArtworkReference(enemy);
   if(beastReference)return beastReference;
   const directFileName = text(

@@ -1,4 +1,5 @@
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
+import {renderV39EquipmentDisplayRow} from "../ui/v39-equipment-display.js";
 import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
 import {resolveV39MaxAp} from '../../lib/v39-control-status.js';
 import { focusV39MapTile } from '../map/v39-map-focus.js';
@@ -107,16 +108,6 @@ function equipmentKey(item, index) {
   return text(item?.instanceId ?? item?.id, `${text(item?.slot, "slot")}-${index}`);
 }
 
-function equipmentIcon(item) {
-  const slot = text(item?.slot);
-  if (slot.startsWith("武器")) return "⚔";
-  if (slot === "頭") return "⛑";
-  if (slot === "体") return "🥋";
-  if (slot === "足") return "👢";
-  if (slot.startsWith("装飾")) return "💍";
-  return "⚒";
-}
-
 function nonZeroEntries(record = {}) {
   return Object.entries(record && typeof record === "object" ? record : {})
     .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) !== 0);
@@ -169,17 +160,7 @@ function renderEquipment(unit) {
   }
   updateMarkup(host, equipment.map((item, index) => {
     const key = equipmentKey(item, index);
-    const expanded = key === expandedEquipmentKey;
-    const quality = text(item?.qualityLabel ?? item?.quality);
-    return `<button type="button" class="equipment-card${expanded ? " is-expanded" : ""}" data-v39-equipment-key="${escapeHtml(key)}" aria-expanded="${expanded}">
-      <span class="equipment-summary">
-        <span class="equipment-icon" aria-hidden="true">${equipmentIcon(item)}</span>
-        <b class="equipment-name">${escapeHtml(text(item?.name, "名称未設定"))}</b>
-        <small class="equipment-slot">${escapeHtml(text(item?.slotLabel ?? item?.slot, "-"))}</small>
-        <small class="equipment-quality">${escapeHtml(quality ? `[${quality}]` : "")}</small>
-      </span>
-      <span class="equipment-detail">${equipmentDetailMarkup(item)}</span>
-    </button>`;
+    return renderV39EquipmentDisplayRow(item,{expandKey:key,expanded:key===expandedEquipmentKey,detail:equipmentDetailMarkup(item)});
   }).join(""));
 }
 
