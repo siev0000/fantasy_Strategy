@@ -12,6 +12,8 @@ Before adding, reorganizing, or archiving documentation, read `docs/DOCUMENTATIO
 
 When changing spreadsheet-managed game data, read `docs/SPREADSHEET_DATA_WORKFLOW.md` before editing generated JSON. For these datasets, `@game_data` is the editing source and `data/source/export/json` is generated runtime data. Do not preserve legacy JSON-only fields that no longer exist in the spreadsheet.
 
+Before planning, creating, or editing enchantments/affixes (`付与`), read the `付与データ・命名・効果運用ルール` section of `docs/SPREADSHEET_DATA_WORKFLOW.md`. Re-read the live `@game_data` tabs `付与` and `用語辞書` (columns A:B) and check actual effect semantics before assigning any `初期効果`. Do not invent `効果:...` tokens, substitute similar-but-different effects, or restore rows/values the user deleted. The sheet is the editing source, and changes to the sheet are not proof of converter/runtime implementation.
+
 When creating a new class or intentionally redesigning a class skill layout in `CS` / `クラス`, read `docs/CLASS_SKILL_RULES.md` before writing to the spreadsheet. Confirm the fixed A/P count and level placement before editing. The default layout is `Lv1 A / Lv3 P / Lv5 A / Lv7 P / Lv9 A / Lv10 P` (A3 / P3). Do not infer a different layout from legacy class rows alone. Exceptions require an explicit current user instruction, a current subsystem rule, or a confirmed implementation-compatibility reason. After editing, read back the `CS` rows and `クラス` Skill1-Skill10 values before reporting completion.
 
 When unit portrait / unit image generation or editing, read `docs/UNIT_PORTRAIT_GENERATION_RULES.md` before generating any image. Do not substitute older side-scroller pixel-art rules unless the user explicitly asks for side-scroller or pixel-art output.
