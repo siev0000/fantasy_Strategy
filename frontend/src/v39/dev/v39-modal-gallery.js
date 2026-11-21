@@ -23,6 +23,12 @@ const entries = [
   { id:"squad", group:"ユニット・装備", name:"部隊編制", from:"部隊・編制", fixture:"expedition", selector:"#v39-squad-editor-title", open:() => window.openV39SquadEditor() },
   { id:"recruit", group:"ユニット・装備", name:"ユニット作成", from:"拠点・ユニット作成", fixture:"expedition", selector:"#unitCreateModal", open:() => click('[data-open="unitCreate"]') },
   { id:"equipment", group:"ユニット・装備", name:"装備・生成・付与", from:"装備のメニュー", fixture:"equipment", selector:"#equipmentModal", open:() => click('[data-open="equipment"]') },
+  { id:"equipment-enchant", group:"ユニット・装備", name:"装備付与", from:"装備一覧・生成", fixture:"equipment-craft",
+    selector:"#equipmentModal.open .v39-enhancement-screen", open:() => {
+      click('[data-open="equipment"]');
+      click('[data-v39-equip-item="剣::uncommon::"]');
+      click('[data-v39-enchant-open]:not(:disabled)');
+    } },
   { id:"equipment-slot", group:"ユニット・装備", name:"装備スロット選択", from:"ユニット詳細・装備変更", fixture:"equipment", selector:"#v39-equipment-picker", open:async () => {
     const {openV39EquipmentPicker} = await import("../unit/v39-equipment-picker.js");
     openV39EquipmentPicker(window.getV39ActiveFactionState().selectedUnitId, "武器1");
@@ -31,6 +37,21 @@ const entries = [
   { id:"call", group:"召喚・合体", name:"呼集", from:"部隊・行動・呼集", fixture:"call", selector:"#v39-summon-modal", open:() => click("[data-v39-call-open]") },
   { id:"fusion", group:"召喚・合体", name:"モンスター合体", from:"合体スキル・合体施設", fixture:"fusion", selector:"#v39-fusion-modal", open:() => window.openV39FusionModal(actor) },
   { id:"golem", group:"召喚・合体", name:"ゴーレム工房", from:"拠点・施設・ゴーレム作成", fixture:"golem", selector:"#v39-golem-workshop", open:() => click("[data-golem-workshop]") },
+  { id:"golem-enchant", group:"召喚・合体", name:"ゴーレム付与", from:"ゴーレム工房・付与へ進む", fixture:"golem",
+    selector:"#v39-golem-workshop[open] .v39-enhancement-screen", open:() => {
+      click("[data-golem-workshop]");
+      const next = "#v39-golem-workshop [data-golem-next]:not(:disabled)";
+      if (!query(next)) {
+        click('#v39-golem-workshop [data-v39-item-list-action="available-only"]');
+        const workshops = query("#v39-golem-workshop [data-golem-workshop-select]");
+        const available = [...(workshops?.options ?? [])].find(option => !option.text.includes("条件未達") && option.value);
+        if (available && workshops.value !== available.value) {
+          workshops.value = available.value;
+          workshops.dispatchEvent(new Event("change",{bubbles:true}));
+        }
+      }
+      click(next);
+    } },
   { id:"build", group:"拠点・交流", name:"建設・施設", from:"拠点発展", fixture:"expedition", selector:"#buildModal", open:() => click('[data-open="build"]') },
   { id:"research", group:"拠点・交流", name:"研究", from:"上部の研究メニュー", fixture:"expedition", selector:"#researchModal", open:() => window.openV39Research("鍛冶") },
   { id:"logs", group:"拠点・交流", name:"統治者ログ", from:"統治者ログのメニュー", fixture:"expedition", selector:"#rulerLogModal", open:() => click('[data-open="rulerLog"]') },
@@ -71,6 +92,7 @@ async function prepareFixture(fixture) {
   const starts = {
     expedition:() => window.startV39ExpeditionTest(false,{silentBanner:true}),
     equipment:async () => (await import("./v39-skill-trigger-test.js")).startV39SkillTriggerTest(),
+    "equipment-craft":async () => (await import("./v39-skill-trigger-test.js")).startV39SkillTriggerTest({craftEquipment:true}),
     ritual:() => window.startV39RitualTest(1),
     call:() => window.startV39CallTest(),
     fusion:() => window.startV39FusionTest(),

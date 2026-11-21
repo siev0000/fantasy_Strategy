@@ -2,6 +2,7 @@ import { getV39ToolDefinitions, useV39ExpeditionTool, replenishV39ExpeditionTool
 import { inspectV39ExpeditionReplenishment, inspectV39ExpeditionGather, inspectV39ExpeditionDeposit } from "../../lib/v39-expedition-tools.js";
 import { getHexDistance } from "../../lib/hex-grid.js";
 import "./v39-expedition-tools-ui.css";
+import { renderV39ResourceItemSprite } from "../ui/v39-resource-item-icon.js";
 import {getV39ToolLoadout,resolveV39ToolSlots,inspectV39ToolProduction,startV39ToolProduction,cancelV39ToolProduction} from "../../lib/v39-consumables.js";
 let expandedToolId="",selectedUnitId="";
 let selectedToolTile=null;
@@ -21,14 +22,17 @@ function invoke(operation,...args) {
   }
   window.showV39TurnBanner?.(result.message||result.reason);renderTools();
 }
-function addCard(list,id,label,description,perform) {
-  list.push({id,label,description,perform});
+function addCard(list,id,label,description,perform,toolName) {
+  list.push({id,label,description,perform,toolName});
 }
 function createCard(id) {
   const card=document.createElement("div");card.className="technique-card technique-select-card system-action-card";
   card.dataset.expeditionTool=id;card.tabIndex=0;card.setAttribute("role","button");
   const summary=document.createElement("span");summary.className="technique-summary";
   const title=document.createElement("b");title.className="technique-name";summary.append(title);
+  const icon=document.createElement("span");icon.className="v39-expedition-tool-icon";
+  const label=document.createElement("span");label.className="v39-expedition-tool-label";
+  title.append(icon,label);
   const detail=document.createElement("span");detail.className="technique-detail";
   const text=document.createElement("span");text.className="technique-detail-description";
   const use=document.createElement("button");use.type="button";use.textContent="実行";
@@ -49,8 +53,14 @@ function updateCards(host,choices) {
     const card=existing.get(choice.id)?.shift()||createCard(choice.id);
     // Keep the node/focus but always refresh the action's captured context.
     card.__v39Perform=choice.perform;
-    const title=card.querySelector('.technique-name'),text=card.querySelector('.technique-detail-description');
+    const title=card.querySelector('.v39-expedition-tool-label'),text=card.querySelector('.technique-detail-description');
     if(title.textContent!==choice.label)title.textContent=choice.label;
+    const icon=card.querySelector('.v39-expedition-tool-icon');
+    const toolName=choice.toolName || "";
+    if (icon.dataset.name !== toolName) {
+      icon.dataset.name=toolName;
+      icon.innerHTML=renderV39ResourceItemSprite(toolName, {tool:true});
+    }
     if(text.textContent!==choice.description)text.textContent=choice.description;
     const expanded=choice.id===expandedToolId;
     card.classList.toggle('is-expanded',expanded);
@@ -84,11 +94,11 @@ function renderTools() {
   for(const item of getV39ToolDefinitions()){
     if(Number(unit.toolStockByType?.[item.名前])>0&&getV39ToolLoadout(unit).some(row=>row.name===item.名前))addCard(list,`use-${item.名前}`,`${item.名前} ×${unit.toolStockByType[item.名前]}`,
       `AP ${item.AP消費} / ${item.効果==='浄化'?'使用マスを浄化（HP回復なし）':item.効果==='霧'?`対象マスをタップして通常霧 ⌛${item.持続ターン} / 対象 ${selectedToolTile?`(${selectedToolTile.x},${selectedToolTile.y})`:'未選択'}`:`即時HP+${item.即時回復} / 毎ターンHP+${item.毎ターン回復} ⌛${item.持続ターン} / 回復効果は上書き`}`,
-      ()=>invoke(useV39ExpeditionTool,item.名前,map,selectedToolTile));
+      ()=>invoke(useV39ExpeditionTool,item.名前,map,selectedToolTile),item.名前);
     const inspection=inspectV39ExpeditionReplenishment(state,state.activePlayerId,unit.id,map,item.名前);
-    if(inspection.ok)addCard(list,`refill-${item.名前}`,`${item.名前}の補充`,`${item.名前}の現地完成品在庫を消費 / 上限${item.携帯上限} / AP消費なし`,()=>invoke(replenishV39ExpeditionTools,map,item.名前));
+    if(inspection.ok)addCard(list,`refill-${item.名前}`,`${item.名前}の補充`,`${item.名前}の現地完成品在庫を消費 / 上限${item.携帯上限} / AP消費なし`,()=>invoke(replenishV39ExpeditionTools,map,item.名前),item.名前);
     const production=inspectV39ToolProduction(state,state.activePlayerId,unit.id,item.名前);
-    if(production.available)addCard(list,`produce-${item.名前}`,`${item.名前}を製造`,`${item.製造施設} / 素材 ${item.必要素材} / ${production.amount}個 / ⌛${item.製造ターン}（暫定）`,()=>invoke(startV39ToolProduction,item.名前));
+    if(production.available)addCard(list,`produce-${item.名前}`,`${item.名前}を製造`,`${item.製造施設} / 素材 ${item.必要素材} / ${production.amount}個 / ⌛${item.製造ターン}（暫定）`,()=>invoke(startV39ToolProduction,item.名前),item.名前);
   }
   const productionQueues=(player.factionState.settlements || []).filter(village=>unit.worldId!=='surface'&&unit.worldId?false:unit.x===village.x&&unit.y===village.y||village.territoryResidentialCenterMap?.[`${unit.x},${unit.y}`]===`${village.x},${village.y}`)
     .flatMap(village=>(village.toolProductionQueue || []).map(row=>({...row,settlementId:village.settlementId})));

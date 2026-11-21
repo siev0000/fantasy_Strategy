@@ -1,0 +1,13 @@
+:is(.v39-resource-item-sprite, .v39-equipment-icon-sprite) {
+  display: inline-block;
+  inline-size: 1em;
+  block-size: 1em;
+  vertical-align: middle;
+  background-repeat: no-repeat;
+  transform: scale(1.5);
+  pointer-events: none;
+}
+
+:is(.v39-item-list-resource > summary, .v39-diplomacy-row b, .v39-quest-reward-summary > span, .v39-footer-shortcut[data-land-construction-open]) > .v39-resource-item-sprite {
+  margin-inline-end: 0.25em;
+}

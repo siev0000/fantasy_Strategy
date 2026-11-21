@@ -4,3 +4,5 @@ web-vue-dist/
 output/v39-*
 output/web-game/
 artifacts/
+/config/local/v39-icon-settings.json
+/config/local/v39-icon-settings.json.*

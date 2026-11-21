@@ -200,6 +200,7 @@ window.addEventListener("v39:multiplayer-sovereign-required", event => {
     :selected-race="acquisition.race"
     :selected-class="acquisition.choices[0]"
     :allowed-classes="acquisition.choices"
+    :unmet-classes="acquisition.unmet"
     :setup-progress-text="acquisition.subtitle"
     @close="acquisition = null"
     @back="acquisition = null"

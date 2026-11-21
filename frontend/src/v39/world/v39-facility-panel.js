@@ -1,10 +1,13 @@
 import {readV39ItemListAction,renderV39ItemListScreen1} from '../ui/v39-item-list-screen-1.js';
 import {applyV39DerivedCharacterData} from '../unit/v39-character-derived-rules.js';
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
-import {getV39GolemEnchantOptions,golemEnchantParts} from '../../lib/v39-equipment-rules.js';
+import {describeV39EnchantmentEffects,getV39GolemEnchantmentLimitReason,golemEnchantParts} from '../../lib/v39-equipment-rules.js';
 import {golemWorkshopSizes,golemSizes,golemRecipes,golemRecipeNames,getV39GolemWorkshopCreators,getV39OwnedGolemWorkshops,matchesV39GolemTerrain,inspectV39GolemOrder,orderV39Golem} from '../../lib/v39-golem-workshop.js';
 import {getFactionSettlements} from '../../lib/settlement-state.js';
+import {formatV39FacilityProductionProgress} from '../../lib/v39-production-work.js';
 import {getGameDataRows} from '../../lib/game-data-registry.js';
+import {resolveFacilityIconArtwork} from '../../lib/facility-icon-artwork.js';
+import {resolveV39IconSpriteStyle} from '../../lib/v39-icon-assignment.js';
 import {getV39FacilitySummonSlots} from '../../lib/v39-facility-summoning.js';
 import {resolveV39FacilitySummonCosts} from '../../lib/v39-facility-summon-costs.js';
 import {formatV39SummonMaterials} from '../../lib/v39-summon-materials.js';
@@ -47,6 +50,7 @@ function openGolemWorkshop(request){
   dialog.setAttribute('aria-labelledby','v39-golem-workshop-title');
   const labels={common:'コモン',uncommon:'アンコモン',rare:'レア',epic:'エピック'};
   let size=0,draft=null,activePart='頭',reviewing=false,needsReview=false;
+  let focusedEnhancement=null;
   const chosenModifications=new Set();
   request.golemName??='ストーンゴーレム';
   let detailTab='ability', renderedCheck, availableOnly=false, renderedWorkshops=[];
@@ -187,25 +191,36 @@ function openGolemWorkshop(request){
           if(emptyLabel&&modifications.length>1)choices.push({id:'modification',value:'',label:emptyLabel,selected:!selected});
           choices.push(...modifications.map(row=>({
             id:'modification',value:row.name,label:`${row.name}${row.known?'（習得済み）':''}`,
-            detail:row.detail,selected:row===selected,disabled:row.known
+            lines:[row.detail,row.known?'習得済み':''].filter(Boolean),selected:row===selected,disabled:row.known
           })));
         }else{
           section=`${activePart}（${golemEnchantParts[activePart]}）`;
           const {used,limit}=check;
           limitText=`全身の付与Lv ${used}/${limit.total}　1件 Lv${limit.single}まで`;
           const chosen=draft.enchantmentsByPart[activePart]||[];
-          for(const option of getV39GolemEnchantOptions(check.player,check.base,activePart)){
+          for(const option of check.enchantOptionsByPart[activePart]||[]){
             const selected=chosen.includes(option.name);
-            const reason=option.failed.join(' / ')||(option.cost.level>limit.single?'個別Lv上限を超えています':
-              used+option.cost.level>limit.total?'合計Lv上限を超えています':'');
+            const reason=option.failed.join(' / ')||getV39GolemEnchantmentLimitReason(option.cost.level,limit,used);
             choices.push({id:'enchantment',value:option.name,attribute:'data-golem-enchantment',
               label:`${option.name} Lv${option.cost.level}`,selected,disabled:!selected&&!!reason,
-              detail:selected?'選択済み':reason,
+              lines:[...describeV39EnchantmentEffects(option.row), selected?'選択済み':reason].filter(Boolean),
               amounts:{...option.cost.material,...option.cost.food}
             });
           }
         }
-        screen.detail={kind:'enhancement',section,limitText,choices};
+        const focused=choices.find(candidate=>candidate.value===focusedEnhancement)||choices[0];
+        screen.detail={
+          kind:'enhancement',
+          target:{heading:screen.listNotes[0],lines:[screen.listNotes[1],section,limitText].filter(Boolean)},
+          choices:choices.map(({label,value,selected})=>({
+            id:'inspect-enhancement',value,label,selected,focused:value===focused?.value
+          })),
+          choice:focused?{
+            label:focused.label,lines:focused.lines,amounts:focused.amounts,
+            action:{...focused,label:focused.id==='enchantment'&&focused.selected?'外す':'選択',selected:undefined,
+              disabled:focused.disabled||(focused.id==='modification'&&focused.selected&&chosenModifications.has(activePart))}
+          }:null
+        };
         screen.footerNotes=selectedSummary;
         screen.actions=[
           {id:'back',destination:'candidates',label:'作成候補へ戻る',attribute:'data-golem-back'},
@@ -239,12 +254,16 @@ function openGolemWorkshop(request){
     else if(id==='detail-tab')detailTab=value;
     else if(id==='enhance'&&destination==='enhancement'){
       activePart='頭';
+      focusedEnhancement=null;
       chosenModifications.clear();
       draft={enchantmentsByPart:{},additionalSkillNames:[]};
     }else if(id==='back'){
       if(destination==='candidates')draft=null;
       reviewing=false;
-    }else if(id==='group')activePart=value;
+    }else if(id==='group'){
+      activePart=value;
+      focusedEnhancement=null;
+    }else if(draft&&id==='inspect-enhancement')focusedEnhancement=value;
     else if(draft&&id==='modification'){
       chosenModifications.add(activePart);
       const names=renderedCheck.additionalCandidates.filter(row=>row.source===activePart).map(row=>row.name);
@@ -277,12 +296,12 @@ document.addEventListener('click',event=>{
   if(button)openGolemWorkshop(JSON.parse(button.dataset.golemWorkshop));
 });
 
-export function renderV39FacilityOperations(state,playerId,facility){
+export function renderV39FacilityOperations(state,playerId,facility,intel){
   if(!facility)return '';
   const {base,name,tileKey,worldId,health}=facility;
   const row=getGameDataRows('施設').find(row=>row.施設名===name);
   const currentWorld=worldId===(state.activeWorldId||'surface');
-  const owned=currentWorld&&tileKey&&state.territoryOwnerByTile?.[tileKey]===playerId;
+  const owned=!intel&&currentWorld&&tileKey&&state.territoryOwnerByTile?.[tileKey]===playerId;
   const slot=owned?getV39FacilitySummonSlots(state,playerId,base.settlementId||base.id).find(slot=>slot.tileKey===tileKey&&slot.row.施設名===name):null;
   const summon=slot?`<button type="button" class="settlement-chip" data-facility-summon-open="${esc(slot.id)}">施設召喚${slot.activeUnitIds.length?` · 活動中${slot.activeUnitIds.length}駒`:slot.remainingTurns?` · 残${slot.remainingTurns}T`:''}</button>`:'';
   const active=slot?state.players.find(player=>player.id===playerId)?.factionState.units.filter(unit=>slot.activeUnitIds.includes(unit.id))||[]:[];
@@ -290,15 +309,19 @@ export function renderV39FacilityOperations(state,playerId,facility){
     materials:active.reduce((bag,unit)=>{for(const [name,amount] of Object.entries(unit.summon.upkeepMaterials||{}))bag[name]=(bag[name]||0)+amount;return bag;},{}),
     next:Math.min(...active.map(unit=>unit.summon.nextUpkeepTurn).filter(value=>value!=null))}:null;
   const storage=owned?renderV39FacilityStorageButtons(state,playerId,base,{tileKey,name}):'';
-  const protection=name==='墓地'?getV39DeathProtectionStatus(window.__v39FieldRuntime?.mapData,state,playerId,base.settlementId||base.id):null;
+  const protection=!intel&&name==='墓地'?getV39DeathProtectionStatus(window.__v39FieldRuntime?.mapData,state,playerId,base.settlementId||base.id):null;
   const queue=(base.constructionQueue||[]).filter(item=>item.tileKey===tileKey&&tileKey);
+  const art=intel?resolveFacilityIconArtwork(name):null;
+  const artworkStyle=art&&resolveV39IconSpriteStyle({...art.sheetFrame,src:art.src},art.sheetFrame.slotNumber+1);
   return `<div class="v39-facility-operations" data-facility-detail="${esc(facility.id)}">
+    ${artworkStyle?`<span class="v39-spy-facility-art" aria-hidden="true" style="background-image:${esc(artworkStyle.backgroundImage)};background-size:${artworkStyle.backgroundSize};background-position:${artworkStyle.backgroundPosition}"></span>`:""}
     ${health?`<p>HP ${Math.max(0,Math.round(health.hp||0))}/${Math.round(health.maxHp||100)}</p>`:''}
-    ${queue.map(item=>`<p>改築中: ${esc(item.facilityName)} · 残${Math.max(0,Math.floor(item.remainingTurns||0))}T</p>`).join('')}
+    ${queue.map(item=>`<p>改築中: ${esc(item.facilityName)} · ${formatV39FacilityProductionProgress(item)}</p>`).join('')}
     ${protection?.capacity?`<p data-v39-cemetery-quota>死亡時の浄化保護 残り${protection.remaining}/${protection.capacity}件（このターン）</p>`:''}
-    <div class="settlement-chip-list">${summon}${storage}${owned?golemWorkshopMarkup(state,playerId,base,tileKey,name):''}</div>
+    ${intel?(row?.格納種別==='生体'? `<button type="button" class="settlement-chip" data-surveyed-storage="${esc(facility.id)}">格納ユニット一覧（${intel.storedUnits.filter(unit=>unit.tileKey===tileKey&&unit.facilityName===name).length}）</button>`:''):
+      `<div class="settlement-chip-list">${summon}${storage}${owned?golemWorkshopMarkup(state,playerId,base,tileKey,name):''}</div>`}
     ${upkeep?`<p>召喚維持 ${upkeep.goldCost}金${formatV39SummonMaterials(upkeep.materials)?` ＋ ${esc(formatV39SummonMaterials(upkeep.materials))}`:''} / ${upkeep.upkeepIntervalTurns}Tごと${Number.isFinite(upkeep.next)?` / 次回T${upkeep.next}`:''}</p>`:''}
     ${row?.詳細?`<details class="v39-facility-description"><summary>施設効果</summary><p>${esc(row.詳細)}</p></details>`:''}
-    ${!currentWorld?'<p>施設のあるマップで操作してください</p>':!tileKey?'<p>配置情報なし</p>':!owned?'<p>自軍の領土ではありません</p>':''}
+    ${intel?'':!currentWorld?'<p>施設のあるマップで操作してください</p>':!tileKey?'<p>配置情報なし</p>':!owned?'<p>自軍の領土ではありません</p>':''}
   </div>`;
 }

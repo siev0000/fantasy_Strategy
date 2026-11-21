@@ -1,0 +1,31 @@
+.v39-named-weapon-reveal {
+  position: fixed;
+  z-index: 12000;
+  top: 42%;
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(18rem, 80vw);
+  padding: 20px;
+  border: 1px solid #e4c278;
+  border-radius: 10px;
+  background: radial-gradient(ellipse at 50% 25%, #62512f, #15202a 75%);
+  box-shadow: 0 0 34px #e4c27860;
+  color: #fff1c5;
+  text-align: center;
+  font-size: var(--font-heading, 18px);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: v39-named-reveal 1.8s ease both;
+}
+
+.v39-named-weapon-reveal-icon { display: grid; place-items: center; min-block-size: 108px; font-size: 70px; line-height: 1; }
+@keyframes v39-named-reveal {
+  0% { opacity: 0; transform: translate(-50%, -46%) scale(.93); }
+  20%, 78% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v39-named-weapon-reveal { animation: none; }
+}

@@ -2,6 +2,7 @@
 import "../map/v39-initial-placement.js";
 import "../unit/v39-unit-create-ui.js";
 import "../unit/v39-equipment-ui.js";
+import "../unit/v39-named-weapon-presentation.js";
 import "../ai/v39-enemy-spawn.js";
 import "../unit/v39-logistics.js";
 import "../world/v39-logistics-ui.js";

@@ -53,6 +53,10 @@ export function getV39DiplomacyRelation(state, firstPlayerId, secondPlayerId) {
     : { pairKey, status:"peace", relationValue:0, diplomacyPenalty:0, treaties:{} };
 }
 
+export function factionOpinion(relation,viewerId) {
+  return clampRelation((Number(relation?.relationValue)||0)+(Number(relation?.opinionAdjustments?.[viewerId])||0));
+}
+
 export function getV39DiplomacyRelationLabel(value) {
   const relation = Number(value) || 0;
   if (relation >= V39_DIPLOMACY_BALANCE.friendlyThreshold) return "友好";
@@ -136,7 +140,7 @@ export function signV39Treaty(state, firstPlayerId, secondPlayerId, type, turnNu
   const duration = Number(durationTurns);
   if (!Number.isInteger(duration) || duration < 1 || duration > V39_DIPLOMACY_BALANCE.treatyMaximumTurns) return { ok:false, reason:`期間は1〜${V39_DIPLOMACY_BALANCE.treatyMaximumTurns}ターンです`, state };
   if (relation.status === "war") return { ok:false, reason:"戦争中は条約を締結できません", state };
-  if (Number(relation.relationValue) < definition.relationRequired) return { ok:false, reason:`友好度${definition.relationRequired}以上が必要です`, state };
+  if (factionOpinion(relation,firstPlayerId) < definition.relationRequired) return { ok:false, reason:`友好度${definition.relationRequired}以上が必要です`, state };
   const turn = Math.max(1, Math.floor(Number(turnNumber) || Number(state?.timeline?.turnNumber) || 1));
   const previous = relation.treaties?.[type];
   const renewal = activeTreaty(relation, type, turn);
@@ -272,7 +276,7 @@ export function advanceV39DiplomacyTurn(state, turnNumber) {
   for (const relation of Object.values(relations)) {
     const proposal = relation.proposal;
     if (!proposal || !working.players?.some(p => p.id === proposal.toId && p.isPlayer === false)) continue;
-    const accept = Number(relation.relationValue) + (Number(relation.trustByPlayer?.[proposal.fromId]) || 0) >= V39_TREATY_TYPES[proposal.type]?.relationRequired;
+    const accept = factionOpinion(relation,proposal.toId) + (Number(relation.trustByPlayer?.[proposal.fromId]) || 0) >= V39_TREATY_TYPES[proposal.type]?.relationRequired;
     const result = respondV39Treaty(working, proposal.toId, proposal.fromId, accept, turn);
     if (result.ok) {
       working = result.state;
@@ -288,14 +292,14 @@ export function advanceV39DiplomacyTurn(state, turnNumber) {
       // 未発見の勢力は外交判断の対象にしない。発見記録は索敵ルールからだけ作られる。
       if (!hasV39DiscoveredFaction(ai, target.id)) continue;
       let relation = getV39DiplomacyRelation(working, ai.id, target.id);
-      if (relation.status !== "war" && Number(relation.relationValue) <= V39_DIPLOMACY_BALANCE.hostileThreshold && !activeTreaty(relation, "nonAggression", turn) && !activeTreaty(relation, "alliance", turn)) {
+      if (relation.status !== "war" && factionOpinion(relation,ai.id) <= V39_DIPLOMACY_BALANCE.hostileThreshold && !activeTreaty(relation, "nonAggression", turn) && !activeTreaty(relation, "alliance", turn)) {
         working = declareV39War(working, ai.id, target.id, turn);
         reports.push({ type:"ai-war", playerId:ai.id, targetPlayerId:target.id });
         continue;
       }
       if (relation.lastTreatyReply?.accepted === false && turn - Number(relation.lastTreatyReply.turn) < V39_DIPLOMACY_BALANCE.treatyAiRetryTurns) continue;
-      const candidates = Number(relation.relationValue) >= V39_DIPLOMACY_BALANCE.allianceThreshold ? ["alliance"] : ["nonAggression", "passage", "trade"];
-      const treatyType = candidates.find(type => Number(relation.relationValue) >= V39_TREATY_TYPES[type].relationRequired && !activeTreaty(relation, type, turn));
+      const candidates = factionOpinion(relation,ai.id) >= V39_DIPLOMACY_BALANCE.allianceThreshold ? ["alliance"] : ["nonAggression", "passage", "trade"];
+      const treatyType = candidates.find(type => factionOpinion(relation,ai.id) >= V39_TREATY_TYPES[type].relationRequired && !activeTreaty(relation, type, turn));
       if (treatyType && !activeTreaty(relation, treatyType, turn)) {
         const signed = proposeV39Treaty(working, ai.id, target.id, treatyType, turn);
         if (signed.ok) {

@@ -1,4 +1,5 @@
 import { renderV39UnitSkills } from "./v39-unit-skills.js";
+import {canV39ChangeUnitEquipmentSlot} from "../../lib/v39-equipment-rules.js";
 import {renderV39EquipmentDisplayRow} from "../ui/v39-equipment-display.js";
 import {visualV39CombatUnit} from '../../lib/v39-combat-visual-state.js';
 import {resolveV39MaxAp} from '../../lib/v39-control-status.js';
@@ -12,6 +13,7 @@ import {renderV39RubbleActions} from '../world/v39-terrain-destruction.js';
 import {renderV39UnitHeading} from './v39-unit-heading.js';
 import {renderV39TeleportGateActions} from './v39-teleport-ui.js';
 import {createV39BasicActionNavigation} from './v39-basic-action-navigation.js';
+import {renderV39ScreenIcon} from '../ui/v39-screen-icons.js';
 
 const renderedMarkup = new WeakMap();
 let renderingFaction;
@@ -160,7 +162,7 @@ function renderEquipment(unit) {
   }
   updateMarkup(host, equipment.map((item, index) => {
     const key = equipmentKey(item, index);
-    return renderV39EquipmentDisplayRow(item,{expandKey:key,expanded:key===expandedEquipmentKey,detail:equipmentDetailMarkup(item)});
+    return renderV39EquipmentDisplayRow(item,{expandKey:key,expanded:key===expandedEquipmentKey,detail:equipmentDetailMarkup(item),changeUnitId:unit.hp > 0 && canV39ChangeUnitEquipmentSlot(unit,item.slot) ? unit.id : undefined});
   }).join(""));
 }
 
@@ -183,6 +185,8 @@ function notifyDetailRendered(unit = null) {
 
 let selectedSquadKey = "";
 let selectedUnitId = "";
+let inspectedPilotId = "";
+let inspectionAnchorId = "";
 let expandedTechniqueName = "";
 let expandedEquipmentKey = "";
 
@@ -195,7 +199,9 @@ function getFactionState() {
 
 function getUnits() {
   const factionState = getFactionState();
-  return Array.isArray(factionState?.units) ? factionState.units : [];
+  return (factionState?.units || []).flatMap(unit => unit.boardingPilot
+    ? [unit,{...unit.boardingPilot,boardingHost:unit,x:unit.x,y:unit.y,worldId:unit.worldId}]
+    : [unit]);
 }
 
 function getSquads() {
@@ -260,6 +266,8 @@ function findUnit(targetUnitId) {
 function syncSelectionFromGameState() {
   const faction = getFactionState();
   const authoritativeId = text(faction?.selectedUnitId);
+  if (inspectedPilotId && authoritativeId === inspectionAnchorId && findUnit(inspectedPilotId)?.boardingHost) return;
+  inspectedPilotId = "";
   if (!authoritativeId || !findUnit(authoritativeId)) return;
   selectedUnitId = authoritativeId;
   const key = squadKeyForUnitId(authoritativeId);
@@ -271,6 +279,13 @@ function persistSelectedUnit(targetUnitId, reason = "squad-unit-selected") {
   const unit = findUnit(id);
   if (!id || !unit) return;
   const faction = getFactionState();
+  if (unit.boardingHost) {
+    inspectedPilotId = id;
+    inspectionAnchorId = text(faction?.selectedUnitId);
+    basicNavigation?.back();
+    return;
+  }
+  inspectedPilotId = "";
   if (text(faction?.selectedUnitId) !== id && typeof window.updateV39ActiveFactionState === "function") {
     window.updateV39ActiveFactionState({ selectedUnitId:id }, { reason });
   }
@@ -316,7 +331,8 @@ function renderMemberList() {
     const ap = apValues(unit);
     const defenses = defenseDisplay(unit);
     const icon = text(unit?.icon ?? unit?.glyph ?? unit?.symbol, "◆");
-    return renderV39UnitCard(unit, {id,selected,hp,ap,defenses,icon,portrait:true,name:unitName(unit,index),position:unitPosition(unit)});
+    return renderV39UnitCard(unit, {id,selected,hp,ap,defenses,icon,portrait:true,name:unitName(unit,index),
+      position:unit.boardingHost ? `搭乗中：${unit.boardingHost.name}` : unitPosition(unit)});
   }).join(""));
 }
 
@@ -324,6 +340,7 @@ function renderDetail() {
   const units = unitsForSelectedSquad();
   const unit = units.find((item, index) => unitId(item, index) === selectedUnitId) || units[0];
   const pane = document.getElementById("squadDetailPane");
+  pane?.toggleAttribute('data-boarding-pilot',!!unit?.boardingHost);
   if (!unit) {
     updateMarkup(document.getElementById('v39-rubble-actions'),'');
     updateMarkup(pane?.querySelector('[data-squad-coordination-host]'),'');
@@ -345,9 +362,9 @@ function renderDetail() {
     return;
   }
   if (pane) delete pane.dataset.empty;
-  updateMarkup(pane?.querySelector('[data-squad-coordination-host]'),renderV39SquadCoordination(unit,renderingFaction));
+  updateMarkup(pane?.querySelector('[data-squad-coordination-host]'),unit.boardingHost?'':renderV39SquadCoordination(unit,renderingFaction));
   updateMarkup(document.getElementById('v39-golem-boarding-actions'),
-    renderV39GolemBoarding(unit,renderingFaction,window.__v39FieldRuntime?.mapData));
+    renderV39GolemBoarding(unit.boardingHost||unit,renderingFaction,window.__v39FieldRuntime?.mapData));
 
   updateMarkup(document.getElementById('detailUnitHeading'),renderV39UnitHeading(unit));
 
@@ -377,12 +394,12 @@ function renderDetail() {
     mapData:window.__v39FieldRuntime?.mapData, fieldIds:true
   });
   renderEquipment(unit);
-  updateMarkup(document.getElementById('v39-rubble-actions'),renderV39RubbleActions(unit));
-  updateMarkup(document.getElementById('v39-teleport-gate-actions'),renderV39TeleportGateActions(unit,window.__v39FieldRuntime?.mapData));
+  updateMarkup(document.getElementById('v39-rubble-actions'),unit.boardingHost?'':renderV39RubbleActions(unit));
+  updateMarkup(document.getElementById('v39-teleport-gate-actions'),unit.boardingHost?'':renderV39TeleportGateActions(unit,window.__v39FieldRuntime?.mapData));
 
   const tech = document.getElementById("detailTechniqueRows");
   if (tech) {
-    updateMarkup(tech, renderV39UnitSkills(unit, {mapData:window.__v39FieldRuntime?.mapData, expandedName:expandedTechniqueName, interactive:true}));
+    updateMarkup(tech, renderV39UnitSkills(unit, {mapData:window.__v39FieldRuntime?.mapData, expandedName:expandedTechniqueName, interactive:!unit.boardingHost}));
   }
   setExpandedTechnique(expandedTechniqueName);
   notifyDetailRendered(unit);
@@ -409,6 +426,7 @@ function scheduleRender(event) {
   if (event?.detail?.reason === "active-player") {
     selectedSquadKey = "";
     selectedUnitId = "";
+    inspectedPilotId = "";
   }
   if (renderQueued) return;
   renderQueued = true;
@@ -428,13 +446,16 @@ function install() {
   if(basicList&&!basicNavigation){
     basicNavigation=createV39BasicActionNavigation({
       panel:basicList.closest('[data-squad-detail-panel="basic"]'),list:basicList,
-      heading:document.getElementById('v39-basic-action-heading'),label:document.getElementById('v39-basic-action-label'),
+      options:document.getElementById('v39-basic-action-options'),
+      renderIcon:renderV39ScreenIcon,
+      heading:document.getElementById('v39-basic-action-heading'),
       onBack:()=>{window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.('basic-action-back');setExpandedTechnique('');},
       onChange:key=>window.dispatchEvent(new CustomEvent('v39:basic-action-changed',{detail:{key}}))
     });
     window.openV39BasicAction=id=>basicNavigation.select(document.getElementById(id));
     const observer=new MutationObserver(()=>basicNavigation.sync());
-    observer.observe(basicList,{childList:true,subtree:true});
+    observer.observe(basicList,{childList:true,subtree:true,characterData:true,attributes:true,
+      attributeFilter:['hidden','data-basic-action-label','data-basic-action-meta']});
   }
   selectedSquadKey = active?.dataset?.squadSelect || "";
   syncSelectionFromGameState();
@@ -443,6 +464,7 @@ function install() {
     const btn = event.target instanceof Element ? event.target.closest("[data-squad-select]") : null;
     if (!btn) return;
     selectedSquadKey = btn.dataset.squadSelect || "";
+    inspectedPilotId = "";
     expandedTechniqueName = "";
     expandedEquipmentKey = "";
     const first = unitsForSquad(selectedSquadKey)[0] || null;
@@ -503,7 +525,8 @@ function install() {
   window.getV39SelectedSquadUnit = () => {
     syncSelectionFromGameState();
     const units = unitsForSelectedSquad();
-    return units.find((item, index) => unitId(item, index) === selectedUnitId) || units[0] || null;
+    const unit=units.find((item, index) => unitId(item, index) === selectedUnitId) || units[0];
+    return unit?.boardingHost ? null : unit||null;
   };
 
   render();

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { io } from "socket.io-client";
+import { bindGameAudioInteractions, getGameAudioController } from "./lib/audio-player.js";
 import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
 import { raceData as raceSelectionDb } from "./lib/game-data-registry.js";
@@ -1601,7 +1602,9 @@ function renderGameStateToText() {
   return JSON.stringify(payload);
 }
 
+let unbindGameAudio;
 onMounted(() => {
+  if (window.parent === window) unbindGameAudio = bindGameAudioInteractions();
   localInitialSovereignRequiredHandler = event => {
     if (window.getV39PlayMode?.() === "multiplayer" || window.isV39MultiplayerSetup?.() === true) return;
     const playerId = String(event?.detail?.playerId || "").trim();
@@ -1750,6 +1753,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  unbindGameAudio?.();
   if (localInitialSovereignRequiredHandler) {
     window.removeEventListener("v39:initial-sovereign-required", localInitialSovereignRequiredHandler);
     localInitialSovereignRequiredHandler = null;
@@ -1796,6 +1800,10 @@ onBeforeUnmount(() => {
   saveSnapshotWaiters = [];
 });
 
+watch(gameSetupReady, ready => {
+  getGameAudioController().setBgmScene(ready ? "field" : "title");
+}, {flush:"sync"});
+
 watch(gameOnlyMode, () => {
   updateAppRootScale();
   scheduleMinimumUiFontEnforce();
@@ -1822,7 +1830,7 @@ watch(gameOnlyMode, () => {
     />
 
     <button v-if="!gameSetupReady" type="button" class="equip-icon-title-launch"
-      @click="showEquipmentIconReference = true">装備アイコン一覧（番号確認）</button>
+      @click="showEquipmentIconReference = true">アイコン設定</button>
     <equipment-icon-reference-modal v-if="showEquipmentIconReference" :show="showEquipmentIconReference"
       @close="showEquipmentIconReference = false" />
 
@@ -1996,7 +2004,7 @@ watch(gameOnlyMode, () => {
         </label>
         <div class="game-start-total">合計勢力: {{ gameStartTotalFactions }} / 最大 {{ GAME_START_MAX_FACTIONS }}</div>
         <div class="game-start-actions">
-          <button type="button" class="secondary" @click="showEquipmentIconReference = true">装備アイコン一覧</button>
+          <button type="button" class="secondary" @click="showEquipmentIconReference = true">アイコン設定</button>
           <button type="button" class="secondary" @click="cancelGameStartSetup">閉じる</button>
           <button type="button" class="secondary" @click="confirmGameStartSetup">次へ</button>
         </div>

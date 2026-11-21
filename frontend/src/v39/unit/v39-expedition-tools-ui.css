@@ -25,3 +25,4 @@
 #v39-mine-operations button:disabled { opacity: .45; }
 [data-expedition-tool] .technique-summary { padding: 4px; }
 [data-expedition-tool] .technique-name { white-space: normal; overflow-wrap: anywhere; }
+.v39-expedition-tool-icon:not(:empty) { margin-inline-end: 4px; font-size: 1.3em; }

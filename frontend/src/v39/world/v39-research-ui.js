@@ -1,3 +1,4 @@
+import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import { V39_RESEARCH_EFFECT_FIELDS, V39_PENDING_RESEARCH_EFFECT_FIELDS } from "../../lib/v39-research-effects.js";
 import {resolveV39CityUnitModifiers} from '../../lib/v39-city-specialization-rules.js';
 import {
@@ -165,7 +166,7 @@ function renderRail() {
       const progress = categoryProgress(key, research);
       const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
       const selected = research.selection?.[key] ? " active" : "";
-      return `<button class="research-rail-btn${selected}" data-v39-research-category="${key}" style="--p:${progress.ratio}%;--accent:${meta.accent}" title="${meta.label} Lv${level} / EXP ${progress.current}/${progress.required}" aria-label="${meta.label} Lv${level}"><span class="gauge"><b>${meta.icon}</b></span><span class="lv">${level}</span></button>`;
+      return `<button class="research-rail-btn${selected}" data-v39-research-category="${key}" style="--p:${progress.ratio}%;--accent:${meta.accent}" title="${meta.label} Lv${level} / EXP ${progress.current}/${progress.required}" aria-label="${meta.label} Lv${level}"><span class="gauge"><b>${renderV39ScreenIcon("研究・"+meta.label)||meta.icon}</b></span><span class="lv">${level}</span></button>`;
     }).join(""), {preserveInput:true});
 }
 
@@ -282,7 +283,7 @@ function renderModal() {
     const meta = getResearchCategoryMeta(key);
     const level = Math.min(7, resolveCompletedResearchLevel(research, key) + 1);
     const active = key === activeCategory;
-    return `<button class="v39-research-category${active ? " active" : ""}" data-research-category="${key}" style="--cat-accent:${meta.accent}" aria-pressed="${active}"><b>${meta.icon}</b><span>${meta.label}</span><small>Lv${level}${active ? " 選択中" : ""}</small></button>`;
+    return `<button class="v39-research-category${active ? " active" : ""}" data-research-category="${key}" style="--cat-accent:${meta.accent}" aria-pressed="${active}"><b>${renderV39ScreenIcon("研究・"+meta.label)||meta.icon}</b><span>${meta.label}</span><small>Lv${level}${active ? " 選択中" : ""}</small></button>`;
   }).join("");
 
   const levels = researchView === "flow" ? renderFlow(research, selectedId) : renderLevelList(research, selectedId);

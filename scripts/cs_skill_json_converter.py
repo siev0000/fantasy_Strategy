@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections import defaultdict
@@ -45,7 +46,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
-VERSION = "1.1"
+VERSION = "1.2"
 DEFAULT_OUTPUT = Path("スキル一覧.json")
 
 MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -341,6 +342,42 @@ def normalize_action(value: Any) -> str:
     return ACTION_ALIASES.get(s, s.upper())
 
 
+# Keep these attack components aligned with DAMAGE_SUM_KEYS in skill-power.js.
+ATTACK_POWER_FIELDS = ("物理", "魔法", "射撃", "切断", "貫通", "打撃", "炎", "氷", "雷", "毒", "光", "闇", "力場")
+
+
+def _power_number(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def complete_attack_target(record: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    """Set a missing enemy target on immediate active skills with positive attack power."""
+    if record.get("行動") != "A":
+        return None
+    target = _clean_text(record.get("対象"))
+    if _clean_text(record.get("効果時間")):
+        return None
+    power = _power_number(record.get("全威力"))
+    if power is None:
+        power = sum(_power_number(record.get(key)) or 0 for key in ATTACK_POWER_FIELDS)
+    if power <= 0:
+        if not target and any(_clean_text(record.get(key)) for key in ("攻撃手段", "追加威力", "威力")):
+            return {"status": "undetermined", "reason": "正の基礎攻撃威力を確認できない"}
+        return None
+    if not target:
+        record["対象"] = "敵"
+        return {"status": "filled", "target": "敵"}
+    if target not in {"敵", "相手"}:
+        return {"status": "explicit_difference", "target": target}
+    return None
+
+
 def compact_record(record: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for key, value in record.items():
@@ -428,7 +465,11 @@ def row_to_skill(
     if unparsed:
         info["warnings"].append({"unparsed_tokens": unparsed})
 
-    return compact_record(record), info
+    record = compact_record(record)
+    target_report = complete_attack_target(record)
+    if target_report:
+        info["target_inference"] = target_report
+    return record, info
 
 
 def _records_equal(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
@@ -544,6 +585,13 @@ def convert(
         "duplicate_name_count": sum(1 for v in by_name.values() if len(v) > 1),
         "warning_row_count": sum(1 for i in infos if i.get("warnings")),
         "duplicates": duplicates_report,
+        "target_inference": {
+            status: [
+                {"row": info["row"], "name": info["name"], **info["target_inference"]}
+                for info in infos if info.get("target_inference", {}).get("status") == status
+            ]
+            for status in ("filled", "undetermined", "explicit_difference")
+        },
         "rows": infos,
     }
     report_path = output_path.with_suffix(".report.json")

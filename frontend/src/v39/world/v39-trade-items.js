@@ -2,12 +2,14 @@ import {resolveV39ResourceIcon} from '../../lib/resource-icon-glyphs.js';
 import {V39_TRADE_RESOURCES,V39_TRADE_CONFIG,tradeBank,tradeBankAmount,tradeMembers,tradeCapacity} from '../../lib/v39-trade-state.js';
 import {getV39TradeResourceAvailability,getV39KnownTradeResources} from '../../lib/v39-trade-resource-availability.js';
 
+import {renderV39ResourceItemSprite} from "../ui/v39-resource-item-icon.js";
+import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import './v39-trade-dialog.css';
 
 const html=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 export function tradeResourceIcon(name) {
   const icon=resolveV39ResourceIcon(name);
-  return `<span class="v39-trade-resource-icon" style="${icon.color?`color:${html(icon.color)}`:''}" aria-hidden="true">${html(icon.glyph)}</span>`;
+  return `<span class="v39-trade-resource-icon" style="${icon.color?`color:${html(icon.color)}`:''}" aria-hidden="true">${(name === "人口" ? renderV39ScreenIcon(name) : "") || renderV39ResourceItemSprite(name) || html(icon.glyph)}</span>`;
 }
 export function tradeResourceChips(goods) {
   return Object.entries(goods||{}).map(([name,amount])=>`<span class="v39-trade-resource-chip" title="${html(name)} ${amount}" aria-label="${html(name)} ${amount}">${tradeResourceIcon(name)}<b>${amount}</b></span>`).join('')||'<span class="v39-trade-empty-chip">—</span>';

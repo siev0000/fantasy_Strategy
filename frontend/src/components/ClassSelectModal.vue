@@ -1,7 +1,6 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import BaseModal from "./BaseModal.vue";
-import V39SelectionDetailPanel from "./V39SelectionDetailPanel.vue";
+import V39ItemListScreen2 from "./V39ItemListScreen2.vue";
 import { classData as classDb, descriptionData as skillDescDb } from "../lib/game-data-registry.js";
 import { getV39ClassSelectionDetail } from "../lib/v39-selection-detail.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
@@ -21,6 +20,7 @@ const props = defineProps({
   selectedClass: { type: String, default: "" },
   allowAdvancedClasses: { type: Boolean, default: false },
   allowedClasses: { type: Array, default: null },
+  unmetClasses: { type: Array, default: () => [] },
   baseClassesOnly: { type: Boolean, default: false },
   setupProgressText: { type: String, default: "" }
 });
@@ -113,7 +113,10 @@ const skillDescMap = computed(() => {
 
 const classCandidates = computed(() => {
   const race = nonEmptyText(props.selectedRace);
-  if (props.allowedClasses) return allClasses.value.filter(row=>props.allowedClasses.includes(nonEmptyText(row.名前)));
+  if (props.allowedClasses) {
+    const visible = new Set([...props.allowedClasses, ...props.unmetClasses.map(row => row.name)]);
+    return allClasses.value.filter(row => visible.has(nonEmptyText(row.名前)));
+  }
   if (!race) return [];
   if(props.baseClassesOnly)return allClasses.value.filter(isV39BaseClassRow);
   const raceClassName = RACE_CLASS_NAME_MAP[race] || race;
@@ -291,577 +294,36 @@ function selectClass(name) {
 
 function confirmClass() {
   const row = activeClass.value;
-  if (!row) return;
+  if (!row || (props.allowedClasses && !props.allowedClasses.includes(nonEmptyText(row.名前)))) return;
   emit("confirm", {
     race: props.selectedRace,
     className: nonEmptyText(row.名前),
     classType: nonEmptyText(row.種類)
   });
 }
+const candidateRows = computed(() => categoryClasses.value.map(row => ({
+  id:row.名前, label:row.名前, icon:classIconSrcFromRow(row),
+  unavailable:props.unmetClasses.some(option => option.name === row.名前)
+})));
+const selected = computed(() => activeClass.value ? {
+  label:activeClass.value.名前, type:`種別: ${activeClass.value.種類}`,
+  description:activeClass.value.詳細 || "詳細説明は未設定です。",
+  requirement:activeClass.value.取得条件,
+  unavailable:props.unmetClasses.some(option => option.name === activeClass.value.名前),
+  reasons:props.unmetClasses.find(option => option.name === activeClass.value.名前)?.reasons
+} : null);
 </script>
 
 <template>
-  <base-modal :show="show" title="クラス選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
-    <div v-if="selectedRace && classCandidates.length" class="class-screen-layout">
-      <section class="class-preview-frame" aria-label="選択中クラスのユニット画像">
-        <div class="class-preview-inner">
-          <div
-            v-if="activeClassSheetStyle"
-            class="class-preview-sprite"
-            :style="activeClassSheetStyle"
-            role="img"
-            :aria-label="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
-          />
-          <img
-            v-else-if="activeClassIndividualSrc"
-            :src="activeClassIndividualSrc"
-            :alt="`${selectedRace} ${activeClass?.名前 || ''} ユニット画像`"
-            class="class-preview-image"
-          />
-          <div v-else class="class-preview-empty">
-            <strong>画像未設定</strong>
-            <span>{{ selectedRace }} / {{ activeClass?.名前 || "-" }}</span>
-          </div>
-        </div>
-      </section>
-
-      <div class="class-layout">
-      <section class="class-category-pane">
-        <nav class="class-category-tabs" role="tablist" aria-label="クラス系統">
-          <button
-            v-for="category in classCategories"
-            :key="category"
-            type="button"
-            role="tab"
-            :aria-selected="activeClassCategory === category"
-            :class="{ active: activeClassCategory === category }"
-            :data-v39-class-category="category"
-            @click="selectClassCategory(category)"
-          >
-            <strong>{{ category }}</strong>
-          </button>
-        </nav>
-      </section>
-
-      <section class="class-main-pane">
-        <aside class="class-list">
-          <div class="class-list-head">種族: {{ selectedRace }}</div>
-          <button
-            v-for="row in categoryClasses"
-            :key="row.名前"
-            type="button"
-            class="class-item"
-            :class="{ active: activeClass?.名前 === row.名前 }"
-            :data-v39-class-option="row.名前"
-            @click="selectClass(row.名前)"
-          >
-            <span class="class-item-main">
-              <img v-if="classIconSrcFromRow(row)" :src="classIconSrcFromRow(row)" :alt="`${row.名前} アイコン`" class="class-item-icon" />
-              <span v-else class="class-item-icon-fallback">{{ String(row.名前 || "?").slice(0, 1) }}</span>
-              <span class="class-item-name">{{ row.名前 }}</span>
-            </span>
-          </button>
-        </aside>
-
-        <section v-if="activeClass" class="class-detail">
-        <header class="class-title">
-          <h3>{{ activeClass.名前 }}</h3>
-          <div class="class-title-sub">種別: {{ activeClass.種類 }}</div>
-          <p class="class-text">{{ activeClass.詳細 || "詳細説明は未設定です。" }}</p>
-        </header>
-
-        <v39-selection-detail-panel
-          :status-rows="statusRowGroups"
-          :skill-rows="skillRows"
-          :resistance-rows="resistanceRows"
-          :equipment-rows="equipmentRows"
-          :equipment-mode="equipmentMode"
-          :equipment-title="equipmentTitle"
-          :skill-names="classLv5SkillNames"
-          :status-source="activeClass"
-          :active-tab="activeDetailTab"
-          skill-title="クラススキル (Lv1-5)"
-          @update:active-tab="activeDetailTab = $event"
-        />
-
-        <div class="class-actions">
-          <button type="button" class="secondary" @click="$emit('back')">種族へ戻る</button>
-          <button type="button" @click="confirmClass">このクラスで決定</button>
-        </div>
-      </section>
-
-        <section v-else class="class-detail class-detail-empty">
-          <strong>クラスを選択してください</strong>
-          <span>左の一覧からクラスを選ぶと、ステータス・技能・スキルの詳細を確認できます。</span>
-        </section>
-      </section>
-      </div>
-    </div>
-
-    <div v-else class="class-empty">
-      <p v-if="!selectedRace">先に種族を選択してください。</p>
-      <p v-else>この種族に対応するクラスデータがありません。</p>
-    </div>
-  </base-modal>
+  <v39-item-list-screen2 :show="show" title="クラス選択" :subtitle="setupProgressText"
+    :categories="classCategories" :category="activeClassCategory" category-label="クラス系統"
+    :rows="candidateRows" :selected-id="activeClassName" :selected="selected"
+    :list-label="`種族: ${selectedRace}`" category-attribute="data-v39-class-category" row-attribute="data-v39-class-option"
+    :preview="{style:activeClassSheetStyle,src:activeClassIndividualSrc,label:`${selectedRace} ${activeClassName} ユニット画像`,fallback:`${selectedRace} / ${activeClassName || '-'}`}"
+    :detail="{statusRows:statusRowGroups,skillRows,resistanceRows,equipmentRows,equipmentMode,equipmentTitle,skillNames:classLv5SkillNames,statusSource:activeClass}"
+    :active-detail-tab="activeDetailTab" skill-title="クラススキル (Lv1-5)"
+    :empty-text="selectedRace ? 'この種族に対応するクラスデータがありません。' : '先に種族を選択してください。'"
+    :back-label="allowedClasses || baseClassesOnly ? '戻る' : '種族へ戻る'" confirm-label="このクラスで決定"
+    @close="$emit('close')" @back="$emit('back')" @category="selectClassCategory" @select="selectClass"
+    @detail-tab="activeDetailTab = $event" @confirm="confirmClass" />
 </template>
-
-<style scoped>
-.class-screen-layout {
-  min-width:0;
-  min-height:0;
-  height:100%;
-  display:grid;
-  grid-template-rows:minmax(144px,1fr) minmax(0,4fr);
-  gap:10px;
-  overflow:hidden;
-}
-
-.class-preview-frame {
-  min-width:0;
-  min-height:0;
-  display:grid;
-  place-items:center;
-  padding:7px;
-  border:1px solid var(--picker-line);
-  border-radius:8px;
-  background:linear-gradient(180deg,#101d22,#0c171b);
-  overflow:hidden;
-}
-
-.class-preview-inner {
-  width:100%;
-  height:100%;
-  min-height:0;
-  display:grid;
-  place-items:center;
-}
-
-.class-preview-sprite {
-  position:relative;
-  width:128px;
-  height:128px;
-  max-width:100%;
-  max-height:100%;
-  flex:0 0 auto;
-  overflow:hidden;
-  border:1px solid #314950;
-  border-radius:7px;
-  background:#091216;
-}
-
-.class-preview-image {
-  width:128px;
-  height:128px;
-  max-width:100%;
-  max-height:100%;
-  object-fit:contain;
-}
-
-.class-preview-empty {
-  display:grid;
-  gap:4px;
-  place-items:center;
-  color:var(--picker-muted);
-  text-align:center;
-}
-
-.class-preview-empty strong {
-  color:#dce8e7;
-  font-size:var(--font-size-14);
-}
-
-.class-preview-empty span {
-  font-size:var(--font-size-11);
-}
-
-.class-layout {
-  display:grid;
-  grid-template-rows:auto minmax(0,1fr);
-  gap:10px;
-  min-width:0;
-  min-height:0;
-  height:100%;
-  overflow:hidden;
-}
-
-.class-category-pane {
-  min-height:0;
-  padding:8px;
-  border:1px solid var(--picker-line);
-  border-radius:8px;
-  background:#0d181c;
-  overflow:hidden;
-}
-
-.class-category-tabs {
-  display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
-  gap:7px;
-}
-
-.class-category-tabs button {
-  min-width:0;
-  min-height:40px;
-  display:grid;
-  place-items:center;
-  padding:6px 8px;
-  border:1px solid #385159;
-  border-radius:7px;
-  background:#122126;
-  color:#a9babc;
-  text-align:center;
-  cursor:pointer;
-}
-
-.class-category-tabs button strong {
-  color:#dfe9e8;
-  font-size:var(--font-size-14);
-  font-weight:900;
-  white-space:nowrap;
-}
-
-.class-category-tabs button:hover {
-  border-color:#4e7580;
-  color:#dbe8e8;
-}
-
-.class-category-tabs button.active {
-  border-color:var(--picker-active);
-  background:var(--picker-active-bg);
-  color:#f4fbfa;
-  box-shadow:0 0 0 1px rgba(113,209,223,.13) inset;
-}
-
-.class-category-tabs button.active strong {
-  color:#f4fbfa;
-}
-
-.class-main-pane {
-  min-width:0;
-  min-height:0;
-  display:grid;
-  grid-template-columns:minmax(220px,300px) minmax(0,1fr);
-  gap:10px;
-  overflow:hidden;
-}
-
-.class-list {
-  min-width:0;
-  min-height:0;
-  height:100%;
-  overflow-y:auto;
-  overscroll-behavior:contain;
-  display:grid;
-  gap:6px;
-  align-content:start;
-  padding:7px;
-  border:1px solid var(--picker-line);
-  border-radius:8px;
-  background:#0d181c;
-
-
-}
-
-.class-list-head {
-  padding:4px 3px 6px;
-  color:#9fb1b4;
-  font-size:var(--font-compact);
-  font-weight:800;
-}
-
-.class-item {
-  width:100%;
-  min-height:48px;
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:6px 8px;
-  border:1px solid #30464d;
-  border-radius:7px;
-  background:#122126;
-  color:#dce7e6;
-  font-size:var(--font-body);
-  font-weight:700;
-  text-align:left;
-  cursor:pointer;
-  transition:border-color .12s ease,background .12s ease,transform .12s ease;
-}
-
-.class-item:hover {
-  border-color:#4f7580;
-  background:#162a30;
-}
-
-.class-item:active {
-  transform:translateY(1px);
-}
-
-.class-item.active {
-  border-color:var(--picker-active);
-  background:var(--picker-active-bg);
-  color:#f3fbfa;
-  box-shadow:0 0 0 1px rgba(113,209,223,.16) inset;
-}
-
-.class-item-main {
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  min-width:0;
-}
-
-.class-item-name {
-  min-width:0;
-  white-space:normal;
-  overflow-wrap:anywhere;
-  line-height:1.2;
-}
-
-.class-item-icon,
-.class-item-icon-fallback {
-  width:34px;
-  height:34px;
-  flex:0 0 auto;
-  border:1px solid #45616a;
-  border-radius:6px;
-  background:#17282e;
-}
-
-.class-item-icon {
-  object-fit:cover;
-}
-
-.class-item-icon-fallback {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  color:#9ce8f1;
-  font-size:var(--font-size-16);
-  font-weight:900;
-}
-
-.class-detail {
-  min-width:0;
-  min-height:0;
-  height:100%;
-  overflow:hidden;
-  display:grid;
-  grid-template-rows:auto minmax(0,1fr) auto;
-  gap:9px;
-  padding:10px;
-  border:1px solid var(--picker-line);
-  border-radius:8px;
-  background:linear-gradient(180deg,#101d22,#0c171b);
-}
-
-.class-title {
-  min-width:0;
-}
-
-.class-title h3 {
-  margin:0;
-  color:var(--picker-text);
-  font-size:var(--font-size-24);
-  line-height:1.15;
-}
-
-.class-title-sub {
-  margin-top:3px;
-  color:#90dce7;
-  font-size:var(--font-secondary);
-  font-weight:700;
-}
-
-.class-text {
-  margin:6px 0 0;
-  color:var(--picker-muted);
-  font-size:var(--font-secondary);
-  line-height:1.5;
-}
-
-.class-actions {
-  display:flex;
-  justify-content:space-between;
-  gap:8px;
-}
-
-.class-actions button {
-  min-height:38px;
-  padding:6px 14px;
-  border:1px solid var(--picker-active);
-  border-radius:7px;
-  background:#1a4b55;
-  color:#f2fbfa;
-  font-size:var(--font-secondary);
-  font-weight:900;
-  cursor:pointer;
-}
-
-.class-actions button:hover {
-  background:#205964;
-}
-
-.class-actions button.secondary {
-  border-color:#42585f;
-  background:#132126;
-  color:#b8c7c9;
-}
-
-.class-actions button.secondary:hover {
-  border-color:#5c7982;
-  background:#182b31;
-  color:#e2eceb;
-}
-
-.class-detail-empty {
-  grid-template-rows:1fr;
-  place-content:center;
-  text-align:center;
-  color:var(--picker-muted);
-}
-
-.class-detail-empty strong {
-  color:#dce8e7;
-  font-size:var(--font-size-18);
-}
-
-.class-detail-empty span {
-  margin-top:5px;
-  font-size:var(--font-compact);
-}
-
-.class-empty {
-  padding:12px;
-  border:1px dashed #3d5961;
-  border-radius:8px;
-  background:#0e1a1e;
-  color:var(--picker-muted);
-  font-size:var(--font-secondary);
-}
-
-@media (max-width:760px) {
-  .class-screen-layout {
-    grid-template-rows:minmax(136px,1fr) minmax(0,4fr);
-    gap:7px;
-  }
-
-  .class-preview-frame {
-    padding:4px;
-  }
-
-  .class-layout {
-    grid-template-rows:54px minmax(0,1fr);
-    gap:7px;
-  }
-
-  .class-category-pane {
-    padding:6px;
-  }
-
-  .class-category-tabs {
-    height:100%;
-    gap:4px;
-  }
-
-  .class-category-tabs button {
-    min-height:0;
-    height:100%;
-    padding:4px 3px;
-  }
-
-  .class-category-tabs button strong {
-    font-size:var(--font-size-11);
-  }
-
-  .class-main-pane {
-    grid-template-columns:minmax(130px,35%) minmax(0,65%);
-    gap:7px;
-  }
-
-  .class-list {
-    max-height:none;
-    height:100%;
-    display:grid;
-    grid-template-columns:1fr;
-    align-content:start;
-    overflow-x:hidden;
-    overflow-y:auto;
-    padding:5px;
-  }
-
-  .class-list-head {
-    padding:3px 2px 5px;
-    font-size:var(--font-size-10);
-  }
-
-  .class-item {
-    width:100%;
-    min-width:0;
-    min-height:52px;
-    padding:6px;
-    font-size:var(--font-compact);
-  }
-
-  .class-item-main {
-    width:100%;
-    gap:6px;
-  }
-
-  .class-item-icon,
-  .class-item-icon-fallback {
-    width:32px;
-    height:32px;
-  }
-
-  .class-item-name {
-    flex:1 1 auto;
-    font-size:var(--font-size-11);
-  }
-
-  .class-detail {
-    height:100%;
-    max-height:none;
-    gap:6px;
-    padding:7px;
-  }
-
-  .class-title h3 {
-    font-size:var(--font-size-18);
-  }
-
-  .class-title-sub {
-    font-size:var(--font-size-11);
-  }
-
-  .class-text {
-    margin-top:4px;
-    font-size:var(--font-size-11);
-  }
-
-  .class-actions button {
-    flex:1 1 0;
-    min-width:0;
-    min-height:36px;
-    padding:5px 6px;
-    font-size:var(--font-size-11);
-  }
-}
-
-@media (max-width:430px) {
-  .class-main-pane {
-    grid-template-columns:minmax(126px,36%) minmax(0,64%);
-  }
-
-  .class-category-tabs button strong {
-    font-size:var(--font-size-10);
-  }
-
-  .class-item {
-    min-height:50px;
-  }
-
-  .class-item-name {
-    font-size:var(--font-size-10);
-  }
-}
-</style>

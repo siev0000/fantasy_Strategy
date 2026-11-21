@@ -1,9 +1,13 @@
-import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import {tileCenter, tileMetrics} from "./v39-tile-geometry.js";
 import {hegemonyZoneAt} from '../../lib/v39-hegemony-areas.js';
 import { getIconSrcByName, hasIconName } from "../../lib/icon-library.js";
 import { isV39SurfaceCaveEntrance, isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { V39_CAVE_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { hasV39TerrainPattern,terrainPatternNameAt } from './v39-terrain-patterns.js';
+
+import {getV39SharedIconRow} from "../../lib/v39-shared-icon-settings.js";
+import {resolveV39IconAssignment} from "../../lib/v39-icon-assignment.js";
+import {resolveV39EquipmentIconSheet} from "../../lib/v39-equipment-icon-sheets.js";
 
 const BASE_TERRAIN_ICONS = Object.freeze({
   "森": { symbol: "🌲", imageCandidate: true, imageName:"森" },
@@ -29,17 +33,6 @@ let renderRequestId = 0;
 let lastTerrainIconSignature = null;
 let terrainIconArtworkVersion = 0;
 const imageTextureState = new WeakMap();
-
-function tileCenter(x, y) {
-  const width = Number(HEX_TILE_CONFIG?.width) || 40;
-  const height = Number(HEX_TILE_CONFIG?.height) || 48;
-  const rowStep = Number(HEX_TILE_CONFIG?.rowStep) || 36;
-  const oddRowOffsetX = Number(HEX_TILE_CONFIG?.oddRowOffsetX) || width / 2;
-  return {
-    x: (x * width) + (y % 2 === 1 ? oddRowOffsetX : 0) + width / 2,
-    y: (y * rowStep) + height / 2
-  };
-}
 
 function activeScene() {
   const game = window.__v39FieldRuntime?.game;
@@ -119,8 +112,8 @@ function ensureIconTexture(scene, kind, terrain, icon) {
 }
 
 function ensureImageTexture(scene, kind, terrain, icon) {
-  if (!icon?.imageCandidate || !hasIconName(icon.imageName)) return "";
-  const key = textureKey(`${kind}-image`, terrain);
+  if (!icon.sheet && (!icon.imageCandidate || !hasIconName(icon.imageName))) return "";
+  const key = textureKey(`${kind}-image`, icon.sheet ? icon.sheet.filename+":"+icon.number : terrain);
   if (scene.textures.exists(key)) return key;
   let states = imageTextureState.get(scene);
   if (!states) {
@@ -132,25 +125,34 @@ function ensureImageTexture(scene, kind, terrain, icon) {
   const image = new Image();
   image.onload = () => {
     if (!scene?.sys?.isActive?.()) return;
-    if (!scene.textures.exists(key)) scene.textures.addImage(key, image);
+    if (!scene.textures.exists(key)) {
+      if(icon.sheet){
+        const width=image.naturalWidth/icon.sheet.columns,height=image.naturalHeight/icon.sheet.rows,slot=icon.number-1;
+        const texture=scene.textures.createCanvas(key,Math.round(width),Math.round(height));
+        texture.getContext().drawImage(image,(slot%icon.sheet.columns)*width,Math.floor(slot/icon.sheet.columns)*height,width,height,0,0,width,height);
+        texture.refresh();
+      }else scene.textures.addImage(key,image);
+    }
     states.set(key, "loaded");
     terrainIconArtworkVersion += 1;
     scheduleTerrainIconRender();
   };
   image.onerror = () => states.set(key, "failed");
-  image.src = getIconSrcByName(icon.imageName);
+  image.src = icon.sheet?.src || getIconSrcByName(icon.imageName);
   return "";
 }
 
 function addIconImage(scene, container, x, y, kind, terrain, icon) {
   const center = tileCenter(x, y);
-  const key = ensureImageTexture(scene, kind, terrain, icon) || ensureIconTexture(scene, kind, terrain, icon);
+  const override=resolveV39IconAssignment(getV39SharedIconRow("画面用アイコン","地形・"+terrain));
+  if(override)icon={...icon,symbol:override.glyph||icon.symbol,imageCandidate:false,sheet:resolveV39EquipmentIconSheet(override.filename),number:override.number};
+  const key = ensureImageTexture(scene, kind, terrain, icon) || ensureIconTexture(scene, kind, override?.glyph?terrain+":"+override.glyph:terrain, icon);
   const image = scene.add.image(center.x, center.y, key)
     .setOrigin(0.5)
     .setName(`v39-${kind}-icon:${terrain}:${x},${y}`);
 
-  const width = Number(HEX_TILE_CONFIG?.width) || 40;
-  const height = Number(HEX_TILE_CONFIG?.height) || 48;
+  const {width, height} = tileMetrics();
+  if(override?.color)image.setTint(parseInt(override.color.slice(1),16));
   const fill = kind === "special" ? 0.82 : 0.94;
   image.setScale(Math.min((width * fill) / Math.max(1, Number(image.width)), (height * fill) / Math.max(1, Number(image.height))));
   image.setData("terrain", terrain);

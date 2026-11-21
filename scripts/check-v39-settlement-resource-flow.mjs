@@ -3,7 +3,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {build} from 'esbuild';
 process.on('uncaughtException',error=>{console.error(error.message);process.exit(1);});
-const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-economy-rules.js';export * from './frontend/src/lib/v39-resource-delta-view.js';export * from './frontend/src/lib/v39-settlement-resource-flow.js';export * from './frontend/src/v39/world/v39-settlement-resource-flow-ui.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-economy-rules.js';export * from './frontend/src/lib/v39-resource-delta-view.js';export * from './frontend/src/lib/v39-settlement-resource-flow.js';export * from './frontend/src/v39/world/v39-settlement-resource-flow-ui.js';`,resolveDir:process.cwd()},bundle:true,loader:{'.css':'empty','.webp':'empty'},write:false,format:'esm',platform:'node',plugins:[{name:'data',setup(builder){
   builder.onLoad({filter:/game-data-registry\.js$/},args=>{
     const dir=resolve('data/source/export/json'),modules=Object.fromEntries(readdirSync(dir).filter(name=>name.endsWith('.json')).map(name=>[`../../../data/source/export/json/${name}`,JSON.parse(readFileSync(`${dir}/${name}`,'utf8'))]));
     return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
@@ -32,6 +32,7 @@ for(const race of ['只人','悪魔','ヴァンパイア']){
     assert(Math.abs((forecast.productionByType[key]||0)-(forecast.consumptionByType[key]||0)-(forecast.deltaByType[key]||0))<.11);
   const headerBefore=JSON.stringify(state);
   const header=m.buildV39HeaderResourceSnapshot(state,player,base,map);
+  assert.deepEqual([header.food.iconKey,header.material.iconKey,header.money.iconKey],['穀物','木材','金']);
   const headerItems=Object.values(header).flatMap(group=>group.items);
   assert(headerItems.some(item=>item.delta!==0),'initial header must not zero every resource');
   for(const item of headerItems){

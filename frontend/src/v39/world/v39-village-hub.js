@@ -1,3 +1,5 @@
+import {renderV39ResourceIcon} from "../ui/v39-resource-item-icon.js";
+import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import {describeV39VillagePlan,inspectV39VillageDevelopment} from '../../lib/v39-village-plans.js';
 import {inspectV39VillageSupportQuest} from '../../lib/v39-village-support-goals.js';
 import {renderV39Conversation,recordV39Conversation} from './v39-negotiation-conversation.js';
@@ -70,7 +72,7 @@ function switchTab(key){
 }
 function conditionIcon(name,value){
   const icon=resolveV39ResourceIcon(name);
-  return `<span class="v39-quest-condition" title="${esc(name)}" aria-label="${esc(name)} ${esc(value)}"><i aria-hidden="true"${icon.color?` style="color:${esc(icon.color)}"`:''}>${esc(icon.glyph)}</i>${esc(value)}</span>`;
+  return `<span class="v39-quest-condition" title="${esc(name)}" aria-label="${esc(name)} ${esc(value)}"><i aria-hidden="true"${icon.color?` style="color:${esc(icon.color)}"`:''}>${renderV39ScreenIcon(name)||renderV39ResourceIcon(name)}</i>${esc(value)}</span>`;
 }
 function questCard(row,state,village){
   const value=row.pending?`${row.type==='hunt'?Math.max(0,row.required-(row.targetEnemyIds||[]).filter(id=>state.enemies?.some(unit=>unit.id===id&&alive(unit))).length):row.progress||0}/${row.required}`:row.required;

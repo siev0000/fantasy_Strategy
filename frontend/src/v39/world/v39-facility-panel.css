@@ -29,5 +29,20 @@
   border-color:#8bd8e4;
   color:#fff;
 }
-#v39-golem-workshop .v39-enchant-options button { width:100%; }
 #v39-golem-workshop footer p { overflow-wrap:anywhere; }
+
+@media (max-width: 700px) {
+  #v39-golem-workshop:has(.v39-enhancement-screen),
+  #v39-golem-workshop .modal:has(> .v39-enhancement-screen) {
+    width: 100%;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+  }
+  #v39-golem-workshop:has(.v39-enhancement-screen) { inset: 0; margin: 0; }
+  #v39-golem-workshop .modal:has(> .v39-enhancement-screen) {
+    border: 0;
+    border-radius: 0;
+    padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  }
+}

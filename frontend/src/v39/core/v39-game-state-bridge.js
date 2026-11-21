@@ -16,6 +16,7 @@ import { createPlayerFactionState, createPlayerRecord } from "../../lib/player-s
 import { normalizeFactionSettlements, normalizeTerritoryStateRecord,getFactionSettlements } from "../../lib/settlement-state.js";
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import {resolveV39NamedWeaponCreation} from "../../lib/v39-equipment-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
 import {releaseV39DestroyedGolemPilots} from '../../lib/v39-golem-boarding.js';
 import {findV39NewUnitDeaths,applyV39DeathPurification} from '../../lib/v39-death-purification.js';
@@ -448,6 +449,13 @@ function setState(patch = {}, options = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, "timeline")) next.timeline = { ...state.timeline, ...patch.timeline };
   // 保存済みマップは書込時に既に複製済み。無関係な更新で再複製しない。
   const normalized = { ...normalizeState({ ...next, explorationWorlds:{} }), explorationWorlds:next.explorationWorlds };
+  if(Object.hasOwn(patch,"players")){
+    const players=normalized.players.map(player=>resolveV39NamedWeaponCreation(player,normalized.timeline.turnNumber));
+    if(players.some((player,index)=>player!==normalized.players[index])){
+      normalized.players=players;
+      normalized.settlements=deriveWorldSettlements(players,normalized.settlements);
+    }
+  }
   // Observe acquisition/loss immediately without advancing the end-of-turn counter.
   if(!Object.hasOwn(patch,'victory')&&!normalized.victory?.completed&&(normalized.activeWorldId||'surface')==='surface'
     &&(Object.hasOwn(patch,'territoryOwnerByTile')||Object.hasOwn(patch,'victoryLandmarksByTile'))
@@ -527,6 +535,8 @@ function resetFactionForNewLocalSession(factionState = {}) {
     moveCommandUnitId:"",
     golemOrders:[],
     golemOrderSerial:0,
+    spyOperations:{agents:[],intel:[],networks:[],alerts:{}},
+    villagePrisoners:[],
     factionSightings:{},
     visibility:{
       exploredTileKeys:[], visibleTileKeys:[], spottedEnemyTileKeys:[],

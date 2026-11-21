@@ -9,6 +9,7 @@ export function resolveV39UnitWaitUpdate(unit,turnNumber,{recovery=false,cancelR
   const cancel=cancelRecovery||(!recovery&&isV39UnitWaiting(unit,turnNumber));
   return {cancel,unit:{...unit,recoveryWaitTargetPercent:recovery&&!cancel?target:0,
     waitTurnNumber:cancel?0:turnNumber,lastActionTurn:cancel?0:turnNumber,
+    productionWaitTurn:!cancel&&!recovery?turnNumber:0,
     lastAction:cancel?'待機解除':recovery?'回復待機':'待機'}};
 }
 

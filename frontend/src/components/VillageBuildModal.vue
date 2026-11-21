@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import { getIconSrcByName } from "../lib/icon-library.js";
+import { renderV39ResourceIcon } from "../v39/ui/v39-resource-item-icon.js";
 import { resolveV39ResourceIcon } from "../lib/resource-icon-glyphs.js";
 import { RESOURCE_GROUPS } from "../lib/v39-economy-rules.js";
 
@@ -285,7 +286,7 @@ watch(
                         :style="{ '--resource-icon-color': row.iconColor || undefined }"
                         role="img"
                         :aria-label="`${row.label} アイコン`"
-                      >{{ row.icon }}</span>
+                       v-html="renderV39ResourceIcon(row.key || row.label)"></span>
                       <span class="village-build-cost-value">{{ row.label }} {{ row.valueText }}</span>
                     </div>
                     <div v-if="!group.rows.length" class="village-build-cost-empty">-</div>

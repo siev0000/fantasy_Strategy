@@ -3,7 +3,7 @@ import {resolveV39AutomaticRoute} from './v39-transport-rules.js';
 import {advanceV39CaveFormation} from './v39-squad-movement-rules.js';
 import {resolveV39UnitMovementStepCost,canUnitEnterV39Tile} from './v39-terrain-traversal.js';
 import {resolveV39CargoLoad} from './v39-logistics-state.js';
-import {listV39Trades,updateV39Trade,tradeBank,changeTradeBank,tradeMembers,tradeAlive,tradeTurn,
+import {exchangeTradePrisoners,listV39Trades,updateV39Trade,tradeBank,changeTradeBank,tradeMembers,tradeAlive,tradeTurn,
   updateTradeUnits,getTradeCargo,setTradeCargo,tradeCapacity,tradeSpeed,tradeReserveAmount,V39_TRADE_RESOURCES,tradeCourierIndex} from './v39-trade-state.js';
 import {getV39SpecialtyAccess} from './v39-specialty-rules.js';
 import {applyV39DisasterMovementDamage} from './v39-disaster-damage.js';
@@ -216,6 +216,9 @@ export function advanceV39TradeLogistics(state,playerId,map,turn=tradeTurn(state
         loans.push({name,count,from:i,startTurn:turn,endTurn:turn+(contract.specialtyTurns||10)});
       }
       if(invalid){next=interrupt(next,contract,'特産品の保有マスを失いました');continue;}
+      const prisoners=exchangeTradePrisoners(next,contract);
+      if(!prisoners.ok){next=interrupt(next,contract,prisoners.reason);continue;}
+      next=prisoners.state;
       contract.specialtyLoans=[...(contract.specialtyLoans||[]),...loans];next=updateV39Trade(next,contract);
       for(let i=0;i<2;i++) {
         const release=Object.fromEntries(loans.filter(loan=>loan.from===i).map(loan=>[loan.name,loan.count]));

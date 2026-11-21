@@ -1,23 +1,24 @@
-import { getV39EquipmentRarity, getV39EquipmentSlotCandidates, normalizeV39EquipmentItem, canV39ChangeUnitEquipmentSlot } from "../../lib/v39-equipment-rules.js";
+import { getV39EquipmentEnhancementDisplay, getV39EquipmentRarity, getV39EquipmentSlotCandidates, normalizeV39EquipmentItem, canV39ChangeUnitEquipmentSlot } from "../../lib/v39-equipment-rules.js";
 import { isV39SupportSkill, resolveAttackApCost, resolveAttackPower, resolveAttackRange, resolveAttackRows } from "../../lib/v39-combat-engine.js";
 import { resolveV39CurrentUnitAbilities } from "../../lib/v39-current-unit-abilities.js";
-import { renderV39EquipmentDisplayRow, renderV39EquipmentRarityBadge, renderV39EquipmentIcon } from "../ui/v39-equipment-display.js";
+import { getV39EquipmentDisplayStats, renderV39EquipmentDisplayRow, renderV39EquipmentRarityBadge, renderV39EquipmentIcon } from "../ui/v39-equipment-display.js";
 import { applyV39DerivedCharacterData } from "./v39-character-derived-rules.js";
 import { getV39UnitEquipmentStock, changeV39UnitEquipmentFromStock } from "./v39-unit-equipment-access.js";
-import { renderV39UnitCard } from "./v39-unit-card.js";
+import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 import "./v39-equipment-picker.css";
 
 const html = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const numeric = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const round = value => Math.round(value * 100) / 100;
+const comparisonTabs = [["equipment","装備差分"],["unit","スキル・能力への影響"]];
 let selection = null;
 
 function context() {
   const state = window.getV39GameState?.({includeWorlds:false});
   const player = state?.players?.find(row => row.id === state.activePlayerId) || state?.players?.[0];
   const unit = player?.factionState?.units?.find(row => row.id === selection?.unitId);
-  if (!player || !unit || !(unit.hp > 0) || !canV39ChangeUnitEquipmentSlot(unit, selection?.slot)
+  if (!player || !unit || !(unit.hp > 0) || unit.characterStorage || !canV39ChangeUnitEquipmentSlot(unit, selection?.slot)
     || player.id !== selection?.playerId || state.activeWorldId !== selection?.worldId
     || player.factionState.selectedSettlementId !== selection?.settlementId) return null;
   const rows = getV39UnitEquipmentStock(player, unit, selection.underground)
@@ -32,11 +33,11 @@ function equipmentChange({state, player}, row) {
   return changeV39UnitEquipmentFromStock(state, player.id, request, selection.underground);
 }
 
-function addDelta(rows, label, before, after, lowerBetter = false) {
+function addDelta(rows, label, before, after) {
   if (before == null && after == null) return;
   const delta = before == null || after == null ? null : round(after - before);
   if (delta === 0) return;
-  rows.push({label, before, after, delta, lowerBetter});
+  rows.push({label, before, after, delta});
 }
 
 function attackMetrics(unit, mapData, state) {
@@ -71,16 +72,37 @@ function compare(unit, updated, state, nextState) {
     const next = afterAttacks.get(name);
     addDelta(rows, `${name} 威力`, previous?.power, next?.power);
     addDelta(rows, `${name} 射程`, previous?.range, next?.range);
-    addDelta(rows, `${name} AP消費`, previous?.ap, next?.ap, true);
+    addDelta(rows, `${name} AP消費`, previous?.ap, next?.ap);
   }
   return rows;
 }
 
-function comparisonTable(rows) {
+function equipmentMetrics(item) {
+  if (!item) return new Map();
+  return new Map([
+    ...getV39EquipmentDisplayStats(item),
+    ...Object.entries(item.statusBonus || {}).filter(([name]) => name !== "魔力").map(([name, value]) => [`${name}補正`, value]),
+    ...Object.entries(item.resistanceBonus || {})
+  ].map(([name, value, suffix]) => [name, {value:numeric(value), suffix}]));
+}
+
+function compareEquipment(beforeItem, afterItem) {
+  const current = equipmentMetrics(beforeItem);
+  const next = equipmentMetrics(afterItem);
+  return [...new Set([...current.keys(), ...next.keys()])].flatMap(label => {
+    const before = current.get(label)?.value ?? 0;
+    const after = next.get(label)?.value ?? 0;
+    if (before === 0 && after === 0) return [];
+    return [{label, before:beforeItem ? before : null, after:afterItem ? after : null,
+      delta:round(after - before), suffix:current.get(label)?.suffix ?? next.get(label)?.suffix}];
+  });
+}
+
+function comparisonTable(rows, label) {
   if (!rows.length) return '<p class="v39-picker-note">数値の変化なし</p>';
-  return `<table aria-label="ユニットの能力差"><thead><tr><th scope="col">項目</th><th scope="col">現在</th><th scope="col">変更後</th></tr></thead><tbody>${rows.map(({label, before, after, delta, lowerBetter}) => {
-    const tone = (lowerBetter ? delta < 0 : delta > 0) ? "improved" : "reduced";
-    return `<tr><th scope="row">${html(label)}</th><td>${before == null ? "—" : round(before)}</td><td>${after == null ? "—" : round(after)}${delta == null ? "" : ` <small class="${tone}">(${delta > 0 ? "+" : ""}${delta})</small>`}</td></tr>`;
+  return `<table aria-label="${label}"><thead><tr><th scope="col">項目</th><th scope="col">変更前</th><th scope="col">変更後</th></tr></thead><tbody>${rows.map(({label, before, after, delta, suffix = ""}) => {
+    const tone = !delta ? "" : delta > 0 ? "increased" : "decreased";
+    return `<tr><th scope="row">${html(label)}</th><td>${before == null ? "—" : round(before)+suffix}</td><td class="${tone}">${after == null ? "—" : round(after)+suffix}${!delta ? "" : ` <small>(${delta > 0 ? "+" : ""}${delta}${suffix})</small>`}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -93,8 +115,10 @@ function equipmentPreview(item) {
 
 function candidateMarkup({item, key, count}) {
   const quality = getV39EquipmentRarity(item.quality).key;
+  const {name, used} = getV39EquipmentEnhancementDisplay(item);
   return `<button type="button" class="v39-equipment-display-row v39-picker-item" data-quality="${html(quality)}" data-equipment-picker-key="${html(key)}" aria-pressed="false">
-    <span class="v39-equipment-display-icon" aria-hidden="true">${renderV39EquipmentIcon(item)}</span><b>${html(item.name)}</b>
+    <span class="v39-equipment-display-icon" aria-hidden="true">${renderV39EquipmentIcon(item)}</span>
+    <b class="v39-equipment-display-name">${html(name)}${used ? ` <span class="v39-equipment-enhancement-level">+${html(used)}</span>` : ""}</b>
     ${renderV39EquipmentRarityBadge(quality)}<small>在庫 ${html(count)}</small>
   </button>`;
 }
@@ -113,14 +137,19 @@ function updateComparison(dialog, c) {
     const preview = result.ok && updated
       ? selection.underground ? updated : applyV39DerivedCharacterData(updated)
       : null;
-    if (preview?.derivedCharacter?.ok) rows = compare(c.unit, preview, c.state, result.state);
+    if (preview?.derivedCharacter?.ok) rows = selection.comparisonTab === "equipment"
+      ? compareEquipment(c.current, next)
+      : compare(c.unit, preview, c.state, result.state);
     else error = result.reason || "装備の計算に失敗しました";
   }
-  const panel = dialog.querySelector(".v39-picker-comparison");
+  const panel = dialog.querySelector(".v39-picker-comparison-content");
   panel.innerHTML = `<div class="v39-picker-names">
-      <div><small>現在の装備</small>${equipmentPreview(c.current)}</div>
+      <div><small>変更前の装備</small>${equipmentPreview(c.current)}</div>
       <div><small>変更後の装備</small>${chosen ? equipmentPreview(next) : '<span class="v39-picker-note">候補を選択</span>'}</div>
-    </div>${chosen && !error ? comparisonTable(rows) : ""}`;
+    </div>${chosen && !error ? comparisonTable(rows, selection.comparisonTab === "equipment" ? "装備差分" : "スキル・能力への影響") : ""}`;
+  for (const tab of dialog.querySelectorAll("[data-equipment-comparison-tab]")) {
+    tab.setAttribute("aria-pressed", String(tab.dataset.equipmentComparisonTab === selection.comparisonTab));
+  }
   for (const button of dialog.querySelectorAll("[data-equipment-picker-key]")) {
     button.setAttribute("aria-pressed", String(button.dataset.equipmentPickerKey === selection.key));
   }
@@ -129,16 +158,17 @@ function updateComparison(dialog, c) {
 }
 
 function render(dialog, c) {
-  dialog.innerHTML = `<header><h2 id="v39-equipment-picker-title">${html(selection.slot)}を変更</h2>
+  dialog.innerHTML = `<header><h2 id="v39-equipment-picker-title">${html(c.unit.name)} · ${html(selection.slot)}を変更</h2>
       <button type="button" data-equipment-picker-close aria-label="閉じる">×</button></header>
-    <div class="v39-picker-body"><section class="v39-picker-candidates" aria-label="装備候補"><h3>装備候補</h3>
+    <div class="v39-picker-body"><section class="v39-picker-candidates" aria-label="装備候補"><h3>装備候補</h3><div class="v39-picker-option-grid">
       ${c.current ? '<button type="button" data-equipment-picker-key="remove" aria-pressed="false">装備を外す</button>' : ""}
       ${c.rows.map(candidateMarkup).join("")}
       ${!c.rows.length ? '<p class="v39-picker-note">この部位に装備できる在庫がありません。</p>' : ""}
-      </section>
-      <section class="v39-picker-unit-area" aria-label="ユニットと装備の比較">
-        ${renderV39UnitCard(c.unit, {portrait:true, interactive:false, collapseUnselected:false})}
-        <div class="v39-picker-comparison"></div>
+      </div></section>
+      <section class="v39-picker-comparison" aria-label="装備変更前後の比較">
+        <div class="v39-picker-comparison-tabs" role="group" aria-label="比較内容">${comparisonTabs.map(([key,label]) =>
+          `<button type="button" data-equipment-comparison-tab="${key}">${label}</button>`).join("")}</div>
+        <div class="v39-picker-comparison-content"></div>
       </section></div>
     <output aria-live="polite"></output><footer><button type="button" data-equipment-picker-close>戻る</button>
       <button type="button" data-equipment-picker-confirm>決定</button></footer>`;
@@ -148,8 +178,8 @@ function render(dialog, c) {
 export function openV39EquipmentPicker(unitId, slot, onChanged) {
   const player = window.getV39ActivePlayer?.();
   const unit = player?.factionState?.units?.find(row => row.id === unitId);
-  if (!canV39ChangeUnitEquipmentSlot(unit,slot) || !(unit.hp > 0)) return false;
-  selection = {playerId:player.id, unitId, slot, onChanged, key:"", message:"",
+  if (!EQUIPMENT_SLOT_KEYS.includes(slot) || !canV39ChangeUnitEquipmentSlot(unit,slot) || !(unit.hp > 0) || unit.characterStorage) return false;
+  selection = {playerId:player.id, unitId, slot, onChanged, key:"", message:"", comparisonTab:"equipment",
     settlementId:player.factionState.selectedSettlementId,
     worldId:window.getV39ActiveWorldId?.() ?? window.getV39GameState?.({includeWorlds:false})?.activeWorldId,
     underground:!!window.__v39FieldRuntime?.mapData?.isUnderground};
@@ -173,7 +203,11 @@ export function openV39EquipmentPicker(unitId, slot, onChanged) {
       if (target.hasAttribute("data-equipment-picker-key")) {
         selection.key = target.dataset.equipmentPickerKey;
         selection.message = "";
-        dialog.querySelector(".v39-picker-comparison").scrollTop = 0;
+        dialog.querySelector(".v39-picker-comparison-content").scrollTop = 0;
+        updateComparison(dialog, c);
+      } else if (target.hasAttribute("data-equipment-comparison-tab")) {
+        selection.comparisonTab = target.dataset.equipmentComparisonTab;
+        dialog.querySelector(".v39-picker-comparison-content").scrollTop = 0;
         updateComparison(dialog, c);
       } else if (target.hasAttribute("data-equipment-picker-confirm")) {
         const row = c.rows.find(item => item.key === selection.key);

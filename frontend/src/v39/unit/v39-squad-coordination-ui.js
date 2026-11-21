@@ -31,14 +31,15 @@ export function renderV39GolemBoarding(unit,faction,map){
     data-golem-board="${escape(golemId)}" data-golem-pilot="${escape(pilotId)}" ${disabled?'disabled':''}>
     <span class="technique-summary"><b class="technique-name">${escape(label)}</b></span></button>`;
   if(unit.boardingPilot){
-    return `<details class="v39-squad-coordination" open><summary>搭乗中　${escape(unit.boardingPilot.name)}</summary>${card(unit.id,'降車','')}</details>`;
+    return `<section class="v39-squad-coordination" data-basic-action-label="降車"><div>
+      <span>搭乗中　${escape(unit.boardingPilot.name)}</span>${card(unit.id,'降車','')}</div></section>`;
   }
   if(!isV39GolemPilot(unit))return '';
   const targets=getV39GolemBoardingTargets(faction?.units||[],unit,map);
   if(!targets.length)return '';
   const ap=unit=>Number(unit.ap??unit.currentAp)||0;
-  return `<details class="v39-squad-coordination" open><summary>搭乗（双方AP${GOLEM_BOARD_AP}）</summary>
-    ${targets.map(target=>card(target.id,`${target.name}に搭乗`,unit.id,ap(unit)<GOLEM_BOARD_AP||ap(target)<GOLEM_BOARD_AP)).join('')}</details>`;
+  return `<section class="v39-squad-coordination" data-basic-action-label="搭乗" data-basic-action-meta="双方 AP${GOLEM_BOARD_AP}"><div>
+    ${targets.map(target=>card(target.id,`${target.name}に搭乗`,unit.id,ap(unit)<GOLEM_BOARD_AP||ap(target)<GOLEM_BOARD_AP)).join('')}</div></section>`;
 }
 
 async function advanceActive({move=true}={}) {

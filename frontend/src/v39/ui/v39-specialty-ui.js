@@ -1,5 +1,6 @@
 import { getV39SpecialtyEntries, getV39SpecialtyAccess, isV39HarvestResource, resolveV39SpecialResourceHarvestRule } from "../../lib/v39-specialty-rules.js";
-import { resolveV39ResourceIconGlyph } from "../../lib/resource-icon-glyphs.js";
+import {renderV39ScreenIcon} from "./v39-screen-icons.js";
+import {renderV39ResourceItemSprite} from "./v39-resource-item-icon.js";
 import { getSelectedSettlement } from "../../lib/settlement-state.js";
 
 let opened = false;
@@ -46,7 +47,7 @@ function renderPanel() {
   };
   const markup = `<div class="v39-specialty-head"><b>特殊資源</b><button type="button" data-specialty-close aria-label="閉じる">×</button></div>
     <div class="v39-specialty-tabs" role="tablist">${[["stock","在庫"],["specialties","特産品"]].map(([key,label]) => `<button type="button" role="tab" aria-selected="${selectedTab === key}" data-specialty-tab="${key}">${label}</button>`).join("")}</div>
-    <div class="v39-specialty-list">${selectedTab === "stock" ? stock.map(row => `<div class="v39-specialty-row"><span style="color:${escape(row.iconColor || "inherit")}">${escape(row.icon)}</span><b>${escape(row.name)}</b><span>${Number(row.value).toLocaleString("ja-JP")}</span><small>${Math.round(row.delta) > 0 ? "+" : ""}${Math.round(row.delta) || 0}</small>${harvestNote(row)}</div>`).join("") : found.length ? found.map(row => `<div class="v39-specialty-row"><span style="color:${escape(row.color || "inherit")}">${escape(row.glyph)}</span><b>${escape(row.name)}</b><span>${row.count}マス</span></div>`).join("") : "発見済みの特産品マスを領土にすると表示されます。"}</div>`;
+    <div class="v39-specialty-list">${selectedTab === "stock" ? stock.map(row => `<div class="v39-specialty-row"><span style="color:${escape(row.iconColor || "inherit")}">${renderV39ResourceItemSprite(row.name) || escape(row.icon)}</span><b>${escape(row.name)}</b><span>${Number(row.value).toLocaleString("ja-JP")}</span><small>${Math.round(row.delta) > 0 ? "+" : ""}${Math.round(row.delta) || 0}</small>${harvestNote(row)}</div>`).join("") : found.length ? found.map(row => `<div class="v39-specialty-row"><span style="color:${escape(row.color || "inherit")}">${renderV39ResourceItemSprite(row.name) || renderV39ResourceItemSprite(row.name) || escape(row.glyph)}</span><b>${escape(row.name)}</b><span>${row.count}マス</span></div>`).join("") : "発見済みの特産品マスを領土にすると表示されます。"}</div>`;
   if(panel.__v39Markup!==markup){panel.innerHTML=markup;panel.__v39Markup=markup;}
 }
 
@@ -56,7 +57,7 @@ export function renderV39SpecialtyHeader(parent,snapshot) {
   let button = document.getElementById("v39-specialty-header");
   if(!button){
     button=document.createElement("button");
-    button.innerHTML=`<span class="ico">${resolveV39ResourceIconGlyph("特産品")}</span><span><span class="resource-label">特殊資源</span><b class="value-main"></b><small class="value-delta"></small></span>`;
+    button.innerHTML=`<span class="ico">${renderV39ScreenIcon("特殊資源")}</span><span><span class="resource-label">特殊資源</span><b class="value-main"></b><small class="value-delta"></small></span>`;
     button.addEventListener("click", event => {
       event.stopPropagation(); opened = !opened;
       document.getElementById("resourceDrawer")?.classList.remove("show");
@@ -87,4 +88,12 @@ document.addEventListener("pointerdown", event => {
 
 const style = document.createElement("style");
 style.textContent = `#v39-specialty-panel{position:absolute;z-index:55;top:6px;right:6px;width:min(350px,calc(100% - 12px));max-height:calc(100% - 12px);overflow:auto;background:#122126;border:1px solid #526f74;border-radius:8px;padding:8px;color:#e3eeed;font-size:var(--font-body)}#v39-specialty-panel[hidden]{display:none}.v39-specialty-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.v39-specialty-head button{font-size:var(--font-body);padding:4px 10px;background:#1b3036;color:#e3eeed;border:1px solid #526f74;border-radius:5px}.v39-specialty-list{display:grid;gap:6px;margin-top:6px}.v39-specialty-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;align-items:center;gap:6px;padding:6px;background:#1a3035;border-radius:5px}.v39-specialty-row small{font-size:var(--font-secondary);color:#a8c4b4}.v39-harvest-note{grid-column:2/-1}.v39-specialty-tabs{display:flex;gap:6px;margin-top:6px}.v39-specialty-tabs button{font-size:var(--font-body);padding:5px 10px;color:#e3eeed;background:#1b3036;border:1px solid #526f74;border-radius:5px}.v39-specialty-tabs button[aria-selected="true"]{background:#24535c;border-color:#75dcec}`;
+style.textContent += `
+  #v39-specialty-panel { width:min(300px,calc(100% - 12px)); }
+  #v39-specialty-panel .v39-specialty-list { gap:4px; }
+  #v39-specialty-panel .v39-specialty-row { grid-template-columns:24px minmax(0,1fr) auto auto; padding-block:3px; }
+  #v39-specialty-panel .v39-specialty-row > span:first-child {
+    display:grid; place-items:center; grid-template:20px / 24px; font-size:1.5em; line-height:1;
+  }
+`;
 document.head.appendChild(style);

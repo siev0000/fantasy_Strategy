@@ -6,6 +6,7 @@ import {renderV39UnitAbility} from "../unit/v39-unit-detail.js";
 import {renderV39UnitSkills} from "../unit/v39-unit-skills.js";
 import {installV39ItemListPortraitPreview} from "./v39-item-list-portrait-preview.js";
 import {renderV39EquipmentDisplayRow} from "./v39-equipment-display.js";
+import {renderV39ResourceItemSprite} from "./v39-resource-item-icon.js";
 
 if (typeof document !== "undefined") installV39ItemListPortraitPreview();
 
@@ -19,7 +20,7 @@ const actionData = ({id, value, destination, attribute}) =>
   ` data-v39-item-list-action="${escapeHtml(id)}"${value === undefined ? "" : ` data-v39-item-list-value="${escapeHtml(value)}"`}${destination ? ` data-v39-item-list-destination="${escapeHtml(destination)}"` : ""}${dataAttribute(attribute,value)}`;
 
 function button(action) {
-  return `<button type="button" class="v39-summon-action"${actionData(action)}${action.selected === undefined ? "" : ` aria-pressed="${Boolean(action.selected)}"`}${action.disabled ? " disabled" : ""}>${escapeHtml(action.label)}</button>`;
+  return `<button type="button" class="v39-summon-action"${actionData(action)}${action.ariaLabel ? ` aria-label="${escapeHtml(action.ariaLabel)}"` : ""}${action.selected === undefined ? "" : ` aria-pressed="${Boolean(action.selected)}"`}${action.disabled ? " disabled" : ""}>${escapeHtml(action.label)}${action.badge!=null?`<b class="v39-enhancement-planned-level" aria-hidden="true">${escapeHtml(action.badge)}</b>`:""}${action.description ? `<small>${escapeHtml(action.description)}</small>` : ""}</button>`;
 }
 
 function renderControls(controls) {
@@ -88,14 +89,78 @@ function renderUnitDetail({unit,activeDetailTab,detailTabAttribute,notes,equipme
 }
 
 const renderLines = (lines = []) => lines.map(line => `<p>${escapeHtml(line)}</p>`).join("");
+const renderCosts = costs => costs.map(({label,amounts,summary,stock}) => renderV39ItemListCost(label,amounts,{summary,stock})).join("");
 
-function renderEnhancements({section,limitText,choices = []}) {
-  return `<h4>${escapeHtml(section)}</h4>${limitText ? `<p>${escapeHtml(limitText)}</p>` : ""}
-    <div class="summon-scroll"><div class="v39-enchant-options">${choices.map(choice =>
-      `<div class="v39-item-list-enhancement-option"><button type="button"${actionData(choice)} class="${choice.selected ? "active" : ""}" aria-pressed="${Boolean(choice.selected)}"${choice.disabled ? " disabled" : ""}>
-      <b>${escapeHtml(choice.label)}</b>${choice.detail ? `<span>${escapeHtml(choice.detail)}</span>` : ""}</button>
-      ${renderV39ItemListCost("素材",choice.amounts)}</div>`
-    ).join("") || "<p>付与候補がありません</p>"}</div></div>`;
+function renderEnhancementCapacity({used,total,single,added}={}){
+  if(total==null||total<=0)return "";
+  const percent=value=>Math.min(100,Math.max(0,100*value/total));
+  return `<div class="v39-enhancement-capacity">
+    <div class="v39-enhancement-capacity-row">
+      <strong>強化Lv</strong>
+      <div class="v39-enhancement-gauge" aria-hidden="true"
+        style="--used:${percent(used)}%;--total-used:${percent(used+added)}%;--tick:${100/total}%"></div>
+      <span aria-label="使用済み ${used}、今回 ${added}、上限 ${total}">${used}+${added}/${total}</span>
+    </div>
+    ${single!=null?`<small>1件 Lv${single}まで</small>`:""}
+  </div>`;
+}
+
+function renderEnhancementPreview({changes,breakdown=[],effects}){
+  const format=value=>Number(value.toFixed(4)).toLocaleString("ja-JP");
+  const renderRows=stats=>stats.map(({label,current,result,suffix})=>{
+    const delta=result-current;
+    const currentText=format(current)+suffix;
+    const deltaText=(delta<0?"":"+")+format(delta)+suffix;
+    return `<div class="v39-enhancement-stat"><dt>${escapeHtml(label)}</dt><dd>${delta
+      ?`${currentText} → <b class="${delta<0?"negative":"positive"}">${format(result)}${suffix}（${deltaText}）</b>`
+      :`<b>${currentText}</b>`}</dd></div>`;
+  }).join("");
+  return `${changes.length?`<dl class="v39-enhancement-preview">${renderRows(changes)}</dl>`:""}
+    ${breakdown.length?`<section><h4>物理威力の内訳</h4><dl class="v39-enhancement-preview">${renderRows(breakdown)}</dl></section>`:""}
+    ${effects.length?`<p class="v39-enhancement-new-effect">追加効果 ${escapeHtml(effects.join("・"))}</p>`:""}`;
+}
+
+export function renderV39EnhancementScreen({groups = [], choices = [], emptyText = "付与候補がありません", target, choice, capacity, applied, preview, detailMaterials, summary = [], costs = [], status, statusIsError = false, actions = []}) {
+  const hasGroups = groups.length > 0;
+  return `<div class="v39-enhancement-screen${hasGroups ? " v39-enhancement-with-groups" : ""}">
+    ${hasGroups ? `<nav class="v39-enhancement-groups" aria-label="部位・改造">${groups.map(button).join("")}</nav>` : ""}
+    <section class="v39-enhancement-candidates" aria-label="付与候補">
+      ${applied?`<div class="v39-enhancement-applied"><strong>付与済み ${escapeHtml(applied.count)}件 · 合計Lv${escapeHtml(applied.used)}</strong>
+        <ul>${applied.entries.map(entry=>`<li><span>${escapeHtml(entry.name)}</span>${entry.level!=null?`<b>Lv${escapeHtml(entry.level)}</b>`:""}</li>`).join("")}</ul></div>`:""}
+      <div class="v39-enhancement-options">${choices.map(({selected, focused, planned, unavailable, ...option}) => `<div class="v39-enhancement-option${planned?" is-planned":""}${unavailable?" is-unavailable":""}">
+        ${button({...option,selected:focused})}${selected ? '<small>選択済み</small>' : ""}
+      </div>`).join("") || `<p>${escapeHtml(emptyText)}</p>`}</div>
+    </section>
+    <section class="v39-enhancement-details${detailMaterials?" v39-enhancement-details-with-materials":""}" aria-label="付与の詳細">
+      <div class="v39-enhancement-detail-content">
+      ${target?.heading ? `<h4>${renderIconLabel(target.icon, target.heading)}</h4>` : ""}
+      ${renderLines(target?.lines)}
+      ${renderEnhancementCapacity(capacity||undefined)}
+      ${choice ? `${choice.stageNames?.length?`<label class="v39-enhancement-level">
+          <b>${escapeHtml(choice.label)}</b>
+          <input type="range" min="0" max="${Math.max(1,choice.stageNames.length-1)}" step="1"
+            value="${choice.levelIndex}" data-enchantment-stages="${escapeHtml(JSON.stringify(choice.stageNames))}"
+            aria-label="${escapeHtml(choice.label)}の付与Lv" aria-valuetext="Lv${escapeHtml(choice.level)} / 最大Lv${escapeHtml(choice.maximumLevel)}"
+            ${choice.stageNames.length===1?"disabled":""}>
+          <output>${escapeHtml(choice.level)}/${escapeHtml(choice.maximumLevel)}</output>
+        </label>`:`<h4>${escapeHtml(choice.label)}</h4>`}
+        ${renderLines(choice.lines)}
+        ${choice.warning ? `<p class="v39-enhancement-warning">${escapeHtml(choice.warning)}</p>` : ""}
+        ${renderV39ItemListCost("必要素材",choice.amounts) || (choice.amounts ? "<p>必要素材なし</p>" : "")}
+        ${choice.action ? button(choice.action) : ""}
+        ${choice.remove ? button(choice.remove) : ""}` : ""}
+      ${preview?renderEnhancementPreview(preview):""}
+      ${renderLines(summary)}
+      ${renderCosts(costs)}
+      ${status ? `<p role="status"${statusIsError ? ' class="v39-enhancement-warning"' : ""}>${escapeHtml(status)}</p>` : ""}
+      </div>
+      ${detailMaterials?`<div class="v39-enhancement-materials">
+        ${renderV39ItemListCost("素材",detailMaterials.amounts,{stock:detailMaterials.stock,highlightShortage:true})||"<span>素材なし</span>"}
+        ${detailMaterials.points?.length?`<div class="v39-enhancement-point-cost"><b>消費ポイント</b>${detailMaterials.points.map(([label,amount])=>`<span>${escapeHtml(label)} ${escapeHtml(amount)}</span>`).join("")}</div>`:""}
+      </div>`:""}
+    </section>
+    <footer class="v39-item-list-actions v39-enhancement-actions">${actions.map(button).join("")}</footer>
+  </div>`;
 }
 
 export function readV39ItemListAction(element) {
@@ -111,16 +176,14 @@ export function readV39ItemListAction(element) {
 export function renderV39ItemListScreen1({
   title, titleId = "v39-item-list-screen-1-title", closeAttribute, help = [], tabs = [], activeTab,
   rows = [], listControls, listNotes, listActions = [], groups, detail = {}, enhancement = null, actions = [],
-  costs = [], status, footerNotes
+  costs = [], status, footerNotes, bodyMarkup
 }) {
   const headingId = escapeHtml(titleId);
   const navigation = tabs.length ? `<nav class="v39-item-list-tabs" aria-label="種別">
       ${tabs.map(({id,label}) => button({id:"tab",value:id,label,selected:id===activeTab,attribute:"data-v39-item-list-tab"})).join("")}
     </nav>` : "";
-  const left = `${renderLines(listNotes)}${renderControls(listControls)}${listActions.map(button).join("")}${groups
-    ? groups.map(group => button(group)).join("")
-    : renderCandidates(rows,detail)}`;
-  const main = detail.kind === "enhancement" ? renderEnhancements(detail)
+  const left = `${renderLines(listNotes)}${renderControls(listControls)}${listActions.map(button).join("")}${renderCandidates(rows,detail)}`;
+  const main = detail.kind === "enhancement" ? ""
     : detail.kind === "review" ? `<h4>${escapeHtml(detail.heading)}</h4><div class="summon-scroll">${renderLines(detail.lines)}</div>`
     : detail.kind === "item" ? renderItemDetail(detail)
     : renderUnitDetail(detail);
@@ -129,23 +192,25 @@ export function renderV39ItemListScreen1({
     <header class="modal-header"><h3 id="${headingId}">${escapeHtml(title)}</h3>${navigation}
     <div class="v39-item-list-header-actions">${help.length ? `<details class="v39-item-list-help"><summary aria-label="画面の説明">？</summary>
       <div class="v39-item-list-help-content">${renderLines(help)}</div></details>` : ""}<button type="button"${actionData({id:"close",attribute:closeAttribute})} class="v39-item-list-close v39-summon-action" aria-label="閉じる">×</button></div></header>
-    <div class="modal-body character-layout"><div class="list-pane">${left}</div>
+    ${bodyMarkup !== undefined ? bodyMarkup : detail.kind === "enhancement" ? renderV39EnhancementScreen({groups, ...detail, summary:footerNotes, costs, status, actions:buttons}) :
+    `<div class="modal-body character-layout"><div class="list-pane">${left}</div>
     <div class="summon-detail squad-detail-pane">${renderControls(detail.controls)}${main}
-      <footer>${renderLines(footerNotes)}${costs.map(({label,amounts,summary,stock}) => renderV39ItemListCost(label,amounts,{summary,stock})).join("")}
+      <footer>${renderLines(footerNotes)}${renderCosts(costs)}
         ${status ? `<p role="status">${escapeHtml(status)}</p>` : ""}
         <div class="v39-item-list-actions">${buttons.map(button).join("")}</div>
-      </footer></div></div></section>`;
+      </footer></div></div>`}</section>`;
 }
 
-function renderV39ItemListCost(label, amounts, {summary = "", stock} = {}) {
+export function renderV39ItemListCost(label, amounts, {summary = "", stock, highlightShortage = false} = {}) {
   const resources = Object.entries(amounts ?? {}).filter(([, amount]) => Number(amount) > 0);
   if (!resources.length && !summary) return "";
   return `<div class="v39-item-list-cost"><b>${escapeHtml(label)}</b>${summary ? `<span>${escapeHtml(summary)}</span>` : ""}
     ${resources.map(([name, amount]) => {
       const {glyph, color, kind} = resolveV39ResourceIcon(name);
       const quantity = stock ? `${stock[name] ?? 0}/${amount}` : amount;
-      return `<details class="v39-item-list-resource"><summary aria-label="${escapeHtml(`${name} ${quantity}`)}" title="${escapeHtml(name)}">
-        <span aria-hidden="true" class="resource-glyph-icon is-${kind}" style="--resource-icon-color:${color || 'inherit'}">${escapeHtml(glyph)}</span> ${escapeHtml(quantity)}</summary>
+      const shortage=highlightShortage&&stock&&(Number(stock[name])||0)<Number(amount);
+      return `<details class="v39-item-list-resource${shortage?" v39-enhancement-material-shortage":""}"><summary aria-label="${escapeHtml(`${name} ${quantity}${shortage?" 不足":""}`)}" title="${escapeHtml(name)}">
+        ${renderV39ResourceItemSprite(name) || `<span aria-hidden="true" class="resource-glyph-icon is-${kind}" style="--resource-icon-color:${color || 'inherit'}">${escapeHtml(glyph)}</span>`} ${escapeHtml(quantity)}</summary>
         <span class="v39-item-list-resource-name">${escapeHtml(name)}</span></details>`;
     }).join("")}</div>`;
 }

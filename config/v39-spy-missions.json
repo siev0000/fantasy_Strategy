@@ -1,0 +1,97 @@
+{
+  "偵察": {
+    "baseTurns": 2,
+    "skills": [
+      "索敵"
+    ],
+    "concealment": "隠密"
+  },
+  "内政調査": {
+    "baseTurns": 4,
+    "skills": [
+      "統治",
+      "知識"
+    ],
+    "concealment": "変装"
+  },
+  "技術調査": {
+    "baseTurns": 5,
+    "skills": [
+      "知識",
+      "鑑定"
+    ],
+    "concealment": "変装"
+  },
+  "情報網構築": {
+    "baseTurns": 8,
+    "skills": [
+      "交渉",
+      "騙す"
+    ],
+    "concealment": "変装"
+  },
+  "破壊工作": {
+    "baseTurns": 5,
+    "skills": [
+      "装置",
+      "早業"
+    ],
+    "concealment": "隠密"
+  },
+  "物資妨害": {
+    "baseTurns": 4,
+    "skills": [
+      "早業",
+      "隠密"
+    ],
+    "concealment": "隠密"
+  },
+  "扇動": {
+    "baseTurns": 6,
+    "skills": [
+      "威圧",
+      "交渉"
+    ],
+    "concealment": "変装"
+  },
+  "暗殺": {
+    "baseTurns": 3,
+    "skills": [
+      "早業",
+      "隠密"
+    ],
+    "concealment": "隠密"
+  },
+  "物資窃盗": {
+    "baseTurns": 3,
+    "skills": [
+      "早業",
+      "隠密"
+    ],
+    "concealment": "隠密"
+  },
+  "装備窃盗": {
+    "baseTurns": 4,
+    "skills": [
+      "早業",
+      "隠密"
+    ],
+    "concealment": "隠密"
+  },
+  "複数装備窃盗": {
+    "baseTurns": 4,
+    "skills": [
+      "早業",
+      "隠密"
+    ],
+    "concealment": "隠密"
+  },
+  "希少品窃盗": {
+    "baseTurns": 4,
+    "skills": [
+      "早業",
+      "隠密"
+    ],
+    "concealment": "隠密"
+  }
+}

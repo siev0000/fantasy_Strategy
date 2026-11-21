@@ -1,10 +1,19 @@
+#equipmentModal { padding: 0; }
+
 #equipmentModal > .modal {
-  width: min(900px, 100%);
+  width: 100%;
+  height: 100%;
   max-height: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
   grid-template-rows: auto minmax(0, 1fr);
 }
 
 #equipmentModal .modal-head h2 { font-size: 18px; }
+#equipmentModal .v39-enchantment-color-open { margin-left: auto; }
+#equipmentModal .v39-enchantment-color-open + .close { margin-left: 0; }
 
 #equipmentModal .v39-equipment-body {
   display: grid;
@@ -17,7 +26,7 @@
 #equipmentModal .v39-equipment-tabs,
 #equipmentModal .v39-equip-craft-fields {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -34,8 +43,7 @@
   font-size: 14px;
 }
 
-#equipmentModal button[aria-pressed="true"],
-#equipmentModal .v39-enchant-options button.active:not(:disabled) {
+#equipmentModal button[aria-pressed="true"] {
   background: #204650;
   color: #fff;
   border-color: #81d5df;
@@ -45,6 +53,20 @@
   background: #26343a;
   color: #b6c5c8;
   opacity: 1;
+}
+
+#equipmentModal button[data-v39-item-list-action="add-enhancement"] {
+  width: 100%;
+  min-height: 40px;
+  margin-block: 4px 6px;
+  font-weight: 700;
+  white-space: normal;
+}
+
+#equipmentModal button[data-v39-item-list-action="add-enhancement"]:enabled {
+  border-color: #ffe09a;
+  background: #f2cd67;
+  color: #322508;
 }
 
 #equipmentModal :is(button, select, input):focus-visible {
@@ -59,8 +81,7 @@
 }
 
 #equipmentModal .v39-equip-inventory,
-#equipmentModal .v39-equip-craft-layout,
-#equipmentModal .v39-enchant-layout {
+#equipmentModal .v39-equip-craft-layout {
   display: grid;
   gap: 8px;
   height: 100%;
@@ -71,9 +92,8 @@
 }
 
 #equipmentModal :is(.v39-equip-inventory, .v39-equip-craft-layout) > * { overscroll-behavior: contain; }
-#equipmentModal .v39-enchant-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-#equipmentModal :is(.v39-equip-list, .v39-equip-detail, .v39-enchant-form, .v39-equip-slots section, .v39-equip-craft) {
+#equipmentModal :is(.v39-equip-list, .v39-equip-detail, .v39-equip-character-status, .v39-equip-character-slots, .v39-equip-craft) {
   min-width: 0;
   min-height: 0;
   border: 1px solid #34474e;
@@ -82,35 +102,59 @@
   padding: 8px;
 }
 
-#equipmentModal :is(.v39-equip-list, .v39-equip-detail, .v39-enchant-form) { overflow: auto; }
+#equipmentModal :is(.v39-equip-list, .v39-equip-detail) { overflow: auto; }
+#equipmentModal .v39-equip-inventory-detail {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#equipmentModal .v39-equip-inventory-header {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 8px;
+  margin-block-end: 8px;
+}
+#equipmentModal .v39-equip-inventory-header h3 { margin: 0; overflow-wrap: anywhere; }
+#equipmentModal .v39-equip-inventory-header > small { grid-column: 1 / -1; }
+#equipmentModal .v39-equip-inventory-header button:not(:disabled) {
+  border-color: #81d5df;
+  background: #24505c;
+  color: #fff;
+  font-weight: 700;
+}
+#equipmentModal .v39-equip-inventory-header button:not(:disabled):hover { background: #326774; }
+#equipmentModal .v39-equip-inventory-stats { min-height: 0; overflow: auto; }
 #equipmentModal .v39-equip-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
   gap: 5px;
 }
-#equipmentModal .v39-equip-tile {
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-tile {
   display: grid;
   grid-template-rows: auto 1fr auto;
   min-height: 66px;
   padding: 3px 5px;
   line-height: 1.15;
 }
-#equipmentModal .v39-equip-rank { justify-self: start; }
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-rank { justify-self: start; }
 #equipmentModal .v39-equip-icon { place-self: center; font-size: 22px; }
-#equipmentModal .v39-equip-tile .v39-equip-icon { font-size: 32px; }
-#equipmentModal .v39-equip-count { justify-self: end; color: #edf4f2; }
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-tile .v39-equip-icon { place-self: center; font-size: 32px; }
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-count { justify-self: end; color: #edf4f2; }
 #equipmentModal .v39-equip-grid > .v39-equip-empty { grid-column: 1 / -1; }
 #equipmentModal h3 { margin: 0 0 8px; font-size: 17px; }
 #equipmentModal h4 { margin: 8px 0 4px; }
-#equipmentModal .v39-equip-stats,
-#equipmentModal .v39-equip-slots {
+#equipmentModal .v39-equip-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 #equipmentModal .v39-equip-stat {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
   padding: 5px;
   background: #19272d;
   border-radius: 5px;
@@ -118,7 +162,6 @@
 #equipmentModal .v39-equip-stat span,
 #equipmentModal .v39-equip-empty { color: #b7c8cd; }
 #equipmentModal .v39-equip-chips,
-#equipmentModal .v39-equip-slots footer,
 #equipmentModal .v39-equip-unit-bar,
 #equipmentModal .v39-equip-reroll {
   display: flex;
@@ -128,23 +171,58 @@
 }
 #equipmentModal :is(.v39-equip-unit-bar, .v39-equip-reroll) { margin-block: 6px; }
 #equipmentModal .v39-equip-chips span { padding: 4px 6px; border: 1px solid #43555b; border-radius: 5px; }
-#equipmentModal .v39-equip-slots .v39-equip-detail { border: 0; padding-inline: 0; overflow: visible; }
-#equipmentModal .v39-equip-craft { display: grid; align-content: start; gap: 10px; overflow: auto; }
-#equipmentModal .v39-equip-craft > label,
+#equipmentModal .v39-equip-character { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 100%; height: 100%; }
+#equipmentModal .v39-equip-character-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 8px;
+  min-height: 0;
+}
+#equipmentModal :is(.v39-equip-character-status, .v39-equip-character-slots) { overflow: auto; overscroll-behavior: contain; }
+#equipmentModal .v39-equip-character-status .squad-card { display: grid; width: 100%; box-sizing: border-box; }
+#equipmentModal .v39-equip-character-status .squad-detail-stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 90px), 1fr)); }
+#equipmentModal .v39-equip-character-slots .v39-equip-slot-card {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 4px;
+  margin-bottom: 5px;
+  box-sizing: border-box;
+  text-align: start;
+}
+#equipmentModal .v39-equip-slot-card .v39-equipment-display-summary { grid-template-columns: 20px minmax(0, 1fr) auto; }
+#equipmentModal .v39-equip-slot-card .v39-equipment-display-slot { display: none; }
+#equipmentModal .v39-equip-craft { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 6px; overflow: hidden; }
+#equipmentModal .v39-equip-craft-controls { display: grid; align-content: start; gap: 8px; overflow: auto; }
+#equipmentModal .v39-equip-craft-controls > label,
 #equipmentModal .v39-equip-craft-fields { max-width: 500px; }
 #equipmentModal .v39-equip-preview-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#equipmentModal .v39-equip-preview-title > .v39-equip-icon {
+  flex: 0 0 50px;
+  min-block-size: 50px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 33px;
+  line-height: 1;
+}
 #equipmentModal .v39-equip-preview-rarity { color: #b8b8b8; font-size: 14px; }
 #equipmentModal .v39-equip-preview-rarity[data-quality="uncommon"] { color: #97e39c; }
 #equipmentModal .v39-equip-preview-rarity[data-quality="rare"] { color: #7bc3ff; }
 #equipmentModal .v39-equip-preview-rarity[data-quality="epic"] { color: #d6a2ff; }
 #equipmentModal .v39-equip-preview-rarity[data-quality="legendary"] { color: #ffd18b; }
 #equipmentModal .v39-equip-craft-fields { grid-template-columns: minmax(0, 12rem) minmax(0, 5rem); }
-#equipmentModal :is(.v39-equip-craft, .v39-enchant-form) label { display: grid; gap: 4px; min-width: 0; }
-#equipmentModal :is(.v39-equip-craft, .v39-enchant-form) :is(select, input) { width: 100%; }
+#equipmentModal .v39-equip-craft label { display: grid; gap: 4px; min-width: 0; }
+#equipmentModal .v39-equip-craft :is(select, input) { width: 100%; }
 #equipmentModal .v39-equip-craft button { justify-self: start; min-width: 90px; }
+#equipmentModal .v39-equip-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#equipmentModal .v39-equip-detail > .v39-equip-actions { margin-block-end: 8px; }
 #equipmentModal .v39-equip-status { color: #e7cf8b; }
 #equipmentModal .v39-equip-status:empty { display: none; }
-#equipmentModal .v39-enchant-form { display: grid; align-content: start; gap: 8px; }
 
 #v39-craft-item-picker {
   max-width: none;
@@ -157,6 +235,23 @@
 }
 #v39-craft-item-picker::backdrop { background: #071013b3; }
 #v39-craft-item-picker .v39-item-list-compact-card .v39-item-list-icon { font-size: 32px; }
+#v39-craft-item-picker .v39-item-list-compact-card[aria-pressed="false"] {
+  border-color: #526771;
+  background: #17282e;
+}
+#v39-craft-item-picker .v39-item-list-compact-card[aria-pressed="true"] {
+  border-color: #b6f2fa;
+  background: #245360;
+}
+#v39-craft-item-picker .v39-item-list-icon-label > .v39-item-list-icon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 46px;
+  min-block-size: 46px;
+  font-size: 30px;
+}
+#v39-craft-item-picker .v39-item-list-tabs button[aria-pressed="false"] { border-color: #526771; }
+#v39-craft-item-picker .v39-item-list-tabs button[aria-pressed="true"] { border-color: #b6f2fa; }
 #v39-craft-item-picker :is(.v39-item-list-actions, .v39-item-list-tabs) button:focus-visible,
 #v39-craft-item-picker .v39-item-list-compact-card:focus-visible {
   outline: 2px solid #f1cb79;
@@ -164,9 +259,133 @@
 }
 
 @media (max-width: 700px) {
-  #equipmentModal :is(.v39-enchant-layout, .v39-equip-slots) {
-    grid-template-columns: minmax(0, 1fr);
-    height: auto;
-  }
   #equipmentModal .v39-equipment-tabs button { padding-inline: 3px; }
+}
+
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-tile-badges {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 2px;
+  min-width: 0;
+}
+
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-enchantment-badges {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-enchantment-colors {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+}
+:is(#equipmentModal, #v39-enchantment-color-settings) .v39-equip-enchantment-colors > i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border: 1px solid #0c191e;
+  border-radius: 50%;
+  background: var(--affix-color, #c0c9cc);
+}
+
+#v39-enchantment-color-settings {
+  box-sizing: border-box;
+  width: min(680px, calc(100% - 16px));
+  height: min(660px, calc(100dvh - 16px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  background: #111b20;
+  color: #edf4f2;
+  border: 1px solid #526771;
+  border-radius: 8px;
+  font-size: 14px;
+}
+#v39-enchantment-color-settings::backdrop { background: #071013b3; }
+#v39-enchantment-color-settings :is(button, input) {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid #526771;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #17282e;
+  color: #edf4f2;
+  font: inherit;
+}
+#v39-enchantment-color-settings :is(button, input):disabled {
+  background: #26343a;
+  color: #b6c5c8;
+}
+#v39-enchantment-color-settings :is(button, input):focus-visible {
+  outline: 2px solid #f1cb79;
+  outline-offset: -2px;
+}
+#v39-enchantment-color-settings :is(h2, h3) { margin: 0; font-size: 16px; }
+.v39-enchantment-editor {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.v39-enchantment-editor > :is(header, footer) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.v39-enchantment-editor > header { border-bottom: 1px solid #34474e; }
+.v39-enchantment-editor > footer { border-top: 1px solid #34474e; }
+.v39-enchantment-editor > footer button { flex: none; }
+.v39-enchantment-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 8px;
+  padding: 8px;
+}
+.v39-enchantment-editor-list,
+.v39-enchantment-editor-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.v39-enchantment-editor-list button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 4px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.v39-enchantment-editor-list button::before {
+  content: "";
+  flex: 0 0 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--affix-color);
+}
+#v39-enchantment-color-settings button[aria-pressed="true"] {
+  background: #204650;
+  border-color: #81d5df;
+}
+.v39-enchantment-editor-detail { padding: 8px; border: 1px solid #34474e; border-radius: 6px; }
+.v39-enchantment-editor-detail fieldset { min-width: 0; margin: 10px 0 0; padding: 6px; border: 1px solid #34474e; border-radius: 6px; }
+.v39-enchantment-editor-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px; }
+.v39-enchantment-editor-controls input { width: 100%; box-sizing: border-box; }
+.v39-enchantment-editor-controls input[type="color"] { width: 32px; }
+@media (max-width: 420px) {
+  .v39-enchantment-editor-controls { grid-template-columns: auto minmax(0, 1fr); }
+  .v39-enchantment-editor-controls button { grid-column: 1 / -1; justify-self: start; }
+}
+.v39-enchantment-editor-preview .v39-equip-tile {
+  box-sizing: border-box;
+  width: 68px;
+  margin-top: 8px;
+  background: #17282e;
+  border: 1px solid #526771;
+  border-radius: 6px;
 }

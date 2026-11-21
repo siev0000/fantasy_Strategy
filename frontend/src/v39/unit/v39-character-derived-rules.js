@@ -359,7 +359,17 @@ export function applyV39DerivedCharacterData(unit = {}) {
   });
   status.移動 = movement + number(derived.passiveBonuses?.status?.移動);
   if(unit.testOnly===true)status.移動=Math.max(status.移動,number(unit.testMovementMinimum));
-  const damaged=applyAbilityDamage({...unit,status,skillLevels:unit.testOnly===true?{...derived.skillLevels,飛行:Math.max(number(derived.skillLevels?.飛行),number(unit.testFlightMinimum))}:derived.skillLevels});
+  const skillLevels={...derived.skillLevels};
+  for(const item of equipment){
+    for(const key of SKILL_LEVEL_FIELDS)skillLevels[key]=number(skillLevels[key])+number(item.enchantBonus?.[key]);
+  }
+  if(unit.testOnly===true){
+    skillLevels.飛行=Math.max(number(skillLevels.飛行),number(unit.testFlightMinimum));
+    for(const [key,min] of Object.entries(unit.testSkillMinimum||{})){
+      skillLevels[key]=Math.max(number(skillLevels[key]),number(min));
+    }
+  }
+  const damaged=applyAbilityDamage({...unit,status,skillLevels});
   Object.assign(status,damaged.status);
   const maxHp=number(status.HP,derived.maxHp),oldMax=Number(unit.maxHp??unit.status?.HP),currentHp=Number(unit.hp??unit.currentHp);
   let hpPatch={};

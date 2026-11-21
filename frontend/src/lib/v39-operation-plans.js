@@ -1,5 +1,6 @@
 import {getFactionSettlementById,replaceFactionSettlement} from './settlement-state.js';
 import {isV39TerritoryPhase,usesV39OperationPhases} from './v39-operation-phases.js';
+import {newV39ProductionOrder} from './v39-production-work.js';
 export function projectV39OperationTerritory(state,playerId,base){
   const owners={...state.territoryOwnerByTile},records={...state.territoryStateByTile};
   const keys=[...(base.landExpansionProjects||[]).map(plan=>plan.tileKey),...(base.operationPlans||[]).filter(plan=>plan.kind==='expansion').map(plan=>`${plan.tile.x},${plan.tile.y}`)];
@@ -19,11 +20,12 @@ export function queueV39OperationPlan(state,playerId,settlementId,input){
   if(owner===playerId&&assigned&&assigned!==settlementId)return {ok:false,state,reason:'対象マスの所属拠点を選んでください'};
   if(input.kind!=='expansion'&&!owner&&!plans.some(plan=>plan.kind==='expansion'&&`${plan.tile.x},${plan.tile.y}`===key)&&!base.landExpansionProjects?.some(plan=>plan.tileKey===key))return {ok:false,state,reason:'自領または領土拡張予定のマスを選んでください'};
   if(plans.some(row=>row.kind===input.kind&&row.tile.x===input.tile.x&&row.tile.y===input.tile.y&&row.facilityName===input.facilityName))return {ok:false,state,reason:'同じ計画が既にあります'};
-  const plan={...input,...(Array.isArray(input.edges)?{edges:input.edges.map(edge=>({from:{...edge.from},to:{...edge.to}}))}:{}),
+  const workOrder=input.kind==='construction'?newV39ProductionOrder(base):null;
+  const plan={...input,...(workOrder!==null?{workOrder}:{}),...(Array.isArray(input.edges)?{edges:input.edges.map(edge=>({from:{...edge.from},to:{...edge.to}}))}:{}),
     ...(Array.isArray(input.residentialTileKeys)?{residentialTileKeys:[...input.residentialTileKeys]}:{}),
     tile:{x:input.tile.x,y:input.tile.y},id:`plan-${playerId}-${state.timeline.turnNumber}-${Number(base.operationPlanSequence||0)+1}`,
     notBeforeTurn:Math.max(state.timeline.turnNumber,Math.floor(Number(input.notBeforeTurn)||0)),status:'pending',reason:''};
-  const faction=replaceFactionSettlement(player.factionState,{...base,operationPlanSequence:Number(base.operationPlanSequence||0)+1,operationPlans:[...plans,plan]},{ownerPlayerId:playerId,select:false});
+  const faction=replaceFactionSettlement(player.factionState,{...base,...(workOrder!==null?{productionOrder:workOrder}:{}),operationPlanSequence:Number(base.operationPlanSequence||0)+1,operationPlans:[...plans,plan]},{ownerPlayerId:playerId,select:false});
   return {ok:true,plan,state:{...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:faction}:row)}};
 }
 export function editV39OperationPlan(state,playerId,settlementId,planId,action,value,scope='all'){
@@ -57,7 +59,7 @@ export function advanceV39OperationPlans(state,map,{construction,expansion,wall,
         const result=plan.kind==='development'?development(state,player.id,base.settlementId,{residentialTileKeys:plan.residentialTileKeys})
           :plan.kind==='expansion'?expansion(state,player.id,base.settlementId,plan.tile,map)
           :plan.kind==='wall'?wall(state,player.id,plan.facilityName,plan.edges,map)
-          :construction(state,player.id,plan.facilityName,plan.tile,map,{confirmResidentialReplacement:plan.confirmResidentialReplacement===true});
+          :construction(state,player.id,plan.facilityName,plan.tile,map,{confirmResidentialReplacement:plan.confirmResidentialReplacement===true,workOrder:plan.workOrder});
         if(result.ok){state=result.state;history.push({...plan,status:'started',startedTurn:turn});}
         else pending.push({...plan,status:'blocked',reason:result.reason||'着手条件を満たしていません'});
       }

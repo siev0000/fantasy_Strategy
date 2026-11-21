@@ -38,7 +38,10 @@ assert.equal(m.resolveV39SkillForcedMovement({...skill,効果:'吹き飛ばし_�
 const gravity=JSON.parse(readFileSync('data/source/export/json/スキル一覧.json','utf8')).find(row=>row.名前==='常闇の吸引');
 assert.equal(m.resolveV39SkillForcedMovement(gravity,caster,map).direction,'toward','existing sheet gravity effect is recognized');
 const missed=m.applyV39SkillForcedMovement(world,map,caster,skill,[{targetId:'target',total:0,hitCount:0,hitResults:[{hit:false}]}],()=>.5);assert.deepEqual(missed.enemies[0].position,[8,8]);
-const legacy=m.resolveV39SkillForcedMovement({名前:'打ち倒す',ノックバック:20,判定:'攻撃',効果:'打ち倒し'},caster,map);assert.equal(legacy.power,40);
+const knockdown={名前:'打ち倒す一撃',体幹:20,判定:'攻撃',効果:'打ち倒し'};
+assert.equal(m.resolveV39SkillForcedMovement(knockdown,caster,map),null);
+assert.equal(m.resolveV39SkillForcedMovement({...knockdown,効果:'打ち倒し/吹き飛ばし'},caster,map).power,40);
+assert.equal(m.resolveV39SkillForcedMovement({ノックバック:20},caster,map),null);
 assert.equal(m.resolveV39SkillForcedMovement({名前:'普通の攻撃',打撃:200},caster,map),null);
 const immune={...target,status:{...target.status,怯み耐性:100}};
 assert.deepEqual(m.applyV39SkillForcedMovement({...world,enemies:[immune]},map,caster,skill,hit).entries,m.applyV39SkillForcedMovement(world,map,caster,skill,hit).entries,'stagger resistance does not affect forced movement');

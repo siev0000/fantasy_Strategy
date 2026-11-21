@@ -85,11 +85,11 @@ export function releaseV39DestroyedGolemPilots(faction){
   let next=faction;
   for(const golem of faction.units||[]){
     const pilot=golem.boardingPilot;
-    if(!pilot||alive(golem))continue;
+    if(!pilot||(alive(golem)&&alive(pilot)))continue;
     next={...next,units:next.units.map(unit=>unit.id===golem.id?{...unit,boardingPilot:null}:unit)};
     if(!next.units.some(unit=>unit.id===pilot.id))next=restorePilot(next,pilot,golem,golem);
     next=clearPilotEffects(next,golem.id);
-    if(next.selectedUnitId===golem.id)next.selectedUnitId=pilot.id;
+    if(next.selectedUnitId===golem.id&&!alive(golem)&&alive(pilot))next.selectedUnitId=pilot.id;
   }
   return next;
 }

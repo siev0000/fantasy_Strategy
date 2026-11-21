@@ -1,6 +1,18 @@
 #footInteraction.v39-interaction-panel{height:100%;min-height:0;overflow:auto;align-content:start;grid-auto-rows:max-content;gap:6px;padding:6px;box-sizing:border-box;color:#e7efed;font-size:var(--font-body)}
 #footInteraction>header{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #40575e;padding:4px 0 8px}
 #footInteraction>header span,#footInteraction>p{color:#a9bbbf;font-size:var(--font-secondary)}
+#footInteraction > header > #v39-interaction-faction-info {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid #6aa9b8;
+  border-radius: 6px;
+  background: #19353f;
+  color: #e6eeeb;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
 #v39-interaction-actions #v39-world-contact-actions{grid-template-columns:1fr;padding:8px;margin-top:6px;background:#14252b;border-color:#40575e}
 #v39-interaction-actions #v39-world-contact-buttons{justify-content:flex-start}
 #v39-world-contact-actions[data-kind=guardian] #v39-world-contact-buttons{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%}
@@ -76,23 +88,27 @@
 #footSquad .v39-food-help>div{margin:4px 0}
 
 /* One basic action at a time; keep the original controls and their event bindings. */
-#footSquad .v39-basic-action-heading{position:sticky;top:0;z-index:8;display:block;width:100%;min-height:34px;padding:4px 6px;margin-bottom:5px;border:1px solid #527985;border-radius:5px;background:#19343e;color:#e4f4f7;font:inherit;font-weight:700;text-align:left;cursor:pointer}
-#footSquad .v39-basic-action-heading:disabled{background:#12232b;color:#b8cdd3;border-color:#354d57;opacity:1;cursor:default}
+#footSquad .v39-basic-action-heading{display:block;align-self:flex-end;min-width:34px;min-height:34px;padding:4px;margin-bottom:5px;border:1px solid #527985;border-radius:5px;background:#19343e;color:#e4f4f7;font:inherit;font-weight:700;cursor:pointer}
+#footSquad .v39-basic-action-heading[hidden]{display:none}
 #footSquad .v39-basic-action-heading:focus-visible{outline:2px solid #efcc79;outline-offset:-2px}
-#footSquad #detailBasicList{align-content:start;min-width:0}
+#footSquad #v39-basic-action-options:not([hidden]){display:grid;align-content:start;grid-auto-rows:max-content;gap:4px}
+#footSquad .v39-basic-action-option{display:flex;align-items:center;gap:6px;width:100%;min-width:0;min-height:34px;padding:4px 6px;border:1px solid #394f59;border-radius:5px;background:#14252d;color:#e4f4f7;font:inherit;font-size:var(--font-compact);text-align:left;cursor:pointer}
+#footSquad .v39-basic-action-option>b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#footSquad .v39-basic-action-option>small{max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e1c884;font-size:inherit}
+#footSquad .v39-basic-action-option-icon{display:grid;place-items:center;flex:none;width:28px;height:28px}
+#footSquad .v39-basic-action-option-icon>.v39-expedition-tool-icon{margin:0}
+#footSquad .v39-basic-action-option>span:last-child{flex:none;color:#9bbcce}
+#footSquad .v39-basic-action-option:focus-visible{outline:2px solid #efcc79;outline-offset:-2px}
 #footSquad #detailBasicList[data-basic-action]:not([data-basic-action=""])>:not(.v39-basic-action-selected){display:none!important}
-#footSquad #detailBasicList>.v39-basic-action-selected{min-height:180px;width:100%;box-sizing:border-box}
+#footSquad #detailBasicList>.v39-basic-action-selected{width:100%;box-sizing:border-box}
 #footSquad #detailBasicList .v39-basic-action-selected .technique-detail{display:grid!important}
 
-#footSquad #detailBasicList[data-basic-action=""] .technique-detail{display:none!important}
-#footSquad #detailBasicList[data-basic-action=""] #detailCarriedFood>:not(summary){display:none!important}
-#footSquad #detailBasicList[data-basic-action=""] .v39-squad-coordination>:not(summary){display:none!important}
 #footSquad [data-squad-detail-panel="basic"]:not([data-basic-action="mobileBattleMove"]) #moveConfirm{display:none!important}
 #footSquad [data-squad-detail-panel="basic"] #moveConfirm{position:static}#footSquad [data-squad-detail-panel="basic"]:not([hidden]){display:flex!important;flex-direction:column;overflow:hidden!important}
 #footSquad .v39-basic-action-heading,#footSquad #moveConfirm{flex-shrink:0}
-#footSquad #detailBasicList{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
-#footSquad #detailBasicList[data-basic-action]:not([data-basic-action=""]){display:block!important}
-#footSquad #detailBasicList>.v39-basic-action-selected{min-height:100%}
+#footSquad #detailBasicList,#footSquad #v39-basic-action-options{flex:1;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden}
+#footSquad #detailBasicList[hidden]{display:none!important}
+#footSquad #detailBasicList:not([hidden]){display:block!important}
 .settlement-expansion-open,#v39-land-expansion-entry button{appearance:none;min-height:34px;padding:4px 7px;border:1px solid #d2b468;border-radius:5px;background:#3c321b;color:#ffe4a1;font:inherit;font-weight:700;cursor:pointer;white-space:normal}
 .settlement-expansion-open{margin-right:4px}
 #v39-land-expansion-entry{grid-column:1/-1;display:grid;gap:4px;min-width:0;padding:4px 0;color:#c9dce0}

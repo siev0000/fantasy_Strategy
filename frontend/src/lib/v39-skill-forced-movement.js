@@ -6,10 +6,10 @@ const numeric=value=>value==null||value===''||!Number.isFinite(Number(value))?nu
 export function resolveV39SkillForcedMovement(skillRow,attacker,map){
   const effects=String(skillRow?.効果||'').split(/[\s/／,，、|]+/u);
   const effect=effects.find(token=>defaults.effects[token]);
-  if(!effect&&!(Number(skillRow?.ノックバック)>0))return null;
+  if(!effect)return null;
   const actor=applyV39TerrainModifiers(attacker,map);
   const adjusted=applyV39PassiveCombatSkills(actor,skillRow);
-  const amount=numeric(adjusted.skillRow.ノックバック)??numeric(adjusted.skillRow.体幹);
+  const amount=numeric(adjusted.skillRow.体幹);
   const power=amount==null?resolveAttackPower(skillRow,actor):computeSkillScaledTriplet({...adjusted.skillRow,全威力:amount},adjusted.attacker.status).power;
   if(power<=0)return null;
   return {power,direction:defaults.effects[effect]||defaults.direction,origin:{x:attacker.x,y:attacker.y},source:skillRow.名前||'強制移動'};

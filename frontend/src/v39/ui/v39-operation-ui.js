@@ -1,4 +1,5 @@
 import { renderV39UnitAbility, renderV39DetailTabs } from "../unit/v39-unit-detail.js";
+import {renderV39ScreenIcon} from "./v39-screen-icons.js";
 import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
 import './v39-operation-layout.css';
 import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
@@ -30,19 +31,19 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
     tabs: [
       { key: "squad", label: "部隊", icon: "👥" },
       { key: "tile", label: "土地", icon: "⬢" },
-      { key: "settlement", label: "拠点", icon: "⌂" },
+      { key: "settlement", label: "拠点", icon: "⌂", iconName: "住宅" },
       { key: "interaction", label: "交流", icon: "◇" },
       { key: "logistics", label: "物流", icon: "⇄" },
       { key: "test", label: "テスト", icon: "試" },
-      { key: "manage", label: "管理", icon: "⚙" }
+      { key: "manage", label: "管理", icon: "⚙", iconName: "設定" }
     ],
     landItems: EMPTY_LAND_ITEMS,
     manageItems: [
       { icon: "⚒", label: "装備", open: "equipment" },
-      { icon: "⇄", labelHtml: '資源表示: <em id="resourceModeLabel">詳細</em>', id: "resourceModeToggle", title: "資源表示を詳細/簡易で切替", tip: "資源表示切替" },
-      { icon: "☷", label: "ログ", open: "rulerLog" },
+      { icon: "⇄", iconName:"資源表示", labelHtml: '資源表示: <em id="resourceModeLabel">詳細</em>', id: "resourceModeToggle", title: "資源表示を詳細/簡易で切替", tip: "資源表示切替" },
+      { icon: "☷", iconName: "一覧", label: "ログ", open: "rulerLog" },
       { icon: "🏳", label: "国家・外交", id: "v39-manage-nation" },
-      { icon: "⚙", label: "ゲーム設定", open: "settings" },
+      { icon: "⚙", iconName: "設定", label: "ゲーム設定", open: "settings" },
       { icon: "目", label: "表示設定", id: "v39-manage-display-settings" },
       { icon: "⬢", label: "ゲーム開始設定", id: "v39-manage-field-settings" },
       { icon: "📝", label: "設計書", id: "v39-manage-design-docs" }
@@ -154,14 +155,14 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
   function renderFooter(footer) {
     footer.innerHTML = `
       <div class="footer-tabs">
-        ${data.tabs.map((tab, index) => `<button class="footer-tab tappable footer-text-tab${index === 0 ? " active" : ""}" data-foot="${tab.key}"><span class="tab-text">${tab.label}</span><span class="tab-icon">${tab.icon}</span></button>`).join("")}
+        ${data.tabs.map((tab, index) => `<button class="footer-tab tappable footer-text-tab${index === 0 ? " active" : ""}" data-foot="${tab.key}"><span class="tab-text">${tab.label}</span><span class="tab-icon">${renderV39ScreenIcon(tab.iconName||tab.label) || tab.icon}</span></button>`).join("")}
       </div>
       <div class="footer-body">
         <section id="footPlacement" hidden aria-hidden="true"></section>
         <section id="footSquad" class="mobile-squad-panel v39-footer-panel-active" aria-hidden="false">
           <div class="v39-squad-toolbar" id="v39-squad-main">
             <div class="v39-squad-shortcuts">
-              <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" data-open="character" data-tooltip="ユニット一覧" aria-label="ユニット一覧" title="ユニット一覧">♟</button>
+              <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" data-open="character" data-tooltip="ユニット一覧" aria-label="ユニット一覧" title="ユニット一覧">${renderV39ScreenIcon("一覧") || "♟"}</button>
             </div>
             <div class="squad-selector" id="squadSelector"></div>
           </div>
@@ -169,7 +170,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
             <div class="squad-list-pane" id="squadMemberList"></div>
             <section class="squad-detail-pane" id="squadDetailPane">
               <div><div class="squad-detail-minihead"><div id="detailUnitHeading" style="width:100%;min-width:0"></div></div>
-                <div id="v39-golem-boarding-actions"></div></div>
+              </div>
               ${renderV39DetailTabs([["status","能力"],["basic","基本"],["action","スキル"]], "status", "data-squad-detail-tab")}
               <div class="squad-detail-tab-content" id="detailTechniqueList">
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">
@@ -177,7 +178,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                   <details class="squad-detail-section" open><summary class="squad-detail-section-title">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
                 </section>
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="basic" role="tabpanel" hidden aria-hidden="true">
-                  <button type="button" id="v39-basic-action-heading" class="v39-basic-action-heading" disabled aria-controls="detailBasicList"><span id="v39-basic-action-label">行動を選択</span></button>
+                  <button type="button" id="v39-basic-action-heading" class="v39-basic-action-heading" hidden aria-label="行動一覧へ戻る" aria-controls="v39-basic-action-options">↩</button>
                   <div class="v39-move-confirm" id="moveConfirm" hidden role="region" aria-label="移動確認">
                     <p id="moveInstruction" aria-live="polite"></p>
                     <p id="moveText" hidden></p>
@@ -186,9 +187,11 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                       <button type="button" class="primary" id="moveOk" disabled>移動確定</button>
                     </div>
                   </div>
-                  <div class="technique-list" id="detailBasicList">
-                    <div id="detailUnitCargoStatus" class="v39-unit-cargo-status" role="status" aria-label="手持ち物資" hidden></div>
-                    <details id="detailCarriedFood" class="v39-carried-food" hidden>
+                  <div id="v39-basic-action-options"></div>
+                  <div class="technique-list" id="detailBasicList" hidden>
+                    <div id="v39-golem-boarding-actions" data-basic-action-group data-basic-inspection></div>
+                    <div id="detailUnitCargoStatus" class="v39-unit-cargo-status" role="status" data-basic-action-label="手持ち物資" data-basic-action-icon aria-label="手持ち物資" hidden></div>
+                    <details id="detailCarriedFood" class="v39-carried-food" data-basic-action-icon hidden>
                       <summary>携帯食料・補給</summary>
                       <div class="v39-food-stock"><div id="carriedFoodStock"></div><div id="carriedFoodDemand"></div></div>
                       <label class="v39-food-target">補給目標 <span><input id="carriedFoodTurns" type="number" min="1" step="1" aria-label="補給する食料のターン数"> T分</span></label>
@@ -201,12 +204,12 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                       </div>
                       <details class="v39-food-help"><summary>加工・容量の詳細</summary><div id="carriedFoodCraftPreview"></div><div id="carriedFoodCapacity"></div></details>
                     </details>
-                    <div id="v39-teleport-gate-actions"></div>
-                    <div id="v39-rubble-actions"></div>
+                    <div id="v39-teleport-gate-actions" data-basic-action-group data-basic-action-label="転移門"></div>
+                    <div id="v39-rubble-actions" data-basic-action-group data-basic-action-label="瓦礫撤去"></div>
                     <div id="v39-basic-coordination" data-squad-coordination-host></div>
-                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleMove" data-v39-technique-name="__system_move__" aria-expanded="false">
+                    <button type="button" class="technique-card technique-select-card system-action-card" id="mobileBattleMove" data-basic-action-icon data-v39-technique-name="__system_move__" aria-expanded="false">
                       <span class="technique-summary">
-                        <span class="technique-icon technique-icon-system-move"><span class="technique-icon-glyph" aria-hidden="true">➜</span></span>
+                        <span class="technique-icon technique-icon-system-move"><span class="technique-icon-glyph" aria-hidden="true">${renderV39ScreenIcon("移動")}</span></span>
                         <b class="technique-name">移動</b>
                         <small class="technique-ap" id="mobileMoveAp" hidden></small>
                         <span class="technique-power" id="mobileMoveMeta" hidden></span>
@@ -217,9 +220,9 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                         <span class="technique-detail-description">移動先を選択して移動します。1マスの基礎消費APは移動力で決まり、地形・高低差・飛行で補正されます。</span>
                       </span>
                     </button>
-                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleWait" data-v39-technique-name="__system_wait__" aria-expanded="false">
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleWait" data-basic-action-icon data-v39-technique-name="__system_wait__" aria-expanded="false">
                       <span class="technique-summary">
-                        <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">◷</span></span>
+                        <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">${renderV39ScreenIcon("待機")}</span></span>
                         <b class="technique-name">待機</b>
                         <small class="technique-ap">AP保持</small>
                         <span class="technique-power">行動終了</span>
@@ -229,9 +232,9 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                         <span class="technique-detail-description">APを消費せず、このターンの行動を終了します。次のターンに再び行動できます。</span>
                       </span>
                     </div>
-                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleRecoveryWait" data-v39-technique-name="__system_recovery_wait__" aria-expanded="false">
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleRecoveryWait" data-basic-action-icon data-v39-technique-name="__system_recovery_wait__" aria-expanded="false">
                       <span class="technique-summary">
-                        <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">◷</span></span>
+                        <span class="technique-icon technique-icon-system-wait"><span class="technique-icon-glyph" aria-hidden="true">${renderV39ScreenIcon("回復まで待機")}</span></span>
                         <b class="technique-name">回復まで待機</b>
                         <small class="technique-ap">AP保持</small>
                         <span class="technique-power" id="mobileRecoveryWaitTarget"></span>
@@ -243,7 +246,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                     </div>
                     <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleSurvey" data-v39-technique-name="__system_survey__" aria-expanded="false">
                       <span class="technique-summary">
-                        <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⌕</span></span>
+                        <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">${renderV39ScreenIcon("索敵") || "⌕"}</span></span>
                         <b class="technique-name">調査</b>
                         <small class="technique-ap" id="mobileSurveyAp">必要APのみ消費</small>
                         <span class="technique-power" id="mobileSurveyProgress">未調査</span>
@@ -252,9 +255,9 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                         <span class="technique-detail-description">このキャラの索敵範囲全体を調査します。残りAPの分だけ進み、不足分は次ターン以降に継続できます。必要APに達するとターン終了時に特産品・鉱脈・残留品などが判明します。</span>
                       </span>
                     </div>
-                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleGather" data-v39-technique-name="__system_gather__" aria-expanded="false">
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileBattleGather" data-basic-action-icon data-v39-technique-name="__system_gather__" aria-expanded="false">
                       <span class="technique-summary">
-                        <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">⛏</span></span>
+                        <span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">${renderV39ScreenIcon("採取")}</span></span>
                         <b class="technique-name">採取</b><small class="technique-ap" id="mobileGatherAp"></small>
                         <span class="technique-power" id="mobileGatherYield"></span>
                       </span>
@@ -263,8 +266,8 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
                         <span class="technique-detail-description" id="mobileGatherCargo"></span>
                       </span>
                     </div>
-                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileSoulRecovery" data-v39-technique-name="__system_soul_recovery__" aria-expanded="false" hidden>
-                      <span class="technique-summary"><span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">◇</span></span><b class="technique-name">魂を回収</b><small class="technique-ap" id="mobileSoulRecoveryAp"></small><span class="technique-power" id="mobileSoulRecoveryHint"></span></span>
+                    <div role="button" tabindex="0" class="technique-card technique-select-card system-action-card" id="mobileSoulRecovery" data-basic-action-icon data-v39-technique-name="__system_soul_recovery__" aria-expanded="false" hidden>
+                      <span class="technique-summary"><span class="technique-icon"><span class="technique-icon-glyph" aria-hidden="true">${renderV39ScreenIcon("魂を回収")}</span></span><b class="technique-name">魂を回収</b><small class="technique-ap" id="mobileSoulRecoveryAp"></small><span class="technique-power" id="mobileSoulRecoveryHint"></span></span>
                       <span class="technique-detail"><span class="technique-detail-head"><b>周囲1マスの魂回収</b><button type="button" id="mobileSoulRecoveryUse" data-v39-system-use>マスを選択</button><button type="button" id="mobileSoulRecoveryCancel" data-v39-system-use hidden>取消</button></span><span class="technique-detail-description" id="mobileSoulRecoveryReason" role="status" style="white-space:normal;overflow:visible;overflow-wrap:anywhere"></span><span class="technique-detail-description">マスをタップして複数選択・解除。選択マス内の対象死体をまとめて回収します。魂は手持ちに積載し、拠点で搬入。死体と装備は残ります。</span></span>
                     </div>
                     <div id="detailBasicRows"></div>
@@ -286,7 +289,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
             ${tab.id==='production'?'<div id="v39-land-production"></div>':''}
             ${tab.id==='facilities'?`
           <div class="v39-land-shortcuts">
-            <button type="button" class="v39-footer-shortcut" data-land-construction-open>⌂ 建築</button>
+            <button type="button" class="v39-footer-shortcut" data-land-construction-open>${renderV39ScreenIcon("建設") || "⌂"} 建築</button>
             <button type="button" class="v39-footer-shortcut" id="v39-land-settlement-convert" disabled>居住化</button>
             <span id="v39-land-settlement-convert-status" aria-live="polite">マスを選択</span>
           </div>
@@ -299,7 +302,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
         <section id="footLogistics" hidden aria-hidden="true"></section>
         <section id="footTest" class="v39-test-footer-panel" hidden aria-hidden="true"></section>
         <section id="footManage" class="mobile-manage-panel" hidden aria-hidden="true">
-          <div id="v39-manage-menu" class="manage-menu-grid">${data.manageItems.map(item => `<button class="manage-tile" ${attributes(item)}><b>${item.icon}</b><span>${item.labelHtml || item.label}</span></button>`).join("")}</div>
+          <div id="v39-manage-menu" class="manage-menu-grid">${data.manageItems.map(item => `<button class="manage-tile" ${attributes(item)}><b>${renderV39ScreenIcon(item.iconName||item.label) || item.icon}</b><span>${item.labelHtml || item.label}</span></button>`).join("")}</div>
           <section id="v39-display-settings-panel" class="display-settings-panel" hidden aria-hidden="true">
             <header class="display-settings-head"><button type="button" id="v39-display-settings-back" class="display-settings-back">← 管理</button><strong>表示設定</strong></header>
             <div class="display-settings-grid">

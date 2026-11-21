@@ -1,5 +1,6 @@
 // 初回の開始導線だけを担当する。ゲーム状態・通信状態はここでは変更しない。
 import "./v39-cave-test.js";
+import {openV39EnchantmentColorSettings} from "../unit/v39-enchantment-color-settings.js";
 const PLAY_MODE_OPTIONS = Object.freeze({
   "single-normal":{ label:"通常プレイ", description:"テストデータを使わず、新規ゲームとして開始します。" },
   "single-test":{ label:"テストプレイ", description:"通常プレイと同じ流れ・ルールで開始し、テストデータとテスト操作を追加します。" },
@@ -16,6 +17,18 @@ function createStyles() {
   style.id = "v39-play-mode-select-style";
   style.textContent = `
 #v39-play-mode-select{position:fixed;inset:0;z-index:10140;display:none;place-items:center;padding:14px;background:rgba(1,5,8,.84);backdrop-filter:blur(3px)}#v39-play-mode-select.open{display:grid}.v39-play-mode-dialog{width:min(560px,100%);max-height:calc(100dvh - 28px);overflow:auto;padding:18px;border:1px solid #4b666d;border-radius:12px;background:linear-gradient(180deg,#142126,#0a1216);box-shadow:0 20px 56px rgba(0,0,0,.6);color:#e8efec}.v39-play-mode-dialog h2{margin:0;font-size:var(--font-heading)}.v39-play-mode-dialog>p{margin:6px 0 14px;color:#a5b7ba;font-size:var(--font-secondary)}.v39-play-mode-group{display:grid;gap:8px;margin-top:10px}.v39-play-mode-group h3{margin:0;color:#c6d6d8;font-size:var(--font-size-14)}.v39-play-mode-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.v39-play-mode-options.single button{min-height:116px}.v39-play-mode-options.multiplayer{grid-template-columns:1fr}.v39-play-mode-options button{min-height:104px;display:grid;align-content:center;gap:8px;border:1px solid #4c6971;border-radius:10px;background:#13262c;color:#eaf4f2;padding:14px;text-align:left}.v39-play-mode-options button:hover{border-color:#76cad7;background:#17343b}.v39-play-mode-options strong{font-size:var(--font-size-18)}.v39-play-mode-options small{color:#a7c0c3;font-size:var(--font-compact);line-height:1.5}@media(max-width:500px){.v39-play-mode-dialog{padding:15px;border-radius:8px}.v39-play-mode-options{grid-template-columns:1fr}.v39-play-mode-options button{min-height:88px}}
+`;
+  style.textContent += `
+.v39-play-mode-dialog .v39-play-mode-reference {
+  width:100%; min-height:38px; margin-top:12px; padding:6px 10px;
+  border:1px solid #4c6971; border-radius:8px; background:#13262c; color:#eaf4f2;
+  font:inherit; text-align:left;
+}
+.v39-play-mode-dialog .v39-play-mode-reference:is(:hover,:focus-visible) { border-color:#76cad7; background:#17343b; }
+.v39-play-mode-settings:not([hidden]) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:6px; }
+.v39-play-mode-settings .v39-play-mode-reference { margin-top:0; }
+.v39-play-mode-reference-status { display:block; margin-top:4px; color:#efaa96; }
+.v39-play-mode-reference-status:empty { display:none; }
 `;
   document.head.appendChild(style);
 }
@@ -51,6 +64,12 @@ function createModal() {
           <button type="button" data-v39-play-mode="multiplayer"><strong>${PLAY_MODE_OPTIONS.multiplayer.label}</strong><small>${PLAY_MODE_OPTIONS.multiplayer.description}</small></button>
         </div>
       </section>
+      <button type="button" class="v39-play-mode-reference" data-v39-start-settings aria-expanded="false" aria-controls="v39-start-settings">設定</button>
+      <div id="v39-start-settings" class="v39-play-mode-settings" hidden>
+        <button type="button" class="v39-play-mode-reference" data-v39-equipment-icon-reference>アイコン設定</button>
+        <button type="button" class="v39-play-mode-reference" data-v39-start-enchantment-colors>付与カラー設定</button>
+      </div>
+      <output class="v39-play-mode-reference-status" data-v39-equipment-icon-reference-status role="status"></output>
     </section>`;
   document.body.appendChild(modal);
   const saveInput = modal.querySelector("#v39-start-save-file");
@@ -75,8 +94,22 @@ function createModal() {
       buttons.forEach(button => { button.disabled = false; });
     }
   });
+  const settingsButton = modal.querySelector("[data-v39-start-settings]");
+  const settingsMenu = modal.querySelector("#v39-start-settings");
+  settingsButton.addEventListener("click", () => {
+    settingsMenu.hidden = !settingsMenu.hidden;
+    settingsButton.setAttribute("aria-expanded", String(!settingsMenu.hidden));
+  });
+  modal.querySelector("[data-v39-start-enchantment-colors]").addEventListener("click", () => {
+    void openV39EnchantmentColorSettings();
+  });
   modal.addEventListener("click", event => {
     if (loadingSave) return;
+    const iconReference = event.target instanceof Element ? event.target.closest("[data-v39-equipment-icon-reference]") : null;
+    if (iconReference) {
+      void openEquipmentIconReference(iconReference);
+      return;
+    }
     if (event.target instanceof Element && event.target.closest("[data-v39-start-load]")) {
       saveInput.click();
       return;
@@ -113,6 +146,39 @@ function openPlayModeSelection() {
 function closePlayModeSelection() {
   modal?.classList.remove("open");
   modal?.setAttribute("aria-hidden", "true");
+}
+
+async function openEquipmentIconReference(button) {
+  if (button.disabled) return;
+  button.disabled = true;
+  const status = modal.querySelector("[data-v39-equipment-icon-reference-status]");
+  status.textContent = "";
+  let host;
+  try {
+    const [{ createApp }, { default: EquipmentIconReferenceModal }] = await Promise.all([
+      import("vue"), import("../../components/EquipmentIconReferenceModal.vue")
+    ]);
+    if (loadingSave || !modal.classList.contains("open")) return;
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    const app = createApp(EquipmentIconReferenceModal, {
+      show:true,
+      onClose:() => {
+        app.unmount();
+        host.remove();
+        openPlayModeSelection();
+        button.focus();
+      }
+    });
+    app.mount(host);
+    closePlayModeSelection();
+  } catch (error) {
+    host?.remove();
+    status.textContent = "装備アイコン一覧を読み込めませんでした。";
+    console.error("[装備アイコン一覧]", error);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function openTestToolsFromStart() {

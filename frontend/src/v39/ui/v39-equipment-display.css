@@ -15,10 +15,10 @@
   line-height: 1.1;
 }
 
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="uncommon"] { --v39-rarity-color: #97e39c; }
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="rare"] { --v39-rarity-color: #7bc3ff; }
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="epic"] { --v39-rarity-color: #d6a2ff; }
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row)[data-quality="legendary"] { --v39-rarity-color: #ffd18b; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="uncommon"] { --v39-rarity-color: #97e39c; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="rare"] { --v39-rarity-color: #7bc3ff; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="epic"] { --v39-rarity-color: #d6a2ff; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="legendary"] { --v39-rarity-color: #ffd18b; }
 
 .v39-equipment-display-row {
   --v39-rarity-color: #b8b8b8;
@@ -40,13 +40,48 @@
 }
 
 .v39-equipment-display-icon { font-size: 17px; line-height: 1; text-align: center; }
-.v39-equipment-display-name { white-space: normal; overflow-wrap: anywhere; }
-.v39-equipment-display-slot { color: #b8c9cd; white-space: nowrap; }
-
-.v39-equipment-icon-sprite {
-  display: inline-block;
+.v39-named-weapon-icon { width: 1em; height: 1em; object-fit: contain; vertical-align: middle; transform: scale(1.5); }
+.v39-equipment-weapon-glow {
+  --v39-rarity-color: #b8b8b8;
+  position: relative;
+  isolation: isolate;
+  display: inline-grid;
+  place-items: center;
   inline-size: 1em;
   block-size: 1em;
   vertical-align: middle;
-  background-repeat: no-repeat;
+}
+.v39-equipment-weapon-glow::before {
+  content: "";
+  position: absolute;
+  inset: -0.4em;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--v39-rarity-color) 44%, transparent), transparent 72%);
+}
+
+.v39-equipment-weapon-outline {
+  display: inline-grid;
+  place-items: center;
+  filter: drop-shadow(0.7px 0 0 var(--v39-weapon-outline))
+    drop-shadow(-0.7px 0 0 var(--v39-weapon-outline))
+    drop-shadow(0 0.7px 0 var(--v39-weapon-outline))
+    drop-shadow(0 -0.7px 0 var(--v39-weapon-outline));
+}
+
+.v39-equipment-display-name { white-space: normal; overflow-wrap: anywhere; }
+.v39-equipment-display-slot { color: #b8c9cd; white-space: nowrap; }
+
+.v39-equipment-enhancement-level {
+  display: inline-block;
+  border: 1px solid #c7a34a;
+  border-radius: 4px;
+  padding: 1px 3px;
+  background: #342b17;
+  color: #ffe09a;
+  font-size: var(--font-secondary);
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }

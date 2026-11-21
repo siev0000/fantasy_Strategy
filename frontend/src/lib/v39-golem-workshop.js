@@ -1,4 +1,4 @@
-import {getV39GolemEnchantLimits,getV39GolemEnchantOptions,golemEnchantParts} from './v39-equipment-rules.js';
+import {getV39GolemEnchantmentLimitReason,getV39GolemEnchantLimits,getV39GolemEnchantOptions,getV39MissingEquipmentResources,golemEnchantParts} from './v39-equipment-rules.js';
 import {STATUS_FIELDS,RESISTANCE_FIELDS} from '../constants/unitCommon.js';
 import {getGameDataRows} from './game-data-registry.js';
 import {collectV39PassiveBonuses} from './v39-passive-rules.js';
@@ -101,7 +101,7 @@ export function inspectV39GolemOrder(state,request,map){
   const qualityTier=recipe?.level>=25?2:recipe?.level>=20?1:0;
   const quality=['common','uncommon','rare','epic'][qualityTier+Number(classLevel>=7)];
   const limit=getV39GolemEnchantLimits(quality);
-  const material={},food={},statusBonus={},resistanceBonus={},enchantmentsByPart={};
+  const material={},food={},statusBonus={},resistanceBonus={},enchantmentsByPart={},enchantOptionsByPart={};
   for(const [key,value] of Object.entries(recipe?.cost||{})){
     const stock=FOOD_RESOURCE_KEYS.includes(key)?food:material;
     stock[key]=value;
@@ -110,13 +110,14 @@ export function inspectV39GolemOrder(state,request,map){
   for(const part of Object.keys(golemEnchantParts)){
     const names=request.enchantmentsByPart?.[part]??[];
     const options=getV39GolemEnchantOptions(player,base,part);
+    enchantOptionsByPart[part]=options;
     if(!Array.isArray(names)||new Set(names).size!==names.length){
       reasons.push(`${part}の付与指定が正しくありません`);continue;
     }
     enchantmentsByPart[part]=[...names];
     for(const name of names){
       const option=options.find(option=>option.name===name);
-      if(!option||option.failed.length||option.cost.level>limit.single){
+      if(!option||option.failed.length||getV39GolemEnchantmentLimitReason(option.cost.level,limit)){
         reasons.push(`${part}に「${name}」を付与できません`);continue;
       }
       used+=option.cost.level;
@@ -131,12 +132,8 @@ export function inspectV39GolemOrder(state,request,map){
       }
     }
   }
-  if(used>limit.total)reasons.push(`頭・体・足の付与Lv合計が${limit.total}を超えています`);
-  for(const [stock,cost] of [[base?.materialStockByType,material],[base?.foodStockByType,food]]){
-    for(const [name,amount] of Object.entries(cost)){
-      if((Number(stock?.[name])||0)<amount)reasons.push(`${name}が不足しています`);
-    }
-  }
+  if(getV39GolemEnchantmentLimitReason(0,limit,used))reasons.push(`頭・体・足の付与Lv合計が${limit.total}を超えています`);
+  for(const name of getV39MissingEquipmentResources(base,{material,food}))reasons.push(`${name}が不足しています`);
   const creationRows=(creator?.techniques||[]).map(technique=>technique.source||technique)
     .filter(row=>row.条件==='ゴーレム作成時');
   const creationTargetRows=creationRows.filter(row=>row.対象==='ゴーレム');
@@ -172,7 +169,7 @@ export function inspectV39GolemOrder(state,request,map){
   const buildBonuses={status,skillLevels,resistances,bodyWeaponValues};
   const turns=recipe?Math.max(1,recipe.turns-Math.floor(production/50)):0;
   const additionalSkillSlots=new Set(additionalCandidates.filter(candidate=>!candidate.known).map(candidate=>candidate.source)).size;
-  return {player,faction,base,creator,craftedByGolemCrafter:classLevel>0,recipe,turns,reasons,name,terrains,limit,used,material,food,selections,additionalCandidates,additionalSkillNames,buildBonuses,
+  return {player,faction,base,creator,craftedByGolemCrafter:classLevel>0,recipe,turns,reasons,name,terrains,limit,used,material,food,enchantOptionsByPart,selections,additionalCandidates,additionalSkillNames,buildBonuses,
     additionalSkillSlots,enchantment:{quality,enchantmentsByPart,statusBonus,resistanceBonus}};
 }
 
@@ -191,6 +188,17 @@ export function orderV39Golem(state,request,map){
   return {state:{...state,players:state.players.map(row=>row.id===player.id?{...row,factionState:{
     ...next,golemOrderSerial:serial,golemOrders:[...(faction.golemOrders||[]),order]
   }}:row)},order};
+}
+
+export function createV39WorkshopGolem(order){
+  const recipe=golemSizes[order.size];
+  if(!recipe)return null;
+  const name=order.golemName??'ストーンゴーレム';
+  const unit=applyV39DerivedCharacterData({id:order.id,name,race:name,
+    className:name,level:recipe.level,worldId:'surface',settlementId:order.settlementId,
+    squadId:'solo',unitType:'通常ユニット',equipment:[],golemBuild:{size:order.size,siz:recipe.siz,craftedByGolemCrafter:order.craftedByGolemCrafter===true,enchantment:order.enchantment,additionalSkillNames:order.additionalSkillNames,bonuses:order.buildBonuses}});
+  if(!unit.derivedCharacter?.ok)return null;
+  return {...unit,hp:unit.maxHp,currentHp:unit.maxHp,ap:100,currentAp:100,maxAp:100,state:'生存'};
 }
 
 export function advanceV39GolemOrders(state,map,turn,{completeForPlayerId}={}){
@@ -213,16 +221,13 @@ export function advanceV39GolemOrders(state,map,turn,{completeForPlayerId}={}){
       changed=true;
       const next={...order,lastTurn:turn,remainingTurns:completeForPlayerId?0:Math.max(0,order.remainingTurns-1)};
       if(next.remainingTurns){golemOrders.push(next);continue;}
-      const name=order.golemName??'ストーンゴーレム';
-      const unit=applyV39DerivedCharacterData({id:order.id,name,race:name,
-        className:name,level:recipe.level,worldId:'surface',settlementId:order.settlementId,
-        squadId:'solo',unitType:'通常ユニット',equipment:[],golemBuild:{size:order.size,siz:recipe.siz,craftedByGolemCrafter:order.craftedByGolemCrafter===true,enchantment:order.enchantment,additionalSkillNames:order.additionalSkillNames,bonuses:order.buildBonuses}});
+      const unit=createV39WorkshopGolem(order);
       const [x,y]=order.tileKey.split(',').map(Number);
-      const tile=unit.derivedCharacter?.ok&&getHexOffsetNeighbors(x,y).find(point=>
+      const tile=unit&&getHexOffsetNeighbors(x,y).find(point=>
         !occupied.has(key(point))&&map.grid[point.y]?.[point.x]&&canUnitEnterV39Tile(map,point.x,point.y,unit));
       if(!tile){golemOrders.push(next);continue;}
       occupied.add(key(tile));
-      units.push({...unit,...tile,position:[tile.x,tile.y],hp:unit.maxHp,currentHp:unit.maxHp,ap:100,currentAp:100,maxAp:100,state:'生存'});
+      units.push({...unit,...tile,position:[tile.x,tile.y]});
     }
     return {...player,factionState:{...faction,units,golemOrders}};
   });

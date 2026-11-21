@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import BaseModal from "./BaseModal.vue";
+import V39ItemListScreen2 from "./V39ItemListScreen2.vue";
 import V39SelectionDetailPanel from "./V39SelectionDetailPanel.vue";
 import {
   classData as classDb,
@@ -304,10 +305,28 @@ function confirmRace() {
   if (!activeRace.value?.key) return;
   emit("confirm", activeRace.value.key);
 }
+const acquisitionRows = computed(() => categoryRaces.value.map(race => ({
+  id:race.key, label:race.name, icon:raceListIconSrc(race)
+})));
+const acquisitionSelection = computed(() => activeRace.value ? {
+  label:activeRace.value.name,
+  type:activeRace.value.summary,
+  description:activeRace.value.detail,
+  reasons:terrainPreferences.value.map(item => `${item.label} ${item.lands.join("・")}`)
+} : null);
 </script>
 
 <template>
-  <base-modal :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
+  <v39-item-list-screen2 v-if="includeAcquirableRaces" :show="show" title="種族選択" :subtitle="setupProgressText"
+    :categories="raceCategories" :category="activeRaceCategory" category-label="種族分類"
+    :rows="acquisitionRows" :selected-id="activeRaceKey" :selected="acquisitionSelection"
+    category-attribute="data-v39-race-category" row-attribute="data-v39-race-option" confirm-attribute="data-v39-race-confirm"
+    :detail="{statusRows:statusRowGroups,skillRows,resistanceRows,equipmentRows,equipmentMode,equipmentTitle,skillNames:raceLv5SkillNames,statusSource:activeRaceClassRow}"
+    :active-detail-tab="activeDetailTab" skill-title="種族スキル (Lv1-5)"
+    empty-text="選択可能な種族がありません。" back-label="戻る" confirm-label="この種族で決定"
+    @close="$emit('close')" @back="$emit('close')" @category="selectRaceCategory" @select="selectRace"
+    @detail-tab="activeDetailTab = $event" @confirm="confirmRace" />
+  <base-modal v-else :show="show" title="種族選択" :subtitle="setupProgressText" :wide="true" :close-on-backdrop="false" variant="v39" @close="$emit('close')">
     <div v-if="filteredRaces.length" class="race-layout">
       <section class="race-category-pane" :style="raceLayoutStyle">
         <nav class="race-category-tabs" role="tablist" aria-label="種族分類">

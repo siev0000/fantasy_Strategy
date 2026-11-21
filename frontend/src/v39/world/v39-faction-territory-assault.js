@@ -1,3 +1,4 @@
+import {getV39ActionBlock} from '../../lib/v39-control-status.js';
 import { resolveAttackApCost, resolveAttackPower } from "../../lib/v39-combat-engine.js";
 import { canV39FactionAttack } from "../../lib/v39-diplomacy-rules.js";
 import { normalizeTerritoryStateRecord } from "../../lib/settlement-state.js";
@@ -20,6 +21,8 @@ export function executeV39FactionTerritoryAssault({ playerId, attackerId, tileKe
   if (keyFor(attacker) !== key) return { ok:false, reason:"対象領土と同じマスにいません" };
   const territory = normalizeTerritoryStateRecord(state.territoryStateByTile?.[key]);
   if (territory.raided === true) return { ok:false, reason:"対象領土はすでに略奪されています", completed:true };
+  const block = getV39ActionBlock(attacker,state.timeline?.turnNumber,'skill',skillRow);
+  if (block) return {ok:false,reason:block};
   const apCost = resolveAttackApCost(skillRow, attacker);
   if (number(attacker?.ap, attacker?.currentAp) < apCost) return { ok:false, reason:"APが不足しています" };
   const damage = resolveV39CityTerritoryDamage(state,key,resolveAttackPower(skillRow, attacker),{skillRow,attacker});

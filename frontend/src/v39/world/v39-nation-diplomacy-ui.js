@@ -1,3 +1,6 @@
+import {openSpyPanel} from "./v39-spy-panel.js";
+import {advanceSpyOperations} from "../../lib/v39-spy-operations.js";
+import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import {
   advanceV39DiplomacyTurn,
   calculateV39NationPolicyModifiers,
@@ -6,6 +9,7 @@ import {
   endV39War,
   getV39DiplomacyRelation,
   getV39DiplomacyRelationLabel,
+  factionOpinion,
   getV39NationPolicyOptions,
   improveV39DiplomacyRelation,
   isV39DemonFactionPair,
@@ -112,31 +116,15 @@ function openFactionRoster(){
       ?`最終確認 T${seen.turn} / ${seen.worldId==='surface'?'地上':'別マップ'} (${seen.x}, ${seen.y}) / ${seen.size}`:'未遭遇';
     return `<li><strong>${escapeHtml(target.label)}</strong> ${escapeHtml(target.race||'種族未設定')} / ${escapeHtml(details)}</li>`;
   }).join('');
-  const own=player.factionState?.units||[];
-  const eligible=own.filter(unit=>unit.state!=='死亡'&&Number(unit.hp??unit.currentHp)>0
-    &&['隠密','変装'].every(key=>Number(unit.status?.[key]??unit.skillLevels?.[key])>=150));
   showFactionInfo('勢力情報',`<p>参加勢力 ${state.players.length}（NPC ${state.players.filter(row=>row.isPlayer===false).length}）</p><ul>${roster}</ul>
-    <h3>諜報</h3><p>任務資格は隠密・変装ともに150以上。</p>
-    <p>資格者 ${eligible.length}人 ${escapeHtml(eligible.map(unit=>unit.name).join('、'))}</p>
-    <details><summary>任務一覧</summary><p>諜報　偵察、内政調査、技術調査、情報網構築</p><p>工作　破壊工作、物資妨害、扇動、情報操作、暗殺</p><p>防諜　スパイ捜索、警戒強化、尋問、二重スパイ</p></details>`);
+    <button type="button" data-open-spy>諜報</button>`);
+  const dialog=document.getElementById("v39-faction-info");
+  dialog.querySelector("[data-open-spy]").onclick=()=>{dialog.close();openSpyPanel(openFactionRoster);};
 }
 
-window.openV39ObservedFactionUnits=(ownerId,x,y)=>{
-  const state=window.getV39GameState?.({includeWorlds:false});
-  if(!state||state.activePlayerId===ownerId||window.isV39TileInCurrentVision?.(x,y)!==true)return;
-  const owner=state.players.find(player=>player.id===ownerId);
-  const units=(owner?.factionState?.units||[]).filter(unit=>unit.x===x&&unit.y===y
-    &&(unit.worldId||'surface')===(state.activeWorldId||'surface')&&window.isV39EntityDetected?.(unit)===true);
-  if(!units.length)return;
-  showFactionInfo(owner.label,units.map(unit=>{
-    const fields=['攻撃','防御','魔力','精神','速度','命中'].flatMap(key=>Number.isFinite(Number(unit.status?.[key]))?[`${key} ${Number(unit.status[key])}`]:[]);
-    return `<section><h3>${escapeHtml(unit.name)} / ${escapeHtml(unit.className||unit.race||'')}</h3>
-      <p>Lv ${escapeHtml(unit.level||1)} / HP ${escapeHtml(unit.hp??unit.currentHp??0)} / ${escapeHtml(unit.maxHp??'?')}</p>
-      <p>${escapeHtml(fields.join('　'))}</p></section>`;
-  }).join(''));
-};
-
 window.openV39FactionInfo=openFactionRoster;
+window.openV39FactionDetails=targetId=>openSpyPanel(null,{targetId});
+window.openV39SpyPanel=()=>openSpyPanel(openFactionRoster);
 document.addEventListener('click',event=>{
   if(event.target.closest?.('#v39-interaction-faction-info'))openFactionRoster();
 });
@@ -150,7 +138,7 @@ function renderDiplomacy(state, player) {
     const atWar = relation.status === "war";
     const exempt = isV39DemonFactionPair(player, target);
     const penalty = Number(relation.diplomacyPenalty) || 0;
-    const relationValue = Number(relation.relationValue) || 0;
+    const relationValue = factionOpinion(relation,player.id);
     const treaties = Object.values(relation.treaties || {}).filter(row => row?.active && Number(row.expiresAtTurn) > Number(state.timeline?.turnNumber));
     const grace = Object.values(relation.treaties || {}).filter(row => !row?.active && Number(row.exitGraceUntilTurn) > Number(state.timeline?.turnNumber)).map(row => `${row.label}の退出猶予:T${row.exitGraceUntilTurn}まで`);
     const detail = exempt ? "魔族同士: 宣戦不要・評価低下なし" : penalty ? `宣戦ペナルティ ${penalty} / T${relation.penaltyUntilTurn}まで` : "宣戦ペナルティなし";
@@ -164,7 +152,7 @@ function renderDiplomacy(state, player) {
     const proposalText = pending ? `<div class="v39-treaty-proposal">${escapeHtml(V39_TREATY_TYPES[proposal.type]?.label)} ${proposal.durationTurns}ターン ${proposal.toId === player.id ? `<button data-v39-treaty-action="accept" data-v39-target-player="${escapeHtml(target.id)}">承諾</button><button data-v39-treaty-action="reject" data-v39-target-player="${escapeHtml(target.id)}">拒否</button>` : "回答待ち"}</div>` : "";
     return `<article class="v39-diplomacy-row">
       <div><strong>${escapeHtml(target.label)}</strong><span>${escapeHtml(target.race || "種族未設定")}</span></div>
-      <div><b class="${atWar ? "war" : "peace"}">${atWar ? "戦争中" : `${getV39DiplomacyRelationLabel(relationValue)} ${relationValue}`}</b><small>${escapeHtml(detail)}</small><small>${escapeHtml([...treaties.map(row => `${row.label}:T${row.expiresAtTurn}`), ...grace].join(" / ") || "条約なし")}</small><small>自国の信用 ${Number(relation.trustByPlayer?.[player.id]) || 0} / 相手 ${Number(relation.trustByPlayer?.[target.id]) || 0}</small></div>
+      <div><b class="${atWar ? "war" : "peace"}">${atWar ? "戦争中" : `${renderV39ScreenIcon("友好度")}${getV39DiplomacyRelationLabel(relationValue)} ${relationValue}`}</b><small>${escapeHtml(detail)}</small><small>${escapeHtml([...treaties.map(row => `${row.label}:T${row.expiresAtTurn}`), ...grace].join(" / ") || "条約なし")}</small><small>自国の信用 ${Number(relation.trustByPlayer?.[player.id]) || 0} / 相手 ${Number(relation.trustByPlayer?.[target.id]) || 0}</small></div>
       <div class="v39-diplomacy-actions"><label>期間 <input aria-label="協定期間" data-v39-treaty-duration="${escapeHtml(target.id)}" type="number" min="1" max="${V39_DIPLOMACY_BALANCE.treatyMaximumTurns}" value="${treatyDurations.get(target.id) || V39_DIPLOMACY_BALANCE.treatyDurationTurns}" style="width:64px">T</label><button type="button" data-v39-diplomacy-action="friendly" data-v39-target-player="${escapeHtml(target.id)}">親善</button><button type="button" data-v39-diplomacy-action="${atWar ? "peace" : "war"}" data-v39-target-player="${escapeHtml(target.id)}">${atWar ? "停戦" : "宣戦"}</button>${treatyButtons}${proposalText}<small>通行のみでは採取・建築不可。破棄: 友好度−${V39_DIPLOMACY_BALANCE.treatyCancellationLoss}・信用−${V39_DIPLOMACY_BALANCE.treatyCancellationTrustLoss}。退出猶予${V39_DIPLOMACY_BALANCE.treatyExitGraceTurns}T。</small></div>
     </article>`;
   }).join("")}</div>`;
@@ -315,6 +303,7 @@ window.addEventListener("v39:turn-stage-diplomacy", event => {
     const state = window.getV39GameState?.();
     if (!state) return;
     const next = advanceV39DiplomacyTurn(state, event.detail?.turnNumber);
+    advanceSpyOperations(next,Number(event.detail?.turnNumber)||state.timeline.turnNumber,window.__v39FieldRuntime?.mapData);
     window.setV39GameState?.({ players:next.players, diplomacyRelations:next.diplomacyRelations }, { reason:"diplomacy-turn" });
     for (const report of next.reports || []) {
       const participants = report.pairKey?.split("|") || [report.playerId || state.activePlayerId];

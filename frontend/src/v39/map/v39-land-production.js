@@ -1,3 +1,4 @@
+import {renderV39ResourceIcon} from "../ui/v39-resource-item-icon.js";
 import {getGameDataRows} from '../../lib/game-data-registry.js';
 import {FOOD_RESOURCE_KEYS,MATERIAL_RESOURCE_KEYS,ECONOMY_GAIN_SCALE,collectV39TerritoryTileIncome,resolveV39FacilityEffectsAtTile} from '../../lib/v39-economy-rules.js';
 import {getSettlementForTerritory} from '../../lib/settlement-state.js';
@@ -28,7 +29,7 @@ export function inspectV39LandProduction(state,map,{x,y,key,terrain,special}) {
 }
 
 export function renderV39LandProduction(model) {
-  const resources=bag=>Object.entries(bag||{}).map(([name,value])=>{const icon=resolveV39ResourceIcon(name);return `<span title="${esc(name)}" aria-label="${esc(name)} ${esc(value)}"><i aria-hidden="true" style="color:${esc(icon.color)}">${esc(icon.glyph)}</i><b>${esc(value)}</b><small>${esc(name)}</small></span>`;}).join('')||'<small>なし</small>';
+  const resources=bag=>Object.entries(bag||{}).map(([name,value])=>{const icon=resolveV39ResourceIcon(name);return `<span title="${esc(name)}" aria-label="${esc(name)} ${esc(value)}"><i aria-hidden="true" style="color:${esc(icon.color)}">${renderV39ResourceIcon(name)}</i><b>${esc(value)}</b><small>${esc(name)}</small></span>`;}).join('')||'<small>なし</small>';
   const section=(title,body)=>`<section class="v39-land-resource-section"><strong>${title}</strong><div class="v39-land-resource-list">${body}</div></section>`;
   const effects=Object.entries(model.facilityEffects||{}).filter(([,v])=>n(v)!==0).map(([name,value])=>`${esc(name)} ${n(value)>0?'+':''}${esc(value)}`).join(' / ');
   return section('地形基本産出 /T（倍率適用前）',resources(model.base))

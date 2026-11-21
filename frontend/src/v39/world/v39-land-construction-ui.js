@@ -1,3 +1,4 @@
+import {renderV39ResourceIcon} from "../ui/v39-resource-item-icon.js";
 import {renderV39OperationPlans,renderV39TerritoryGuide} from './v39-operation-plan-ui.js';
 import {usesV39OperationPhases,isV39TerritoryPhase} from '../../lib/v39-operation-phases.js';
 import {facilityDefinitions,inspectV39Construction,inspectV39SettlementDevelopment,terrainConditionMet,inspectV39WallConstruction,currentDevelopmentOccupiedTiles} from '../../lib/v39-economy-rules.js';
@@ -10,7 +11,6 @@ import {hasV39FacilityPrerequisites} from '../../lib/v39-facility-development-ru
 import {V39_CONSTRUCTION_CATEGORIES,getV39ConstructionCategories} from '../../lib/v39-construction-categories.js';
 import {resolveFacilityIconArtwork} from '../../lib/facility-icon-artwork.js';
 import {resolveSettlementArtwork} from '../../lib/map-entity-artwork.js';
-import {resolveV39ResourceIconGlyph} from '../../lib/resource-icon-glyphs.js';
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import './v39-land-construction-ui.css';
 
@@ -100,7 +100,7 @@ function render(){
   const orderedEdges=orderV39WallConstructionEdges(session.edges,session.startEdgeKey||undefined);
   session.preview=ownTile&&selected?{tileKey:key,facilityName:selected.name,worldId:session.worldId,...(isWall(selected)?{edges:orderedEdges,wallTiles:session.wallTiles||[],startEdgeKey:orderedEdges[0]&&v39WallEdgeKey(orderedEdges[0])}:{}),...(isScale(selected)?{settlementType:selected.name}:{})}:null;
   const costs=Object.entries(check?.materialPayment?.cost||selected?.cost||{}).filter(([,amount])=>amount>0);
-  const materials=costs.map(([name,amount])=>`<span class="v39-build-material${Number(check?.village?.materialStockByType?.[name]||0)<amount?' shortage':''}" title="${esc(name)}"><span aria-hidden="true">${esc(resolveV39ResourceIconGlyph(name))}</span><span>${esc(name)}</span><b>${amount}</b><small>所持 ${Number(check?.village?.materialStockByType?.[name]||0).toLocaleString('ja-JP')}</small></span>`).join('')||'<span>なし</span>';
+  const materials=costs.map(([name,amount])=>`<span class="v39-build-material${Number(check?.village?.materialStockByType?.[name]||0)<amount?' shortage':''}" title="${esc(name)}"><span aria-hidden="true">${renderV39ResourceIcon(name)}</span><span>${esc(name)}</span><b>${amount}</b><small>所持 ${Number(check?.village?.materialStockByType?.[name]||0).toLocaleString('ja-JP')}</small></span>`).join('')||'<span>なし</span>';
   let host=document.getElementById('v39-land-construction');
   if(!host){host=document.createElement('section');host.id='v39-land-construction';document.getElementById('footTile')?.append(host);}
   document.getElementById('footTile')?.classList.add('is-construction-open');

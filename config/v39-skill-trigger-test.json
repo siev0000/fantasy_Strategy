@@ -1,5 +1,12 @@
 {
   "equipmentTest": {
+    "weaponCraftSpecialist": {
+      "id": "equipment-test-smith",
+      "name": "武具検証・スミス",
+      "className": "スミス",
+      "craftSkill": 200,
+      "passiveSkillNames": ["武器職人（検証）", "魔法武器職人（検証）"]
+    },
     "unit": {
       "id": "equipment-test-fighter",
       "name": "武具検証・ファイター／モンク／アーチャー",
@@ -15,7 +22,8 @@
       {"id": "equipment-test-dummy-near", "name": "案山子・近距離", "x": 3, "y": 6},
       {"id": "equipment-test-dummy-far", "name": "案山子・遠距離", "x": 5, "y": 6}
     ],
-    "equipmentNames": ["剣", "弓", "篭手"]
+    "equipmentNames": ["剣", "弓", "篭手"],
+    "startingQualities": ["common", "uncommon", "rare"]
   },
   "units": [
     {
@@ -841,6 +849,8 @@
     }
   ],
   "passives": [
+    {"名前":"武器職人（検証）","行動":"P","条件":"武器作成","制作":100},
+    {"名前":"魔法武器職人（検証）","行動":"P","条件":"武器作成","強化Lv上限":1},
     {
       "名前": "流血の刃（検証）",
       "行動": "P",

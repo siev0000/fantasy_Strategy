@@ -1,3 +1,5 @@
+import {renderV39ResourceIcon} from "../ui/v39-resource-item-icon.js";
+import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import {getV39AgreedQuestReward,getV39QuestRewardItems,getV39QuestRelationReward,getV39QuestRewardResources,describeV39QuestReward,requestV39QuestRewardChange} from '../../lib/v39-quest-rewards.js';
 import {resolveV39ResourceIcon} from '../../lib/resource-icon-glyphs.js';
 import {resolveV39SoulResourceValue} from '../../lib/v39-soul-resource-value.js';
@@ -14,7 +16,7 @@ const drafts=new Map(),messages=new Map();
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function rewardBadge(name,amount,label){
   const icon=resolveV39ResourceIcon(name);
-  return `<span class="v39-quest-reward-item" data-reward-icon="${esc(name)}" title="${esc(label)}" aria-label="${esc(label)}"><i aria-hidden="true"${icon.color?` style="color:${esc(icon.color)}"`:''}>${esc(icon.glyph)}</i><strong>${esc(amount)}</strong></span>`;
+  return `<span class="v39-quest-reward-item" data-reward-icon="${esc(name)}" title="${esc(label)}" aria-label="${esc(label)}"><i aria-hidden="true"${icon.color?` style="color:${esc(icon.color)}"`:''}>${(name === "人口" ? renderV39ScreenIcon(name) : "") || renderV39ResourceIcon(name)}</i><strong>${esc(amount)}</strong></span>`;
 }
 export function questRewardSummary(state,village,quest){
   const offer=quest.rewardTerms?null:getV39AgreedQuestReward(state,village,state.activePlayerId,quest);
@@ -25,7 +27,7 @@ export function questRewardSummary(state,village,quest){
     return souls>0?rewardBadge('魂',resolveV39SoulResourceValue(souls),`${describeV39QuestReward(r)} → 魂へ即時変換`)
       :rewardBadge(r.kind==='population'?'人口':r.kind==='legacySoul'?'魂':r.name,r.amount,describeV39QuestReward(r));
   }).join('');
-  return `<div class="v39-quest-reward-summary" data-quest-reward-summary><b>報酬${offer?'（合意済み）':quest.rewardTerms?'（確定）':''}</b>${offer?`<small title="この条件で受注できる残りターン">⌛${offer.expiresTurn-state.timeline.turnNumber}</small>`:''}${badges}${relation?`<span>友好度 ${relation>0?'+':''}${relation}</span>`:''}${!items.length&&quest.automaticRewardItems?'<small>余剰物資なし</small>':!items.length&&!relation?'<small>なし</small>':''}</div>`;
+  return `<div class="v39-quest-reward-summary" data-quest-reward-summary><b>報酬${offer?'（合意済み）':quest.rewardTerms?'（確定）':''}</b>${offer?`<small title="この条件で受注できる残りターン">⌛${offer.expiresTurn-state.timeline.turnNumber}</small>`:''}${badges}${relation?`<span>${renderV39ScreenIcon("友好度")}友好度 ${relation>0?'+':''}${relation}</span>`:''}${!items.length&&quest.automaticRewardItems?'<small>余剰物資なし</small>':!items.length&&!relation?'<small>なし</small>':''}</div>`;
 }
 
 let activePicker=null;

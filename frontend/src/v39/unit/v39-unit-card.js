@@ -47,9 +47,9 @@ function levelBadgeIconMarkup(unit, options = {}) {
   return escapeHtml(options.icon ?? unit.icon ?? unit.glyph ?? unit.symbol ?? "◆");
 }
 
-function portraitMarkup(unit, exp, expTitle) {
-  const state=typeof window.getV39GameState==='function'?window.getV39GameState({includeWorlds:false}):null;
-  const transformation=resolveV39ActiveTransformationArtwork(unit,state);
+function portraitMarkup(unit, exp, expTitle, snapshot) {
+  const state=!snapshot&&typeof window.getV39GameState==='function'?window.getV39GameState({includeWorlds:false}):null;
+  const transformation=snapshot?null:resolveV39ActiveTransformationArtwork(unit,state);
   const art=transformation||resolveMonsterSheetArtwork(unit)||resolveUnitArtwork(unit);
   const brightness=transformation?1:getV39UnitArtworkBrightness(unit);
   if(!art?.src || art.type==='icon')return '';
@@ -63,7 +63,7 @@ function portraitMarkup(unit, exp, expTitle) {
 
 // 部隊一覧と自キャラ画面が同じカードを描く。クリック先だけ呼出し側で指定する。
 export function renderV39UnitCard(unit, options={}) {
-  unit=visualV39CombatUnit(unit);
+  if(!options.snapshot)unit=visualV39CombatUnit(unit);
   const waited = isV39UnitWaitDimmed(unit, options.turnNumber ?? window.getV39TimelineState?.()?.turnNumber);
   const id = options.id ?? unit.id;
   const name = getV39UnitDisplayName(unit,options.name ?? unit.name ?? id);
@@ -83,10 +83,10 @@ export function renderV39UnitCard(unit, options={}) {
   const expTitle = exp.atLimit ? `Lv${exp.level} 成長上限` : `Lv${exp.level} EXP ${exp.exp}/${exp.need}`;
   const attribute = options.attribute || (options.character ? "data-v39-character-row" : "data-v39-unit-id");
   const badgeIcon = levelBadgeIconMarkup(unit, options);
-  const cast=describeV39Cast(getV39UnitCast(null,unit.id),options.turnNumber??window.getV39TimelineState?.()?.turnNumber);
-  const badge = (options.portrait ? portraitMarkup(unit,exp,expTitle) : '') || `<span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="squad-icon">${badgeIcon}</span><span class="squad-level-number" aria-hidden="true">${exp.level}</span></span>`;
+  const cast=options.snapshot?null:describeV39Cast(getV39UnitCast(null,unit.id),options.turnNumber??window.getV39TimelineState?.()?.turnNumber);
+  const badge = (options.portrait ? portraitMarkup(unit,exp,expTitle,options.snapshot) : '') || `<span class="squad-exp-ring" style="--v39-exp-progress:${exp.percent.toFixed(2)}%" title="${escapeHtml(expTitle)}" aria-label="${escapeHtml(expTitle)}"><span class="squad-icon">${badgeIcon}</span><span class="squad-level-number" aria-hidden="true">${exp.level}</span></span>`;
   const interactive = options.interactive !== false;
   const element = interactive ? "button" : "div";
   const action = interactive ? ` ${attribute}="${escapeHtml(id)}"` : "";
-  return `<${element} class="squad-card${waited ? " v39-unit-waited" : ""}${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead && hp.current<=0 ? " dead" : ""}${options.collapseUnselected !== false ? " v39-card-collapse-unselected" : ""}"${action} style="--v39-waited-brightness:${V39_WAITED_UNIT_BRIGHTNESS}" title="${escapeHtml(name)} Lv${exp.level}${waited ? " / 待機済み" : ""}"><div class="squad-card-top"><div class="squad-main">${badge}${cast ? `<span class="v39-cast-card-mark${cast.ready?' is-ready':''}" title="${escapeHtml(cast.label)}" aria-label="${escapeHtml(cast.label)}">${renderV39CastSymbol(cast.ready)}</span>` : ""}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${cast ? ` <span class="v39-cast-state">${cast.label}</span>` : ""}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div><div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div></${element}>`;
+  return `<${element} class="squad-card${waited ? " v39-unit-waited" : ""}${options.selected ? " selected" : ""}${options.character ? " v39-char-unit-row" : ""}${options.dead && hp.current<=0 ? " dead" : ""}${options.collapseUnselected !== false ? " v39-card-collapse-unselected" : ""}"${action} style="--v39-waited-brightness:${V39_WAITED_UNIT_BRIGHTNESS}" title="${escapeHtml(name)} Lv${exp.level}${waited ? " / 待機済み" : ""}"><div class="squad-card-top"><div class="squad-main">${badge}${cast ? `<span class="v39-cast-card-mark${cast.ready?' is-ready':''}" title="${escapeHtml(cast.label)}" aria-label="${escapeHtml(cast.label)}">${renderV39CastSymbol(cast.ready)}</span>` : ""}<div class="squad-name-wrap"><b class="squad-name" title="${escapeHtml(name)}">${escapeHtml(name)}</b><small class="squad-pos">${positionLabel}${cast ? ` <span class="v39-cast-state">${cast.label}</span>` : ""}${unit.movementHold ? " ⏸" : ""}${defenses.map(value=>` <span class="v39-defense-value ${value.kind}">${value.label}${value.remaining}</span>`).join("")}</small></div></div></div>${options.showVitals===false?"":`<div class="squad-bars" data-v39-gauge="1">${gauge("hp","HP",hp,defenses)}${gauge("ap","AP",ap)}</div>`}</${element}>`;
 }

@@ -1,3 +1,4 @@
+import {createSpyTestFixture} from './v39-spy-test.js';
 import fixture from '../../../../config/v39-skill-trigger-test.json';
 import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
 import {declareV39War} from '../../lib/v39-diplomacy-rules.js';
@@ -5,6 +6,14 @@ import {focusV39MapTile} from '../map/v39-map-focus.js';
 import {getSelectedSettlement,replaceFactionSettlement} from '../../lib/settlement-state.js';
 import {normalizeV39EquipmentInventory} from '../../lib/v39-equipment-rules.js';
 import {MATERIAL_RESOURCE_KEYS} from '../../lib/v39-economy-rules.js';
+
+function createTestMap({width,height}=fixture.mapSize){
+  const grid=value=>Array.from({length:height},()=>Array(width).fill(value));
+  return {w:width,h:height,worldWrapEnabled:false,isUnderground:false,hegemonyInterior:null,
+    grid:grid('平地'),heightLevelMap:grid(0),specialMap:grid(''),reliefMap:grid(''),
+    lavaMap:[],snowCoverMap:[],snowfallMap:[],fogMap:[],hazardZones:[],disasterFields:[],terrainDamage:{},
+    caveSites:[],entrances:[],riverData:[],victoryLandmarksByTile:{},defenseStructures:[]};
+}
 
 export function createV39SkillTriggerFieldFixture(player,{craftEquipment=false}={}){
   const players=fixture.units.map((sample,index)=>{
@@ -19,7 +28,9 @@ export function createV39SkillTriggerFieldFixture(player,{craftEquipment=false}=
       units,settlements:[],village:null,selectedSettlementId:null,
       squads:[{id:'solo',name:'単独',unitIds:units.map(unit=>unit.id)}],selectedSquadId:'solo',selectedUnitId:units[0].id,combatRuntime:{}}};
   });
-  const {unit,targets,equipmentNames}=fixture.equipmentTest;
+  const {unit,targets,equipmentNames,startingQualities,weaponCraftSpecialist}=fixture.equipmentTest;
+  const qualities=craftEquipment ? startingQualities : [undefined];
+  const equipmentStock=equipmentNames.flatMap(name=>qualities.map(quality=>({name,quality})));
   const tester={...buildV39UnitEntity(unit),worldId:'surface',testOnly:true,squadId:'solo'};
   const dummies=targets.map(target=>({
     ...buildV39UnitEntity({...target,race:unit.race}),worldId:'surface',testOnly:true,
@@ -35,35 +46,47 @@ export function createV39SkillTriggerFieldFixture(player,{craftEquipment=false}=
   const base=getSelectedSettlement(player.factionState)||{id:'equipment-test-base',settlementId:'equipment-test-base',
     name:'武具検証拠点',x:4,y:4,placed:true,type:'村',population:50};
   const tileKey=`${base.x},${base.y}`;
+  if(craftEquipment){
+    const {id,name,className,craftSkill,passiveSkillNames}=weaponCraftSpecialist;
+    const faction=players[0].factionState;
+    const occupying=faction.units.find(member=>member.x===base.x&&member.y===base.y);
+    if(occupying){
+      const position=[[2,6],[1,6],[2,5]].find(([x,y])=>!players.some(side=>side.factionState.units.some(member=>member.x===x&&member.y===y)));
+      if(position){const [x,y]=position;Object.assign(occupying,{x,y,position});}
+    }
+    const smith=buildV39UnitEntity({id,name,race:unit.race,className:"ファイター",level:10,x:base.x,y:base.y});
+    faction.units.push({...smith,worldId:"surface",squadId:"solo",testOnly:true,
+      testWeaponCraft:{className,craftSkill},testSkillNames:passiveSkillNames});
+    faction.squads[0].unitIds.push(id);
+  }
   const facilities=['鍛冶場'];
   players[0].factionState=replaceFactionSettlement(players[0].factionState,{
     ...base,buildings:facilities,tileFacilityMap:{[tileKey]:facilities},territoryTileKeys:[tileKey],
-    cityLevels:{...base.cityLevels,鍛冶Lv:1},
-    materialStockByType:{...base.materialStockByType,...Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(name=>[name,100]))},
-    equipmentInventory:craftEquipment?[]:normalizeV39EquipmentInventory(equipmentNames.map(name=>({name})))
+    cityLevels:{...base.cityLevels, ...(craftEquipment ? {鍛冶Lv:5, 魔法Lv:7, 信仰Lv:5} : {鍛冶Lv:1})},
+    materialStockByType:{...base.materialStockByType,...Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(name=>[name,100])),
+      ...(craftEquipment?{金:300}:{})},
+    equipmentInventory:normalizeV39EquipmentInventory(equipmentStock)
   },{ownerPlayerId:player.id});
-  const {width,height}=fixture.mapSize;
-  const grid=value=>Array.from({length:height},()=>Array(width).fill(value));
-  const map={w:width,h:height,worldWrapEnabled:false,isUnderground:false,hegemonyInterior:null,
-    grid:grid('平地'),heightLevelMap:grid(0),specialMap:grid(''),reliefMap:grid(''),
-    lavaMap:[],snowCoverMap:[],snowfallMap:[],fogMap:[],hazardZones:[],disasterFields:[],terrainDamage:{},
-    caveSites:[],entrances:[],riverData:[],victoryLandmarksByTile:{},defenseStructures:[],skillTriggerTestFixture:true,
-    equipmentCraftTestFixture:craftEquipment};
+  const map={...createTestMap(),skillTriggerTestFixture:true,equipmentCraftTestFixture:craftEquipment};
   return {map,players,facilitiesByTile:{[tileKey]:facilities},territoryOwnerByTile:{[tileKey]:player.id},
     territoryStateByTile:{[tileKey]:{status:'領土',settlementId:base.settlementId||base.id}},
     diplomacyRelations:declareV39War({players,diplomacyRelations:{}},players[0].id,players[1].id,1).diplomacyRelations};
 }
 
 export function selectV39SkillTriggerTestSide(index){
-  if(!window.isV39TestMode?.()||!window.__v39FieldRuntime?.mapData?.skillTriggerTestFixture)return false;
+  const map=window.__v39FieldRuntime?.mapData;
+  if(!window.isV39TestMode?.()||!(map?.skillTriggerTestFixture||map?.spyTestFixture))return false;
   const state=window.getV39GameState(),player=state.players[index];
   if(!player)return false;
   window.setV39GameState({activePlayerId:player.id,timeline:{...state.timeline,activeTurnPlayerId:player.id,phase:'player'}},{reason:'skill-trigger-test-side'});
+  if(map.spyTestFixture){
+    window.refreshV39MapEntities?.();window.activateV39FooterTab?.('interaction');window.openV39SpyPanel?.();return true;
+  }
   window.activateV39FooterTab?.('squad');
   window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();
   focusV39MapTile(player.factionState.units[0],{worldId:'surface',select:true,notify:false});
   window.showV39TurnBanner?.(window.__v39FieldRuntime.mapData.equipmentCraftTestFixture
-    ? '武具作成テスト。検証拠点で武具を作り、武具検証ユニットに装備して案山子を攻撃できます。'
+    ? '武具作成テスト。検証拠点の在庫に剣・弓・篭手があります。装備変更・生成・付与を試せます。'
     : player.name+'を操作中。操作する兵は部隊一覧で選択。武具検証ユニットで剣・弓・篭手・素手を比較できます。');
   return true;
 }
@@ -74,14 +97,14 @@ export async function startV39SkillTriggerTest(options={}){
   await window.waitForV39MapRenderSettled?.();
   const state=window.getV39GameState(),runtime=window.__v39FieldRuntime;
   const player=state.players.find(row=>row.id===state.activePlayerId);
-  const {map,...data}=createV39SkillTriggerFieldFixture(player,options);
+  const {map,...data}=options.spyTest?createSpyTestFixture(player,createTestMap({width:24,height:16})):createV39SkillTriggerFieldFixture(player,options);
   window.setV39GameState({...data,activeWorldId:'surface',activePlayerId:player.id,
     gameSettings:{...state.gameSettings,turnProgressionMode:'standard'},
     timeline:{...state.timeline,activeTurnPlayerId:player.id,phase:'player'},
     settlements:[],enemies:[],enemySquads:[],enemyNests:[],neutralVillages:[],victoryLandmarksByTile:{},
     worldEnvironment:{activeDisasters:[]}},
     {reason:'skill-trigger-test-start',trackUnitDeaths:false});
-  window.loadV39FieldSnapshot({...runtime.mapData,...map},runtime.settings,{layerChange:true,worldId:'surface'});
+  window.loadV39FieldSnapshot({...runtime.mapData,spyTestFixture:false,skillTriggerTestFixture:false,equipmentCraftTestFixture:false,...map},runtime.settings,{layerChange:true,worldId:'surface'});
   await window.waitForV39MapRenderSettled?.();
   selectV39SkillTriggerTestSide(0);
   return true;

@@ -317,7 +317,8 @@ function planAiTerritoryAssault(state, player) {
     if (!canV39FactionAttack(state, player?.id, ownerPlayerId)) continue;
     const skillRow = resolveAttackRows(attacker)
       .filter(row => !isV39SupportSkill(row, attacker))
-      .find(row => number(attacker?.ap ?? attacker?.currentAp) >= resolveAttackApCost(row, attacker));
+      .find(row => !getV39ActionBlock(attacker,state.timeline?.turnNumber,'skill',row)
+        && number(attacker?.ap ?? attacker?.currentAp) >= resolveAttackApCost(row, attacker));
     if (!skillRow) continue;
     return { playerId:player.id, attackerId:unitId(attacker), ownerPlayerId, tileKey, skillRow };
   }
@@ -381,23 +382,34 @@ function startAiLandExpansion(state, player, mapData, goals=[],foodBalances=[]) 
   return null;
 }
 
+function standUpFactionUnits(state, player, turn) {
+  const worldId = state.activeWorldId || 'surface';
+  let changed = false;
+  const units = player.factionState.units.map(unit => {
+    if (!unit.knockedDown || (unit.worldId || 'surface') !== worldId) return unit;
+    const standing = standUpV39Unit(unit,turn);
+    if (standing !== unit) changed = true;
+    return standing;
+  });
+  if (!changed) return state;
+  return {...state,players:state.players.map(row => row.id === player.id
+    ? {...row,factionState:{...row.factionState,units}} : row)};
+}
+
 export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__v39FieldRuntime?.mapData) {
   let state = sourceState;
   const turn = Math.max(1, Math.floor(number(turnNumber, state?.timeline?.turnNumber || 1)));
-  if(state.players.some(player=>player.isPlayer===false&&player.factionState.units.some(unit=>unit.knockedDown))){
-    state={...state,players:state.players.map(player=>player.isPlayer!==false?player:{
-      ...player,factionState:{...player.factionState,units:player.factionState.units.map(unit=>standUpV39Unit(unit,turn))}
-    })};
-  }
   const reports = [];
   if(mapData?.hegemonyInterior){
     for(const source of state.players.filter(player=>player.isPlayer===false)){
       if(!source.factionState.units.some(alive))continue;
       const stamp=source.factionState.aiState?.lastHegemonyTurnByWorld?.[state.activeWorldId];if(stamp>=turn)continue;
+      state=standUpFactionUnits(state,source,turn);
+      const actingPlayer=playerFrom(state,source.id);
       const guards=state.enemies.filter(alive),target=guards[0]||mapData.entrances[0];
       const objective={type:'victory-landmark',targetTileKey:mapData.hegemonyLandmarkKey,x:target.x,y:target.y,targetName:mapData.hegemonyAreaName};
-      const combat=planAiCombat(state,source,objective);
-      if(!combat){const moved=moveAiExplorer(state,source,mapData,objective);if(moved)state=moved.state;}
+      const combat=planAiCombat(state,actingPlayer,objective);
+      if(!combat){const moved=moveAiExplorer(state,actingPlayer,mapData,objective);if(moved)state=moved.state;}
       state={...state,players:state.players.map(player=>player.id!==source.id?player:{...player,factionState:{...player.factionState,aiState:{...player.factionState.aiState,
         lastHegemonyTurnByWorld:{...player.factionState.aiState?.lastHegemonyTurnByWorld,[state.activeWorldId]:turn}}}})};
       reports.push({playerId:source.id,combatActions:combat?[combat]:[],commands:['覇権地奥地の攻略'],turnNumber:turn});
@@ -407,6 +419,7 @@ export function runV39FactionAiTurn(sourceState, turnNumber, mapData = window.__
   for (const playerId of (state?.players || []).filter(player => player?.isPlayer === false).map(player => player.id)) {
     let player = playerFrom(state, playerId);
     if (!player || number(player?.factionState?.aiState?.lastProcessedTurn) >= turn) continue;
+    state=standUpFactionUnits(state,player,turn);
     state=prepareV39NpcGarrisons(state,playerId);player=playerFrom(state,playerId);
     const commands = getV39NpcGarrisons(player).map(row=>'拠点防衛:'+row.name+' / '+row.unitId);
     const combatActions = [];

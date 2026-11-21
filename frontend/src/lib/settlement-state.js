@@ -1,9 +1,10 @@
 import { TERRITORY_TILE_MAX_HP } from "./phaser-map-panel-config.js";
+import {normalizeV39ProductionPointUnits} from "./v39-production-point-scale.js";
 
 const text = value => String(value ?? "").trim();
 
 function cloneSettlement(source) {
-  return source && typeof source === "object" ? { ...source } : null;
+  return source && typeof source === "object" ? { ...normalizeV39ProductionPointUnits(source) } : null;
 }
 
 function withoutLegacyVillage(source) {

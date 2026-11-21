@@ -484,6 +484,7 @@ function installInput(scene, data) {
   const selectAt = (cx, cy, snapshot=null) => {
     const p = clientPoint(cx, cy); const w = snapshot?.world||camera.getWorldPoint(p.x, p.y);
     const tile = snapshot?snapshot.tile:resolveTileAtWorld(data, w.x, w.y);
+    if(tile&&window.handleV39SpyTargetTap?.(tile))return null;
     if(tile&&window.handleV39SoulRecoveryTap?.(tile))return null;
     if(tile&&window.handleV39WallConstructionTap?.(tile,w))return null;
     return tile ? selectTile(tile) : null;
@@ -523,31 +524,49 @@ function installInput(scene, data) {
   };
   scene.events.once(Phaser.Scenes.Events.POST_UPDATE, inputReady);
 
-  host.addEventListener("wheel", e => { e.preventDefault(); if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false, signal:inputSignal });
+  const fieldInputBlocked=()=>window.isV39MapInputLocked?.()===true||Boolean(document.querySelector("dialog:modal, .modal-backdrop.open"));
+  host.addEventListener("wheel", e => { e.preventDefault(); if(!fieldInputBlocked()&&!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,e.deltaY<0?1.16:1/1.16); }, { passive:false, signal:inputSignal });
   host.addEventListener('pointerdown',e=>{
-    if(window.isV39MapInputLocked?.()||(e.pointerType==='mouse'&&e.button!==0))return;
+    if(fieldInputBlocked()||(e.pointerType==='mouse'&&e.button!==0))return;
     pointerTapSnapshots.set(e.pointerId,captureV39PointerTap(camera,clientPoint,resolveTileAtWorld,data,e.clientX,e.clientY));
   },{capture:true,signal:inputSignal});
   host.addEventListener("pointerdown", e => {
-    if (window.isV39MapInputLocked?.() === true) return;
+    if (fieldInputBlocked()) return;
     if (e.pointerType==="mouse" && e.button!==0) return;
     pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
     try { host.setPointerCapture?.(e.pointerId); } catch { /* Synthetic/cancelled pointers have no active capture. */ }
     dragged=false;
   }, { signal:inputSignal });
   host.addEventListener("pointermove", e => {
-    if (window.isV39MapInputLocked?.() === true) return;
+    if (fieldInputBlocked()) return;
     const prev=pointers.get(e.pointerId); if(!prev)return;
     const old=[...pointers.values()]; pointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); const next=[...pointers.values()];
     if(next.length>=2){ const od=Math.hypot(old[0].x-old[1].x,old[0].y-old[1].y), nd=Math.hypot(next[0].x-next[1].x,next[0].y-next[1].y); if(od>0&&nd>0){if(!e.v39ZoomHandled)zoomAt((next[0].x+next[1].x)/2,(next[0].y+next[1].y)/2,nd/od);dragged=true;} return; }
     const dx=e.clientX-prev.x,dy=e.clientY-prev.y; if(Math.abs(dx)+Math.abs(dy)<1)return;
     camera.scrollX-=dx/camera.zoom; camera.scrollY-=dy/camera.zoom; clampCamera(scene); dragged=true;
   }, { signal:inputSignal });
-  const finish=e=>{ const snapshot=pointerTapSnapshots.get(e.pointerId);pointerTapSnapshots.delete(e.pointerId); const touch=e.pointerType!=="mouse", select=e.type!=="pointercancel"&&!dragged&&pointers.size===1; pointers.delete(e.pointerId); try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ } if(select)selectAt(e.clientX,e.clientY,snapshot); if(touch&&!dragged&&!pointers.size&&!window.isV39SoulRecoverySelecting?.()){const now=performance.now();if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){zoomAt(e.clientX,e.clientY,1.5);lastTouchTap=null;}else lastTouchTap={time:now,x:e.clientX,y:e.clientY};} if(!pointers.size)dragged=false;};
+  const finish=e=>{
+    const snapshot=pointerTapSnapshots.get(e.pointerId);
+    pointerTapSnapshots.delete(e.pointerId);
+    const select=e.type==="pointerup"&&pointers.has(e.pointerId)&&pointers.size===1&&!dragged&&!fieldInputBlocked();
+    pointers.delete(e.pointerId);
+    try { if(host.hasPointerCapture?.(e.pointerId))host.releasePointerCapture(e.pointerId); } catch { /* Pointer may already be cancelled. */ }
+    if(select){
+      selectAt(e.clientX,e.clientY,snapshot);
+      if(e.pointerType!=="mouse"&&!fieldInputBlocked()&&!window.isV39SoulRecoverySelecting?.()){
+        const now=performance.now();
+        if(lastTouchTap&&now-lastTouchTap.time<320&&Math.hypot(e.clientX-lastTouchTap.x,e.clientY-lastTouchTap.y)<28){
+          zoomAt(e.clientX,e.clientY,1.5);
+          lastTouchTap=null;
+        }else lastTouchTap={time:now,x:e.clientX,y:e.clientY};
+      }
+    }else lastTouchTap=null;
+    if(!pointers.size)dragged=false;
+  };
   host.addEventListener("pointerup",finish,{ signal:inputSignal }); host.addEventListener("pointercancel",finish,{ signal:inputSignal });
-  host.addEventListener("dblclick",e=>{e.preventDefault();if(window.isV39SoulRecoverySelecting?.())return;if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
+  host.addEventListener("dblclick",e=>{e.preventDefault();if(fieldInputBlocked()||window.isV39SoulRecoverySelecting?.())return;if(!e.v39ZoomHandled)zoomAt(e.clientX,e.clientY,1.5);},{ signal:inputSignal });
   const handleKeyboard = e => {
-    if (window.isV39MapInputLocked?.() === true) return;
+    if (fieldInputBlocked()) return;
     const target = e.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable) return;
     const rect = host.getBoundingClientRect();

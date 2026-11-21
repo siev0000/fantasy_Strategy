@@ -4,7 +4,8 @@ function buildAudioPath(folder, filename) {
 
 const audioAssetMap = {
   bgm: {
-    main: buildAudioPath("bgm", "bgm-main.mp3")
+    title: buildAudioPath("bgm", "著作権フリーBGM 【たそがれて】ゲーム音楽   オープニングBGM.mp3"),
+    field: buildAudioPath("bgm", "古の世界地図.mp3")
   },
   se: {
     confirm: buildAudioPath("se", "se-confirm.mp3"),
@@ -19,7 +20,10 @@ const AUDIO_STORAGE_KEY = "fantasy_strategy.audio_settings.v1";
 class GameAudioController {
   constructor() {
     this.bgmAudio = null;
+    this.bgmScene = "title";
+    this.bgmRequested = false;
     this.seCache = new Map();
+    this.explicitSeCount = 0;
     this.masterVolume = 0.5;
     this.bgmVolume = 0.15;
     this.seVolume = 0.5;
@@ -66,7 +70,7 @@ class GameAudioController {
 
   ensureBgm() {
     if (this.bgmAudio) return this.bgmAudio;
-    const audio = new Audio(audioAssetMap.bgm.main);
+    const audio = new Audio(audioAssetMap.bgm[this.bgmScene]);
     audio.loop = true;
     audio.preload = "auto";
     this.bgmAudio = audio;
@@ -75,6 +79,7 @@ class GameAudioController {
   }
 
   async startDefaultBgm() {
+    this.bgmRequested = true;
     const audio = this.ensureBgm();
     if (!audio.paused) return true;
     try {
@@ -83,6 +88,14 @@ class GameAudioController {
     } catch {
       return false;
     }
+  }
+
+  setBgmScene(scene) {
+    if (scene === this.bgmScene) return;
+    this.stopBgm();
+    this.bgmAudio = null;
+    this.bgmScene = scene;
+    if (this.bgmRequested) void this.startDefaultBgm();
   }
 
   stopBgm() {
@@ -104,9 +117,10 @@ class GameAudioController {
     return base;
   }
 
-  playSe(key) {
-    const base = this.getSeAudio(key);
+  playSe(key, {fallback = false} = {}) {
+    const base = this.getSeAudio(key === "select" ? "change" : key);
     if (!base) return;
+    if (!fallback) this.explicitSeCount++;
     const volume = this.masterVolume * this.seVolume;
     if (volume <= 0) return;
     try {
@@ -156,7 +170,51 @@ function getGameAudioController() {
   return sharedController;
 }
 
+function getButtonSound(button) {
+  const assigned = button.dataset.audioSe;
+  if (assigned === "off") return null;
+  if (Object.hasOwn(audioAssetMap.se, assigned)) return assigned;
+  const label = (button.getAttribute("aria-label") || button.textContent).trim();
+  const action = button.dataset.v39ItemListAction;
+  if (button.matches(".close,[data-close],[data-summon-close]") ||
+      /^(戻る|閉じる|キャンセル|取り消す|一覧に戻る|[×✕]$)/.test(label) ||
+      ["back", "close", "cancel"].includes(action)) return "cancel";
+  if (button.hasAttribute("aria-haspopup") || action === "open" || /(?:を開く|を見る)$/.test(label)) return "open";
+  if (button.matches('[role="tab"],[aria-pressed]') || /切り替え/.test(label)) return "change";
+  return "confirm";
+}
+
+function bindGameAudioInteractions() {
+  const audio = getGameAudioController();
+  const timers = new Set();
+  const onInteraction = event => {
+    if (!event.isTrusted) return;
+    void audio.startDefaultBgm();
+    if (event.type !== "click") return;
+    const button = event.target?.closest?.('button, [role="button"], [role="tab"]');
+    if (!button || button.matches(":disabled") || button.closest('[aria-disabled="true"], [inert]')) return;
+    const sound = getButtonSound(button);
+    if (!sound) return;
+    const explicitSeCount = audio.explicitSeCount;
+    // Give existing action handlers time to play their own sound.
+    const timer = window.setTimeout(() => {
+      timers.delete(timer);
+      if (audio.explicitSeCount === explicitSeCount) audio.playSe(sound, {fallback:true});
+    }, 0);
+    timers.add(timer);
+  };
+  document.addEventListener("click", onInteraction, true);
+  document.addEventListener("keydown", onInteraction, true);
+  return () => {
+    document.removeEventListener("click", onInteraction, true);
+    document.removeEventListener("keydown", onInteraction, true);
+    for (const timer of timers) window.clearTimeout(timer);
+    audio.stopBgm();
+  };
+}
+
 export {
   audioAssetMap,
+  bindGameAudioInteractions,
   getGameAudioController
 };

@@ -119,11 +119,25 @@ const report = await page.evaluate(async () => {
   const unrelatedUpdateSkipped = visibilityVersion() === visibilityVersionBeforeUnrelatedUpdate
     && fogCache() === fogCacheBeforeUnrelatedUpdate;
   const entityMarkersReusedForUnrelatedUpdate = entityRoots().find(root => root.name === "v39-unit-layer") === unitLayerBeforeUnrelatedUpdate;
-  const unitLayerBeforeSelection = entityRoots().find(root => root.name === "v39-unit-layer") || null;
+  const markerOf = index => window.getV39MapEntityMarker(units[index].id);
+  const oldSelectedMarker = markerOf(0), nextSelectedMarker = markerOf(1), unrelatedMarker = markerOf(2);
+  const beforeSelection = window.getV39MapMarkerStats();
   const selectedUnitId = units[1]?.id || units[0]?.id || "";
   window.updateV39ActiveFactionState({ selectedUnitId }, { reason:"render-benchmark-selection" });
   await new Promise(resolve => setTimeout(resolve, 80));
-  const selectionRenderUpdated = entityRoots().find(root => root.name === "v39-unit-layer") !== unitLayerBeforeSelection;
+  const afterSelection = window.getV39MapMarkerStats();
+  const selectionRenderUpdated = oldSelectedMarker && nextSelectedMarker && unrelatedMarker
+    && markerOf(0) !== oldSelectedMarker && markerOf(1) !== nextSelectedMarker && markerOf(2) === unrelatedMarker
+    && afterSelection.structureRebuilds === beforeSelection.structureRebuilds
+    && afterSelection.unitTilesUpdated - beforeSelection.unitTilesUpdated === 2;
+  const beforeHit = markerOf(1);
+  window.updateV39ActiveFactionState({ units:units.map((unit,i) => i === 1 ? {...unit,hp:75,currentHp:75} : unit) },
+    { reason:"render-benchmark-hp" });
+  await new Promise(resolve => setTimeout(resolve,80));
+  const afterHit = window.getV39MapMarkerStats();
+  const hpUpdateIsolated = !!beforeHit && markerOf(1) !== beforeHit && markerOf(2) === unrelatedMarker
+    && afterHit.structureRebuilds === afterSelection.structureRebuilds
+    && afterHit.unitTilesUpdated - afterSelection.unitTilesUpdated === 1;
 
   const stateBeforeScoutChange = window.getV39GameState();
   const activePlayerIndex = stateBeforeScoutChange.players.findIndex(player => player.id === stateBeforeScoutChange.activePlayerId);
@@ -194,6 +208,7 @@ const report = await page.evaluate(async () => {
     const averageFrameMs = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
     measurements[name] = {
       objectCount,
+      longestFrameMs:Number(Math.max(...values).toFixed(2)),
       averageFrameMs:Number(averageFrameMs.toFixed(2)),
       estimatedFps:Number((1000 / Math.max(0.01, averageFrameMs)).toFixed(1))
     };
@@ -216,6 +231,7 @@ const report = await page.evaluate(async () => {
   const combinedAverage = combinedValues.reduce((sum, value) => sum + value, 0) / Math.max(1, combinedValues.length);
   measurements.全体 = {
     objectCount:rootObjects().length + entityChildren().length,
+    longestFrameMs:Number(Math.max(...combinedValues).toFixed(2)),
     averageFrameMs:Number(combinedAverage.toFixed(2)),
     estimatedFps:Number((1000 / Math.max(0.01, combinedAverage)).toFixed(1))
   };
@@ -227,7 +243,7 @@ const report = await page.evaluate(async () => {
     textureCount:Object.keys(scene.textures.list || {}).length,
     heapMb:performance.memory ? Number((performance.memory.usedJSHeapSize / 1048576).toFixed(1)) : null,
     visibilityCache:{ unrelatedUpdateSkipped, scoutChangeRendered, fogCacheReusedForScoutChange },
-    entityMarkers:{ entityMarkersReusedForUnrelatedUpdate, selectionRenderUpdated },
+    entityMarkers:{ entityMarkersReusedForUnrelatedUpdate, selectionRenderUpdated, hpUpdateIsolated, ...window.getV39MapMarkerStats() },
     terrainIcons:{ terrainIconsReusedForUnchangedField },
     measurements
   };
@@ -249,6 +265,7 @@ if (errors.length
   || report.visibilityCache.scoutChangeRendered !== true
   || report.visibilityCache.fogCacheReusedForScoutChange !== true
   || report.entityMarkers.entityMarkersReusedForUnrelatedUpdate !== true
+  || report.entityMarkers.hpUpdateIsolated !== true
   || report.entityMarkers.selectionRenderUpdated !== true
   || report.terrainIcons.terrainIconsReusedForUnchangedField !== true
   || report.measurements.キャラ.objectCount < 40

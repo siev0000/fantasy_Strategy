@@ -257,8 +257,12 @@ function ensureWorldActions() {
   if(host&&!document.getElementById('v39-village-contacts')){
     const list=document.createElement('section');list.id='v39-village-contacts';host.append(list);
     list.addEventListener('click',event=>{
-      const button=event.target.closest('[data-village-focus]');if(!button)return;
+      const button=event.target.closest('[data-village-focus],[data-faction-focus]');if(!button)return;
       const state=window.getV39GameState?.({includeWorlds:false});
+      if(button.dataset.factionFocus){
+        window.openV39FactionDetails?.(button.dataset.factionFocus);
+        return;
+      }
       const village=state?.neutralVillages?.find(row=>row.id===button.dataset.villageFocus);
       if(!village||!hasV39VillageContact(village,state.activePlayerId))return;
       if(!focusV39MapTile(village,{worldId:'surface',select:true}))window.showV39TurnBanner?.('地上で、処理完了後に位置を確認できます');
@@ -266,21 +270,30 @@ function ensureWorldActions() {
   }
 }
 
-function renderVillageContacts() {
+function renderContactLists() {
   const host=document.getElementById('v39-village-contacts');if(!host)return;
   const state=window.getV39GameState?.({includeWorlds:false}),playerId=state?.activePlayerId;
   const villages=(state?.neutralVillages||[]).filter(row=>hasV39VillageContact(row,playerId));
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const html='<strong>交流した村</strong>'+(villages.length?villages.map(village=>{
+  const villageHtml='<strong>交流した村</strong>'+(villages.length?villages.map(village=>{
     const pending=getV39VillageQuests(village,playerId).filter(row=>row.accepted&&!row.completed).length;
     return `<button type="button" data-village-focus="${escape(village.id)}" aria-label="${escape(village.name)}の位置へ移動"><b>${escape(village.name)}${village.abandoned?'（廃村）':''}</b><small>(${village.x},${village.y}) / 友好度 ${getV39NeutralVillageRelation(village,playerId)}${pending?' / 受注中 '+pending+'件':''}</small></button>`;
   }).join(''):'<p>まだ交流した村はありません。</p>');
+  const sightings=state?.players?.find(player=>player.id===playerId)?.factionState?.factionSightings||{};
+  const factionRows=(state?.players||[]).flatMap(player=>{
+    const sight=sightings[player.id];
+    if(player.id===playerId||!Number.isInteger(sight?.x)||!Number.isInteger(sight?.y))return [];
+    const location=(sight.worldId||'surface')==='surface'?'地上':'別マップ';
+    const label=escape(player.label||player.name||player.id);
+    return [`<button type="button" data-faction-focus="${escape(player.id)}" aria-label="${label}の情報を開く"><b>${label}</b><small>最終確認 T${escape(sight.turn)} / ${location} (${sight.x},${sight.y})</small></button>`];
+  }).join('');
+  const html=villageHtml+'<strong>視認した勢力</strong>'+(factionRows||'<p>まだ視認した勢力はありません。</p>');
   if(host.__markup!==html){host.innerHTML=html;host.__markup=html;}
 }
 
 function renderWorldActions() {
   ensureWorldActions();
-  renderVillageContacts();
+  renderContactLists();
   const section = document.getElementById("v39-world-contact-actions");
   const kind = document.getElementById("v39-world-contact-kind");
   const detail = document.getElementById("v39-world-contact-detail");

@@ -1,6 +1,8 @@
 import { V39_LOG_PREVIEW_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import {buildV39EnvironmentDamageLogs,mergeV39EnvironmentDamageLogs} from '../../lib/v39-environment-damage-log.js';
 import {resolveV39LogActor,resolveV39LogActorColor,stripV39LogActorPrefix} from '../../lib/v39-log-actor.js';
+import {getV39EquipmentProductionNotices} from "../../lib/v39-economy-rules.js";
+import {getV39EquipmentEnhancementDisplay} from "../../lib/v39-equipment-rules.js";
 
 const CHANNELS = ["notification", "battle", "chat"];
 const LABELS = { notification:"通知", battle:"戦闘", chat:"チャット" };
@@ -19,6 +21,8 @@ let lastRenderedChannel = "";
 let lastRenderedCollapsed = true;
 const unreadIds = new Set();
 const messages = [];
+let equipmentNoticeTurn = null;
+const shownEquipmentNotices = new Set();
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 
@@ -470,6 +474,29 @@ function refreshLogVisibility() {
   renderPreviews();
 }
 window.addEventListener("v39:display-settings-changed", refreshLogVisibility);
-window.addEventListener("v39:game-state-changed", refreshLogVisibility);
+function showEquipmentProductionNotices() {
+  if (window.__v39BackgroundWorldTurn) return;
+  const state = window.getV39EnemyTurnState?.();
+  const {turnNumber:turn, phase} = state?.timeline || {};
+  if (!turn || phase !== "player") return;
+  if (equipmentNoticeTurn !== turn) {
+    equipmentNoticeTurn = turn;
+    shownEquipmentNotices.clear();
+  }
+  const player = window.getV39ActivePlayer?.();
+  for (const notice of getV39EquipmentProductionNotices(player, turn)) {
+    const key = `${player.id}:${notice.settlementId}:${notice.id}`;
+    if (shownEquipmentNotices.has(key)) continue;
+    shownEquipmentNotices.add(key);
+    const {name} = getV39EquipmentEnhancementDisplay(notice.item);
+    pushV39SideRailMessage({channel:"notification", title:"装備完成", tone:"success", turn,
+      audiencePlayerId:player.id, message:`${notice.settlementName}で${name} ×${notice.count} が完成しました`});
+  }
+}
+window.addEventListener("v39:game-state-changed", () => {
+  refreshLogVisibility();
+  showEquipmentProductionNotices();
+});
 
 install();
+showEquipmentProductionNotices();

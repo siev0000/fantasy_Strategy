@@ -312,9 +312,12 @@ function compactEquipment(item) {
     range:item?.range,
     attackAp:item?.attackAp,
     magicAp:item?.magicAp,
+    traits:item?.traits,
     enchantAttackFields:item?.enchantAttackFields,
     source:item?.source && typeof item.source === "object" ? {
       装備名:item.source.装備名,
+      武器分類:item.source.武器分類,
+      特性1:item.source.特性1, 特性2:item.source.特性2, 特性3:item.source.特性3, 特性4:item.source.特性4,
       威力:item.source.威力,
       攻撃AP:item.source.攻撃AP,
       魔法AP:item.source.魔法AP,

@@ -2,7 +2,8 @@ import fixture from '../../../../config/v39-call-test.json';
 import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
 import {getGameDataRows} from '../../lib/game-data-registry.js';
 import {replaceFactionSettlement} from '../../lib/settlement-state.js';
-import {golemRecipes,getV39GolemRecipeCost} from '../../lib/v39-golem-workshop.js';
+import {createV39WorkshopGolem,golemRecipes,getV39GolemRecipeCost} from '../../lib/v39-golem-workshop.js';
+import {canUnitEnterV39Tile} from '../../lib/v39-terrain-traversal.js';
 import {getHexNeighborCoords} from '../../lib/hex-grid.js';
 import {FOOD_RESOURCE_KEYS} from '../../lib/v39-economy-rules.js';
 import {getV39FacilitySummonSlots} from '../../lib/v39-facility-summoning.js';
@@ -132,16 +133,52 @@ window.startV39GolemWorkshopTest=async()=>{
     const {caveDuty,...carrier}=unit;
     return {...carrier,x:base.x-1,y:base.y,position:[base.x-1,base.y]};
   });
-  const pilot=buildV39UnitEntity({id:'golem-workshop-test-pilot',name:'搭乗検証パイロット',
-    race:'只人',className:'パイロット',level:20,prerequisiteClassLevels:{ウィザード:10},x:base.x-1,y:base.y-2});
-  if(!pilot.derivedCharacter?.ok)return {ok:false,reason:'パイロットを読み込めません'};
+  const testMap={...map,grid};
+  const pointKey=({x,y})=>`${x},${y}`;
+  const occupied=new Set([...units,...crafters,...state.players
+    .filter(row=>row.id!==playerId).flatMap(row=>row.factionState?.units||[]),
+    ...(state.enemies||[]),...(state.neutralVillages||[]).flatMap(village=>village.defenseUnits||[])]
+    .filter(unit=>(unit.worldId||'surface')==='surface').map(pointKey));
+  const neighbors=({x,y})=>getHexNeighborCoords(map.w,map.h,x,y,map.worldWrapEnabled===true);
+  const canPlace=(unit,point)=>!occupied.has(pointKey(point))&&canUnitEnterV39Tile(testMap,point.x,point.y,unit);
+  const boardingUnits=[];
+  const boardingPairs=[
+    {golemName:'ストーンゴーレム',size:0,pilotClass:'ウィザード'},
+    {golemName:'アイスゴーレム',size:1,pilotClass:'プリースト'},
+    {golemName:'フレッシュゴーレム',size:2,pilotClass:'ファイター'}
+  ];
+  for(const {golemName,size,pilotClass} of boardingPairs){
+    const settlementId=base.settlementId||base.id;
+    const golem=createV39WorkshopGolem({id:`golem-workshop-test-golem-${size}`,golemName,size,
+      settlementId,craftedByGolemCrafter:true,additionalSkillNames:['搭乗機能']});
+    const pilot=buildV39UnitEntity({id:size?`golem-workshop-test-pilot-${size}`:'golem-workshop-test-pilot',
+      name:`搭乗検証パイロット（${pilotClass}）`,race:'只人',className:'パイロット',level:20,
+      prerequisiteClassLevels:{[pilotClass]:10},settlementId});
+    if(!golem||!pilot.derivedCharacter?.ok)return {ok:false,reason:`${golemName}の搭乗検証ユニットを読み込めません`};
+    const workshop=crafters[orderedRecipes.indexOf(golemName)]||crafters[0];
+    let placed=false;
+    for(const golemTile of neighbors(workshop)){
+      if(!canPlace(golem,golemTile))continue;
+      const pilotTile=neighbors(golemTile).find(point=>canPlace(pilot,point));
+      if(!pilotTile)continue;
+      boardingUnits.push({...golem,...golemTile,position:[golemTile.x,golemTile.y]},
+        {...pilot,...pilotTile,position:[pilotTile.x,pilotTile.y],worldId:'surface'});
+      occupied.add(pointKey(golemTile));
+      occupied.add(pointKey(pilotTile));
+      placed=true;
+      break;
+    }
+    if(!placed)return {ok:false,reason:`${golemName}の搭乗検証ユニットを隣接配置できません`};
+  }
   const updated={...base,buildings:[...new Set([...(base.buildings||[]),name])],
     tileFacilityMap,territoryTileKeys:[...new Set([...(base.territoryTileKeys||[]),...Object.keys(tileFacilityMap)])],
     cityLevels:{...base.cityLevels,魔法Lv:5,信仰Lv:5},materialStockByType,foodStockByType};
   const next=replaceFactionSettlement(faction,updated,{ownerPlayerId:playerId});
-  window.updateV39FieldData({...map,grid},{silent:true});
+  const squads=(next.squads||[]).map(squad=>squad.id==='solo'
+    ?{...squad,unitIds:[...(squad.unitIds||[]),...boardingUnits.map(unit=>unit.id)]}:squad);
+  window.updateV39FieldData(testMap,{silent:true});
   window.setV39GameState({players:state.players.map(row=>row.id!==playerId?row:{...row,factionState:{
-    ...next,selectedUnitId:crafters[0].id,units:[...units,...crafters,pilot]
+    ...next,squads,selectedUnitId:crafters[0].id,units:[...units,...crafters,...boardingUnits]
   }}),facilitiesByTile:{...state.facilitiesByTile,...tileFacilityMap},territoryOwnerByTile,territoryStateByTile},{reason:'golem-workshop-test'});
   await window.waitForV39MapRenderSettled?.();
   window.activateV39FooterTab?.('settlement');
@@ -150,6 +187,6 @@ window.startV39GolemWorkshopTest=async()=>{
   const id=JSON.stringify(['surface',tileKey,name]);
   Array.from(document.querySelectorAll('#footSettlement [data-settlement-facility]'))
     .find(button=>button.dataset.settlementFacility===id)?.click();
-  window.showV39TurnBanner?.('各ゴーレムの条件を満たす工房を配置しました。施設欄の「ゴーレム作成」から確認できます');
+  window.showV39TurnBanner?.('ゴーレム工房と、搭乗を試せるゴーレム・パイロット3組を配置しました');
   return {ok:true};
 };

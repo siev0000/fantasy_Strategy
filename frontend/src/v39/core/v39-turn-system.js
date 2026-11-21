@@ -1,3 +1,4 @@
+import {searchForSpies} from "../../lib/v39-spy-operations.js";
 import {recoverAbilityDamage,reduceV39BlockedHealing} from '../../lib/v39-ability-damage.js';
 import {applyV39ControlTurnAp,resolveV39MaxAp,readV39NumericStatus} from '../../lib/v39-control-status.js';
 import {resolveV39TimeDistortionPercent} from '../../lib/v39-time-distortion.js';
@@ -33,6 +34,7 @@ import { advanceV39ExpeditionTools, advanceV39ToolSites } from "../../lib/v39-ex
 import {advanceV39ToolProduction} from "../../lib/v39-consumables.js";
 import {advanceV39SquadRallies} from '../../lib/v39-squad-coordination.js';
 import {advanceV39Teleports} from '../../lib/v39-teleport-rules.js';
+import {settleV39ProductionUnitSupport} from '../../lib/v39-production-unit-support.js';
 
 const DEFAULT_TIMELINE = Object.freeze({
   turnNumber: 1,
@@ -397,6 +399,14 @@ export async function advanceTurn(options = {}) {
       if(trade.state!==transport.state){window.setV39GameState({players:trade.state.players,neutralVillages:trade.state.neutralVillages,settlements:trade.state.settlements},{reason:'trade-transport',returnState:false});
         for(const report of trade.reports)window.appendV39ActivityLog?.(currentPlayerId,'取引',report.message,report);}
     });
+    if(state.players.find(p=>p.id===currentPlayerId)?.factionState.units.some(u=>u.spySearch)){
+      const searchState=window.getV39GameState({includeWorlds:state.activeWorldId!=="surface"});
+      const defender=searchState.players.find(p=>p.id===currentPlayerId);
+      const scoutMap=searchState.activeWorldId==="surface"?window.__v39FieldRuntime?.mapData:searchState.explorationWorlds?.surface?.map;
+      if(defender&&searchForSpies(searchState,defender,before.turnNumber,scoutMap)){
+        window.setV39GameState({players:searchState.players},{reason:"spy-search",returnState:false});
+      }
+    }
     window.advanceV39MineDuties?.(currentPlayerId,before.turnNumber);
     window.advanceV39LogisticsRoutes?.(currentPlayerId,before.turnNumber);
     state=window.getV39GameState();
@@ -523,9 +533,13 @@ export async function advanceTurn(options = {}) {
     const resolved = advanceV39Teleports(window.getV39GameState(),nextTurn,window.__v39FieldRuntime?.mapData);
     const healed = advanceV39ToolProduction(advanceV39ExpeditionTools(resolved,nextTurn),nextTurn);
     const recoveredPlayers = (healed?.players || []).map(player => {
-      const settled=player.isPlayer===false?settleV39CastingActions(player.factionState,activeTurn):player.factionState;
+      const settled=player.isPlayer===false?settleV39CastingActions(player.factionState,activeTurn)
+        :settleV39ProductionUnitSupport(player,healed,activeTurn,nextTurn);
       const factionState = {
           ...settled,
+          ...(settled.spyOperations?.agents.length ? {spyOperations:{...settled.spyOperations,
+            agents:settled.spyOperations.agents.map(agent=>({...agent,unit:restoreUnitForTurn(agent.unit,true,healed,activeTurn,nextTurn)}))
+          }} : {}),
           units:(settled?.units || [])
             .map(unit => {
               const worldId=unit.worldId||"surface";

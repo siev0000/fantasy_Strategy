@@ -26,6 +26,9 @@ import {V39_WEATHER_TYPES,resolveV39DisasterWeather} from '../../lib/v39-weather
 import {resolveV39DisasterRule} from '../../lib/v39-disaster-rules.js';
 import disasterTest from '../../../../config/v39-disaster-test.json';
 import {HEX_TILE_CONFIG} from '../../lib/phaser-map-panel-config.js';
+import {createV39EquipmentEntry} from '../../lib/v39-equipment-rules.js';
+import {previewV39NamedWeaponReveal} from '../unit/v39-named-weapon-presentation.js';
+import namedWeaponRecipes from '../../../../config/v39-named-weapons.json';
 import {
   resolveV39UnitRaceCategory,
   resolveV39UnitTotalExpForLevel,
@@ -794,7 +797,7 @@ function panelHtml() {
     <div class="v39-test-tools-scroll" id="v39-test-tool-content" role="tabpanel" aria-labelledby="v39-test-tab-${selectedToolTab}">
       ${renderV39VillagePlanTestTools(state)}      ${window.__v39FieldRuntime?.mapData?.wallTestFixture?`<details class="v39-test-section" data-test-section="walls" open><summary>壁・結界の比較</summary><div class="v39-test-section-body"><button data-test-action="wall-build-open">壁建築を試す（未建築の拠点）</button><p>部隊から移動・攻撃を試せます。3マス都市・7マス大都市の辺別HPを確認。魔法壁・結界は5T継続。</p><div class="v39-test-button-row">${(window.__v39FieldRuntime.mapData.wallTestSamples||[]).map(sample=>{const group=window.__v39FieldRuntime.mapData.defenseStructures?.filter(row=>(sample.structureIds||[sample.structureId]).includes(row.id)&&row.hp>0)||[];const wall=group[0];return `<button data-test-action="wall-sample-${escapeHtml(sample.id)}">${escapeHtml(sample.name)} (${sample.x},${sample.y}) ${wall?`${sample.structureIds?`${group.length}辺 / 1辺HP${wall.hp}/${wall.maxHp}`:`HP${wall.hp}/${wall.maxHp}`}`:'終了'}</button>`;}).join('')}</div></div></details>`:''}
       ${renderV39NegotiationHubTestTools(state)}
-      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><button data-test-action="ai-simulation">AI長期シミュレーション</button>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="skill-trigger-test-start">スキル動作確認</button><button data-test-action="equipment-craft-test-start">武具作成テスト</button>${window.__v39FieldRuntime?.mapData?.skillTriggerTestFixture?'<button data-test-action="skill-trigger-side-a">検証Aを操作</button><button data-test-action="skill-trigger-side-b">検証Bを操作</button>':''}<button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="teleport-test-start">転移テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="ritual-test-golem">ゴーレム作成</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="ground-test-start">地形破壊テスト</button><button data-test-action="wall-test-start">壁・結界テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div>${state.explorationWorlds?.['cave:expedition-test:1']?'<div class="v39-test-button-row"><button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button></div>':''}</div></details>
+      <details class="v39-test-section" data-test-section="expedition"${testSectionOpenAttribute("expedition")}><summary>専用テスト</summary><div class="v39-test-section-body"><p>開始すると現在のゲームを置き換えます。必要なら先に保存してください。</p><button data-test-action="ai-simulation">AI長期シミュレーション</button>${scenarioSuitesHtml()}<div class="v39-test-button-row"><button data-test-action="skill-trigger-test-start">スキル動作確認</button><button data-test-action="spy-test-start">スパイテスト</button>${window.__v39FieldRuntime?.mapData?.spyTestFixture?state.players.map((side,index)=>`<button data-test-action="spy-test-side" data-spy-test-side="${index}">${escapeHtml(side.label)}を操作</button>`).join(''):''}<button data-test-action="equipment-craft-test-start">武具作成テスト</button>${window.__v39FieldRuntime?.mapData?.skillTriggerTestFixture?'<button data-test-action="skill-trigger-side-a">検証Aを操作</button><button data-test-action="skill-trigger-side-b">検証Bを操作</button>':''}<button data-test-action="call-test-start">召喚・呼集テスト</button><button data-test-action="teleport-test-start">転移テスト</button><button data-test-action="ritual-test-none">儀式:なし</button><button data-test-action="ritual-test-one">儀式:I</button><button data-test-action="ritual-test-two">儀式:II</button><button data-test-action="ritual-test-three">儀式:III</button><button data-test-action="ritual-test-golem">ゴーレム作成</button><button data-test-action="fusion-test-start">モンスター合体テスト</button><button data-test-action="animal-army-test-start">動物軍隊テスト</button><button data-test-action="disaster-test-start">災害テスト</button><button data-test-action="terrain-test-start">地形テスト</button><button data-test-action="ground-test-start">地形破壊テスト</button><button data-test-action="wall-test-start">壁・結界テスト</button><button data-test-action="guardian-trial-test-start">守護者3試練テスト</button><button data-test-action="hegemony-test-start">覇権地・4入口テスト</button></div><div class="v39-test-button-row">${state.explorationWorlds?.['cave:expedition-test:1']?'<button data-test-action="expedition-surface">地上を表示</button><button data-test-action="expedition-mine">鉱床を表示</button>':''}<button data-test-action="named-weapon-reveal" data-audio-se="off">ネームド武器の演出を見る</button></div></div></details>
       <details class="v39-test-section" data-test-section="faction"${testSectionOpenAttribute("faction")}><summary>勢力追加</summary><div class="v39-test-section-body"><p>追加勢力は既存の勢力状態を使い、初期拠点を自動配置します。</p><div class="v39-test-button-row"><button data-test-action="faction-player">プレイヤー勢力</button><button data-test-action="faction-npc">NPC勢力</button></div></div></details>
       <details class="v39-test-section" data-test-section="base-info"${testSectionOpenAttribute("base-info")}><summary>選択マスの拠点情報</summary><div class="v39-test-section-body"><div class="v39-test-base-list">${selectedTileBaseInfoHtml(state, tile)}</div></div></details>
       <details class="v39-test-section" data-test-section="undead-natural"${testSectionOpenAttribute("undead-natural")}><summary>アンデッド自然発生テスト</summary><div class="v39-test-section-body"><p>死体配置済み・操作キャラは地上と洞窟に各1体。初期浄化0、自然発生確率は通常設定です。-5以下でも必ず発生するわけではありません。</p><div class="v39-test-button-row"><button data-test-action="undead-test-start">死体配置テストを開始</button><button data-test-action="undead-test-surface">地上を表示</button><button data-test-action="undead-test-cave">洞窟を表示</button><button data-test-action="undead-test-turn">1ターン進行</button></div>${undeadTestStatusHtml(state)}<p>死体1体/4体/2体の箇所を配置。下の指定ターン進行でも観察できます。洞窟は2部屋で霧のエリア境界も確認できます。</p></div></details>
@@ -893,7 +896,7 @@ async function startGolemWorkshopTest() {
   }
 }
 
-function handleAction(action) {
+function handleAction(action, button) {
   if (!testModeEnabled()) return closePanel();
   if(action==='ai-simulation'){openV39AiSimulation();return;}
   if(action==='terrain-atmosphere-reset'||action==='terrain-atmosphere-all'){
@@ -1008,7 +1011,9 @@ function handleAction(action) {
     "undead-test-turn":()=>advanceTurn(),
     "teleport-test-start":()=>{if(window.confirm("現在のゲームを転移テストに置き換えます。開始しますか？"))window.startV39TeleportTest?.();},
     'skill-trigger-test-start':()=>{if(window.confirm('現在のゲームをスキル動作確認テストへ置き換えます。開始しますか？')){closePanel();void startV39SkillTriggerTest();}},
+    'spy-test-start':()=>{if(window.confirm('現在のゲームをスパイテストへ置き換えます。開始しますか？')){closePanel();void startV39SkillTriggerTest({spyTest:true});}},
     'equipment-craft-test-start':()=>{if(window.confirm('現在のゲームを武具作成テストへ置き換えます。開始しますか？')){closePanel();void startV39SkillTriggerTest({craftEquipment:true});}},
+    'spy-test-side':()=>{closePanel();selectV39SkillTriggerTestSide(Number(button.dataset.spyTestSide));},
     'skill-trigger-side-a':()=>{closePanel();selectV39SkillTriggerTestSide(0);},
     'skill-trigger-side-b':()=>{closePanel();selectV39SkillTriggerTestSide(1);},
     "call-test-start":()=>{if(window.confirm("現在のゲームを召喚・呼集テストに置き換えます。開始しますか？"))window.startV39CallTest?.();},
@@ -1039,6 +1044,12 @@ function handleAction(action) {
     "expedition-invasion":()=>{if(window.confirm("現在のゲームを侵入・再巣化の検証マップに置き換えます。開始しますか？"))window.startV39ExpeditionTest?.(true);},
     "expedition-surface":()=>window.viewV39ExpeditionTestWorld?.("surface"),
     "expedition-mine":()=>window.viewV39ExpeditionTestWorld?.("cave:expedition-test:1"),
+    "named-weapon-reveal":()=>{
+      const recipe = namedWeaponRecipes.find(row => row.name === "戦槍・爆激");
+      if (!recipe) return;
+      const item = createV39EquipmentEntry(recipe.baseWeapon, recipe.minimumQuality);
+      if (item) previewV39NamedWeaponReveal({...item, namedWeapon:{name:recipe.name}});
+    },
     eruption:() => forceTerrainEvent("eruption"), lava:() => forceTerrainEvent("lava"), disaster:forceDisasterAtSelectedTile, undead:forceUndeadAtSelectedTile,
     "snow-on":() => setSelectedSnowState("cover", true), "snow-off":() => setSelectedSnowState("cover", false),
     "weather-change":()=>{const {tile}=context();setStatus(window.setV39TestWeatherAt?.(tile?.x,tile?.y,selectedWeatherType)?'地域の天候を変更しました':'地上のマスを選択し、処理完了後に操作してください');},
@@ -1089,7 +1100,7 @@ function install() {
     const tab = event.target instanceof Element ? event.target.closest('[data-test-tab]') : null;
     if(tab){selectToolTab(tab.dataset.testTab,true);return;}
     const button = event.target instanceof Element ? event.target.closest("[data-test-action]") : null;
-    if (button) handleAction(button.dataset.testAction);
+    if (button) handleAction(button.dataset.testAction,button);
   });
   panel.addEventListener('keydown',event=>{
     if(handleV39NpcDiagnosticEvent(event,render))return;

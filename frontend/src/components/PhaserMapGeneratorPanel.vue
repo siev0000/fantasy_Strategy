@@ -16,6 +16,7 @@ import FieldFooterTabsOverlay from "./FieldFooterTabsOverlay.vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
+import { renderV39ResourceIcon } from "../v39/ui/v39-resource-item-icon.js";
 import { resolveV39ResourceIcon } from "../lib/resource-icon-glyphs.js";
 import {
   advanceV39TileTransformEffects,
@@ -5149,6 +5150,7 @@ function togglePopulationHeaderExpanded() {
 function resolveResourceIconView(resourceKey) {
   const icon = resolveV39ResourceIcon(nonEmptyText(resourceKey));
   return {
+    resourceIconKey: resourceKey,
     icon: icon.glyph,
     iconColor: icon.color,
     iconKind: icon.kind
@@ -23378,7 +23380,7 @@ watch(() => props.characterCommand, command => {
                 :style="{ '--resource-icon-color': row.iconColor || undefined }"
                 role="img"
                 :aria-label="row.label"
-              >{{ row.icon }}</span>
+               v-html="renderV39ResourceIcon(row.resourceIconKey || row.label)"></span>
               <span class="sidebar-resource-menu-values">
                 <span class="sidebar-resource-menu-total">{{ row.totalDisplay }}</span>
                 <span class="sidebar-resource-menu-delta" :class="row.deltaClass">{{ row.deltaDisplay }}</span>
@@ -23407,7 +23409,7 @@ watch(() => props.characterCommand, command => {
                       :style="{ '--resource-icon-color': item.iconColor || undefined }"
                       role="img"
                       :aria-label="item.label"
-                    >{{ item.icon }}</span>
+                     v-html="renderV39ResourceIcon(item.resourceIconKey || item.label)"></span>
                     <span class="sidebar-resource-menu-values">
                       <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
                       <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
@@ -23429,7 +23431,7 @@ watch(() => props.characterCommand, command => {
                       :style="{ '--resource-icon-color': item.iconColor || undefined }"
                       role="img"
                       :aria-label="item.label"
-                    >{{ item.icon }}</span>
+                     v-html="renderV39ResourceIcon(item.resourceIconKey || item.label)"></span>
                     <span class="sidebar-resource-menu-values">
                       <span class="sidebar-resource-menu-total">{{ item.stockDisplay }}</span>
                       <span class="sidebar-resource-menu-delta" :class="item.gainClass">{{ item.gainDisplay }}</span>
@@ -24366,7 +24368,7 @@ watch(() => props.characterCommand, command => {
                       :style="{ '--resource-icon-color': entry.iconColor || undefined }"
                       role="img"
                       :aria-label="`${entry.label} アイコン`"
-                    >{{ entry.icon }}</span>
+                     v-html="renderV39ResourceIcon(entry.resourceIconKey || entry.label)"></span>
                     <span class="unit-create-rarity-cost-value">{{ entry.label }} {{ entry.valueText }}</span>
                   </div>
                   <div v-if="!group.rows.length" class="unit-create-rarity-cost-empty">-</div>

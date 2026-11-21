@@ -1,3 +1,6 @@
+import {V39_FORCED_MOVEMENT_DEFAULTS} from './v39-forced-movement.js';
+import {applyV39SkillForcedMovement} from './v39-skill-forced-movement.js';
+import {attachV39HitStatusPopups} from './v39-combat-popup-rules.js';
 import {expandV39SkillHitEntries,aggregateV39CounterEvents} from './v39-hit-trigger-rules.js';
 import {V39_CONTROL_STATUS_FIELDS,V39_ELEMENTAL_CONTROL_RESISTANCES,resolveV39ControlStatusPower,addV39ControlStatus,advanceV39ControlStatuses,thawV39Unit,getV39ActionBlock} from './v39-control-status.js';
 import {V39_NUMERIC_STATUSES,resolveV39NumericStatusPower,addV39NumericStatus,recoverV39NumericStatus,readV39NumericStatus,resolveV39MaxAp,clearV39WeakerStatuses} from './v39-control-status.js';
@@ -39,8 +42,12 @@ export function getV39TriggeredSkills(unit){
 }
 
 // Convert event references into ordinary damage fields before the shared calculation.
+function counterEffect(row){
+  return text(row.効果).split(/[\s/／,:：|]+/).find(effect=>effect==='反撃'||effect.startsWith('反撃_'));
+}
 export function resolveV39TriggeredAttack(row,event){
-  const effect=text(row.効果);
+  const effect=counterEffect(row);
+  if(!effect)return null;
   if(effect==='反撃')return {...row,行動:'A',発動:'',条件:'',AP消費:0};
   const parts=effect.split('_');
   if(parts.length!==3||parts[0]!=='反撃'||!DAMAGE_TYPE_FIELDS.includes(parts[2]))return null;
@@ -48,7 +55,7 @@ export function resolveV39TriggeredAttack(row,event){
   if(!references[parts[1]]?.includes(event.name))return null;
   const amount=Math.max(0,Number(event.amount)||0)*config.reaction.referenceMultiplier;
   if(!amount)return null;
-  const action={...row,行動:'A',発動:'',条件:'',効果:'反撃',AP消費:0};
+  const action={...row,行動:'A',発動:'',条件:'',効果:text(row.効果).replace(effect,'反撃'),AP消費:0};
   delete action.全威力;
   for(const key of DAMAGE_TYPE_FIELDS)delete action[key];
   action[parts[2]]=amount;
@@ -57,6 +64,8 @@ export function resolveV39TriggeredAttack(row,event){
 
 export function formatV39SkillTriggerLog(log){
   if(log.kind==='elemental-status')return log.status+(log.amount>0?'：AP -'+log.amount:'：付与');
+  if(log.kind==='movement')return log.skill+'：'+log.distance+'マス移動';
+  if(log.kind==='collision')return log.skill+'：衝突 '+log.damage+'ダメージ';
   if(log.kind==='dispel')return '強化解除：−'+log.amount+'T';
   if(log.kind==='stagger')return '怯み：AP -'+log.amount;
   if(log.kind==='periodic-damage')return log.status+'：'+log.damage+'ダメージ';
@@ -116,15 +125,37 @@ function applyNumericStatusRecovery(unit,effects,amount){
   return next;
 }
 
-function executeEvents(ctx, events, random){
-  const fired=new Set();
-  for(const counterPhase of [false,true])for(const event of counterPhase?aggregateV39CounterEvents(events):events){
+function applyImpactHit(ctx,after,attacker,target,row,entry,knockdown,random,event){
+  const id=target.id;
+  if(Number(row.怯み)>0){
+    const receiver=resolveV39CurrentUnitAbilities(target,{state:after});
+    const ap=Math.max(0,Number(target.ap??target.currentAp??100));
+    const amount=Math.min(ap,resolveV39StaggerDamage(attacker,receiver,row,random));
+    if(amount>0){
+      target={...target,ap:ap-amount,currentAp:ap-amount,actionPoint:ap-amount,staggeredTurn:ap===amount?ctx.turn:null};
+      ctx.logs.push({kind:'stagger',status:'怯み',targetId:id,amount,ap:target.ap,hitPopupType:'apDamage',hitIndex:entry.hitIndex});
+      if(amount>=15){
+        event?.('怯ませ',attacker.id,id,amount);
+        event?.('被怯み',id,attacker.id,amount);
+      }
+    }
+  }
+  if(knockdown&&!target.knockedDown&&resolvesV39Knockdown(attacker,resolveV39CurrentUnitAbilities(target,{state:after}),row,random)){
+    target={...target,knockedDown:true,guard:0};
+    ctx.logs.push({kind:'periodic-state',status:'転倒',targetId:id,amount:1,hitPopupType:'state',hitIndex:entry.hitIndex});
+  }
+  return target;
+}
+
+function executeEvents(ctx, events, random, {map,allowCounters=true}={}){
+  const fired=new Set(), impactEvents=[];
+  for(const counterPhase of (allowCounters?[false,true]:[false]))for(const event of counterPhase?aggregateV39CounterEvents(events):events){
     const owner=ctx.units.get(text(event.ownerId));
     if(!alive(owner))continue;
     let count=0;
     for(const row of getV39TriggeredSkills(owner)){
       if(text(row.発動)!==event.name || !config.events.includes(event.name))continue;
-      const counter=text(row.効果)==='反撃'||text(row.効果).startsWith('反撃_');
+      const counter=!!counterEffect(row);
       const reactionKey=JSON.stringify([owner.id,row.名前]);
       if(counter!==counterPhase||(counter&&fired.has(reactionKey)))continue;
       const condition=text(row.条件);
@@ -167,15 +198,41 @@ function executeEvents(ctx, events, random){
         if(fire)ctx.units.set(text(actor.id),thawV39Unit(actor));
         const damaged=ctx.setHp(target,hp(target)-damage.total,row.名前);
         ctx.units.set(text(target.id),fire&&damage.hitCount>0?thawV39Unit(damaged):damaged);
+        const entry={...damage,targetId:target.id,targetName:target.name,x:target.x,y:target.y,beforeHp:hp(target),afterHp:hp(damaged)};
         ctx.logs.push({kind:'trigger',event:event.name,skill:row.名前,actorId:actor.id,targetId:target.id,
-          amount:event.amount,power:damage.detail.power,damage:damage.total,skillRow:action,attacker:{...actor},entry:{...damage,targetId:target.id,targetName:target.name,x:target.x,y:target.y,beforeHp:hp(target),afterHp:Math.max(0,hp(target)-damage.total)}});
+          amount:event.amount,power:damage.detail.power,damage:damage.total,skillRow:action,attacker:{...actor},entry});
+        const effects=text(action.効果).split(/[\s/／,:：|]+/);
+        const knockdown=effects.includes('転倒')||effects.includes('打ち倒し');
+        if(map && effects.some(effect=>V39_FORCED_MOVEMENT_DEFAULTS.effects[effect])){
+          const moved=applyV39SkillForcedMovement(ctx.finish(),map,actor,action,[entry],random);
+          for(const unit of [...moved.enemies,...moved.players.flatMap(p=>p.factionState.units),...moved.neutralVillages.flatMap(v=>v.defenseUnits||[])])
+            ctx.units.set(text(unit.id),unit);
+          for(const move of moved.entries)ctx.logs.push({kind:'movement',skill:row.名前,targetId:move.unitId,distance:move.distance});
+          for(const hit of moved.damageEntries)ctx.logs.push({kind:'collision',skill:row.名前,targetId:hit.unitId,damage:hit.damage});
+        }
+        if(Number(action.怯み)>0 || knockdown){
+          const after=ctx.finish(), firstLog=ctx.logs.length;
+          let receiver=ctx.units.get(text(target.id));
+          if(alive(receiver))for(const hit of expandV39SkillHitEntries([entry])){
+            if(hit.hitCount>0 && hit.afterHp>0)receiver=applyImpactHit(ctx,after,actor,receiver,action,hit,knockdown,random,
+              (name,ownerId,sourceId,amount)=>impactEvents.push({name,ownerId,sourceId,amount,cause:'攻撃',attackerId:actor.id}));
+          }
+          ctx.units.set(text(target.id),receiver);
+          const impactLogs=ctx.logs.slice(firstLog);
+          attachV39HitStatusPopups([entry],impactLogs);
+          for(const log of impactLogs)log.reactionHit=true;
+        }
       }
-      // Triggered actions do not enqueue more events: reactions cannot loop.
+
     }
+  }
+  if(impactEvents.length){
+    executeEvents(ctx,impactEvents,random,{map,allowCounters:false});
+    events.push(...impactEvents);
   }
 }
 
-export function applyV39SkillTriggerCombat(before, after, attacker, row, entries, {random=Math.random,supportTargetIds=[]}={}){
+export function applyV39SkillTriggerCombat(before, after, attacker, row, entries, {random=Math.random,supportTargetIds=[],map,allowCounters=true}={}){
   const effects=text(row.効果).split(/[\s/／,:：|]+/);
   const knockdown=effects.includes('転倒')||effects.includes('打ち倒し');
   const controlPowers=Object.keys(V39_CONTROL_STATUS_FIELDS)
@@ -299,24 +356,9 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
         ctx.logs.push({kind:'periodic-state',status,targetId:id,amount,hitPopupType:'state',hitIndex:entry.hitIndex,apLoss});
       }
     }
-    if(!entry.forcedMovementCollision&&Number(row.怯み)>0){
-      const receiver=resolveV39CurrentUnitAbilities(target,{state:after});
-      const ap=Math.max(0,Number(target.ap??target.currentAp??100));
-      const amount=Math.min(ap,resolveV39StaggerDamage(attacker,receiver,row,random));
-      if(amount>0){
-        target={...target,ap:ap-amount,currentAp:ap-amount,actionPoint:ap-amount,staggeredTurn:ap===amount?ctx.turn:null};
-        storeTarget(target);
-        ctx.logs.push({kind:'stagger',status:'怯み',targetId:id,amount,ap:target.ap,hitPopupType:'apDamage',hitIndex:entry.hitIndex});
-        if(amount>=15){
-          event('怯ませ',attacker.id,id,amount);
-          event('被怯み',id,attacker.id,amount);
-        }
-      }
-    }
-    if(knockdown&&!entry.forcedMovementCollision&&!target.knockedDown&&resolvesV39Knockdown(attacker,resolveV39CurrentUnitAbilities(target,{state:after}),row,random)){
-      target={...target,knockedDown:true,guard:0};
+    if(!entry.forcedMovementCollision && (Number(row.怯み)>0 || knockdown)){
+      target=applyImpactHit(ctx,after,attacker,target,row,entry,knockdown,random,event);
       storeTarget(target);
-      ctx.logs.push({kind:'periodic-state',status:'転倒',targetId:id,amount:1,hitPopupType:'state',hitIndex:entry.hitIndex});
     }
     const ability=abilityDamageTarget(row);
     if(ability){
@@ -404,11 +446,11 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
     ctx.units.set(text(actor.id),reduceV39Bleeding(recoverAbilityDamage(healed,effectiveHealing),actual));
     ctx.logs.push({kind:'trigger',event:eventName,skill:row.名前,actorId:actor.id,targetId:actor.id,healing:actual});
   }
-  executeEvents(ctx,events,random);
+  executeEvents(ctx,events,random,{map,allowCounters});
   return {state:reconcileV39RestraintLinks(before,ctx.finish()),logs:ctx.logs,events};
 }
 
-export function advanceV39SkillTriggerTurn(state,turn,{random=Math.random}={}){
+export function advanceV39SkillTriggerTurn(state,turn,{random=Math.random,map}={}){
   const ctx=context({...state,timeline:{...state.timeline,turnNumber:turn}}),events=[];
   let changed=false;
   for(const [id,unit] of ctx.units){
@@ -424,10 +466,10 @@ export function advanceV39SkillTriggerTurn(state,turn,{random=Math.random}={}){
     ctx.units.set(id,next);
     events.push({name:'ターン開始',ownerId:id,sourceId:id,cause:'ターン'});
   }
-  executeEvents(ctx,events,random);
+  executeEvents(ctx,events,random,{map});
   return {state:reconcileV39RestraintLinks(state,ctx.finish()),logs:ctx.logs,events,changed};
 }
 
-export function dispatchV39SkillTriggerEvents(state,events,{random=Math.random}={}){
-  const ctx=context(state);executeEvents(ctx,events,random);return {state:ctx.finish(),logs:ctx.logs,events};
+export function dispatchV39SkillTriggerEvents(state,events,{random=Math.random,map}={}){
+  const ctx=context(state);executeEvents(ctx,events,random,{map});return {state:ctx.finish(),logs:ctx.logs,events};
 }

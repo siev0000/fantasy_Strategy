@@ -1,7 +1,8 @@
+import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abilities.js';
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { getIconSrcByName } from "../../lib/icon-library.js";
-import { resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
+import { hasV39SkillWeapon, resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
 import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
 import {formatV39SkillCombatValues,resolveSkillBaseState} from '../../lib/skill-power.js';
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
@@ -50,8 +51,10 @@ function techniqueAttackCategory(source = {}) {
   return "その他";
 }
 
-function techniqueIconMarkup(source = {}) {
+function techniqueIconMarkup(source, iconName) {
   const category = techniqueAttackCategory(source);
+  const override = renderV39ScreenIcon(iconName)||renderV39ScreenIcon("技・"+category);
+  if (override) return {category, markup:override};
   if (category === "その他") {
     return { category, markup:'<span class="technique-icon-glyph" aria-hidden="true">◆</span>' };
   }
@@ -119,7 +122,8 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const healingValue = action === "A"
             ? resolveSkillHealing(source, adjustedUnit)
             : Math.max(0, num(source?.回復 ?? row?.healing, 0) || 0);
-          const icon = techniqueIconMarkup(source);
+          const iconName = powerValue > 0 ? "攻撃" : guardValue > 0 ? "防御" : "";
+          const icon = techniqueIconMarkup(source, iconName);
           const iconAccent = techniqueAccentClass(powerValue, guardValue, healingValue);
           const combatValueText = formatV39SkillCombatValues({
             power:powerValue,guard:guardValue,state:stateValue,healing:healingValue
@@ -131,7 +135,7 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const detailHtml = `<span class="technique-detail-head"><b>説明</b>${durationLabel ? `<small>${escapeHtml(durationLabel)}</small>` : ""}</span>
             <span class="technique-detail-description">${description ? escapeHtml(description).replaceAll("\n","<br>") : "説明なし"}${unsupported.length ? `<br>未対応: ${escapeHtml(unsupported.join(" / "))}` : ""}</span>`;
           const attackAttr = interactive && action === "A" && (source.条件 !== "搭乗" || unit.boardingPilot) ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
-          return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" ${interactive ? "data-v39-technique-name" : "data-v39-character-skill"}="${escapeHtml(name)}" aria-expanded="${expanded}"${attackAttr}>
+          return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" ${interactive ? "data-v39-technique-name" : "data-v39-character-skill"}="${escapeHtml(name)}" aria-expanded="${expanded}"${interactive && action === "A" && !hasV39SkillWeapon(adjustedUnit,source) ? " disabled" : ""}${attackAttr}>
             <span class="technique-summary">
               <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>
               <b class="technique-name">${escapeHtml(name)}</b>

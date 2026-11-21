@@ -1,0 +1,124 @@
+[
+  {
+    "filename": "weapons.webp",
+    "label": "武器",
+    "columns": 10,
+    "rows": 10,
+    "firstNumber": 51,
+    "group": "equipment"
+  },
+  {
+    "filename": "armory.webp",
+    "label": "防具・装飾",
+    "columns": 10,
+    "rows": 5,
+    "firstNumber": 1,
+    "group": "equipment"
+  },
+  {
+    "filename": "武具追加分.webp",
+    "label": "追加装備",
+    "columns": 4,
+    "rows": 3,
+    "firstNumber": 1,
+    "group": "equipment"
+  },
+  {
+    "filename": "aerial_arsenal.webp",
+    "label": "飛び道具",
+    "columns": 8,
+    "rows": 14,
+    "firstNumber": 1,
+    "group": "equipment"
+  },
+  {
+    "filename": "firearm-OCAL.webp",
+    "label": "銃器",
+    "columns": 7,
+    "rows": 4,
+    "firstNumber": 1,
+    "lastNumber": 21,
+    "group": "equipment"
+  },
+  {
+    "filename": "sword-OCAL.webp",
+    "label": "剣（OCAL）",
+    "columns": 5,
+    "rows": 3,
+    "firstNumber": 1,
+    "lastNumber": 9,
+    "group": "equipment"
+  },
+  {
+    "filename": "sword-7Soul1.webp",
+    "label": "剣（7Soul1）",
+    "columns": 8,
+    "rows": 6,
+    "firstNumber": 1,
+    "lastNumber": 46,
+    "group": "equipment"
+  },
+  {
+    "filename": "sword-babysamurai.webp",
+    "label": "剣（babysamurai）",
+    "columns": 5,
+    "rows": 3,
+    "firstNumber": 1,
+    "lastNumber": 10,
+    "group": "equipment"
+  },
+  {
+    "filename": "防具アイコン集_1.webp",
+    "label": "防具アイコン集",
+    "columns": 4,
+    "rows": 3,
+    "firstNumber": 1,
+    "lastNumber": 9,
+    "excludedNumbers": [
+      8
+    ],
+    "group": "equipment"
+  },
+  {
+    "filename": "近未来武器一覧.webp",
+    "label": "近未来武器",
+    "columns": 4,
+    "rows": 3,
+    "firstNumber": 1,
+    "group": "equipment"
+  },
+  {
+    "filename": "武器素材集.webp",
+    "label": "武器素材集",
+    "columns": 4,
+    "rows": 3,
+    "firstNumber": 1,
+    "lastNumber": 10,
+    "group": "equipment"
+  },
+  {
+    "filename": "spritesheet_x4.webp",
+    "label": "楽器・音楽",
+    "columns": 10,
+    "rows": 6,
+    "firstNumber": 1,
+    "lastNumber": 53,
+    "group": "music"
+  },
+  {
+    "filename": "arcanum.webp",
+    "label": "魔法・薬品",
+    "columns": 10,
+    "rows": 5,
+    "firstNumber": 1,
+    "group": "supplies"
+  },
+  {
+    "filename": "inventory.webp",
+    "label": "道具・資材",
+    "columns": 10,
+    "rows": 5,
+    "firstNumber": 1,
+    "group": "supplies"
+  }
+]

@@ -13,6 +13,9 @@ export function renderV39FacilityStorageButtons(state,playerId,settlement,select
   return getV39StorageFacilities(state,playerId).filter(f=>keys.has(f.tileKey)&&(!selected||(f.tileKey===selected.tileKey&&f.name===selected.name))).map(f=>
     `<button type="button" class="settlement-chip" data-storage-open="${esc(f.tileKey)}" data-storage-name="${esc(f.name)}">${esc(f.name)} (${f.x},${f.y}) · ${f.type==='soul'?'魂':'格納'} ${getV39FacilityStoredEntries(state,playerId,f).length}</button>`).join('');
 }
+export function renderV39StoragePanes(cards,detail){
+  return `<div class="storage-panes"><div class="squad-member-list">${cards}</div><div class="squad-detail-pane">${detail}</div></div>`;
+}
 function close(){document.getElementById('v39-facility-storage')?.remove();session=null;if(lock!==null)window.endV39MapInputLock?.(lock);lock=null;}
 function render(){
   if(!session)return;
@@ -35,7 +38,7 @@ function render(){
   if(!root){root=document.createElement('div');root.id='v39-facility-storage';document.body.append(root);}
   updateV39RetainedMarkup(root,`<section role="dialog" aria-modal="true" aria-label="施設格納"><header><b>${esc(facility.name)} (${facility.x},${facility.y})</b><button type="button" data-storage-close>閉じる</button></header>
     <nav><button type="button" data-storage-tab="stored" aria-pressed="${!depositing}">${facility.type==='soul'?'保管魂':corpse?'保管遺体':'格納中'} ${entries.length}${facility.capacity?` / ${facility.capacity}`:''}</button>${facility.type!=='soul'?`<button type="button" data-storage-tab="deposit" aria-pressed="${depositing}">${corpse?'回収する':'格納する'}</button>`:''}${facility.target==='player'?'<small>プレイヤー種族のみ</small>':''}</nav>
-    <div class="storage-panes"><div class="squad-member-list">${cards||'<p>対象がありません</p>'}</div><div class="squad-detail-pane">${selected?renderV39UnitAbility(selected):'<p>ユニットを選択してください</p>'}</div></div>
+    ${renderV39StoragePanes(cards||'<p>対象がありません</p>',selected?renderV39UnitAbility(selected):'<p>ユニットを選択してください</p>')}
     <footer>${esc(session.message|| (corpse?'施設上・隣接の死体と回収済み遺体を保管。保管中は浄化低下・自然アンデッド化・消滅なし。取り出しても死亡状態です。':facility.type==='soul'?'魂回収スキルで死体から保管。出撃不可・合成専用。':'施設上/隣接から格納。取り出すと単独・AP0になります。装備とHPは保持。'))}</footer></section>`);
 }
 document.addEventListener('click',event=>{

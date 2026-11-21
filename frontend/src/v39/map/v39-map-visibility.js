@@ -692,7 +692,7 @@ function renderVisibilityLayers() {
   );
   const residentialTiles = residentialTileKeys(state, player, faction);
   // Facility placement shares the existing tile-selection highlight renderer.
-  const developmentSelection = window.getV39FacilitySummonSelection?.() || window.getV39SettlementDevelopmentSelection?.() || null;
+  const developmentSelection = window.getV39SpyTargetSelection?.() || window.getV39FacilitySummonSelection?.() || window.getV39SettlementDevelopmentSelection?.() || null;
   const playerColor = resolveV39PlayerColor(state,player.id);
   const displaySettings = window.getV39DisplaySettings?.();
   const showOwnership=displaySettings?.showTerritoryOwnership!==false;

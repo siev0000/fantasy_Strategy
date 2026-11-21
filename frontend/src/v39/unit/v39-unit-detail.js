@@ -43,7 +43,7 @@ export function renderV39UnitEquipment(unit,{readOnly=true,disabled=false}={}){
     const quality=item?.qualityLabel||item?.quality;
     const content=`<span>${escapeHtml(slot)}</span><b>${escapeHtml(item?.name||'なし')}${quality?` [${escapeHtml(quality)}]`:''}</b>`;
     return readOnly?`<div class="v39-char-equipment-row">${content}</div>`
-      :`<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}"${disabled||!canV39ChangeUnitEquipmentSlot(unit,slot)?' disabled':''}>${content}</button>`;
+      :`<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}" data-v39-equip-hold-unit="${escapeHtml(unit.id)}"${disabled||!canV39ChangeUnitEquipmentSlot(unit,slot)?' disabled':''}>${content}</button>`;
   }).join('')}</div>`;
 }
 
@@ -141,7 +141,7 @@ export function renderV39UnitConditions(unit){
   return section('強化・保護',buffs)+section('状態異常・弱体',debuffs);
 }
 
-export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
+export function renderV39UnitAbility(unit, { mapData, fieldIds = false, statusOnly = false } = {}) {
   const {current:adjusted,baseline,deltas}=resolveV39UnitAbilityDisplay(unit,{mapData});
   const baselineWeather=resolveV39UnitWeatherMovement(baseline,mapData);
   const weatherMovement=resolveV39UnitWeatherMovement(adjusted,mapData);
@@ -165,6 +165,11 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
     const cityBonus=Number(adjusted?.cityAuraDeltas?.status?.[key])||0;
     return `<div class="detail-stat"${cityBonus?` title="都市常時 ${cityBonus>0?'+':''}${cityBonus}"`:''}><span>${label}</span>${valueHtml(value,delta,fieldId)}</div>`;
   }).join("");
+  const level=Math.max(1,Math.floor(Number(unit?.level??unit?.lv??unit?.Lv)||1));
+  const identity=unit?`<div class="v39-unit-lineage v39-unit-lineage-pair"><span>種族：${escapeHtml(unit.race||'-')}</span><span>クラス：${escapeHtml(unit.className||'-')}</span></div>`:'';
+  const aura=adjusted?.cityAuraSkillNames?.length?`<div class="v39-unit-lineage">都市常時：${escapeHtml(adjusted.cityAuraSkillNames.join(' / '))}</div>`:'';
+  const status=renderV39DetailSection(unit?`ステータス Lv${level}`:'ステータス', `${identity}${aura}<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`);
+  if (statusOnly) return status;
   const skills = Object.entries(adjusted?.skillLevels || {})
     .filter(([key, value]) => key !== "飛行" && Number.isFinite(Number(value)) && Number(value) !== 0)
     .map(([name, value]) => `<div class="proficiency-item"><span>${escapeHtml(name)}</span>${valueHtml(Number(value),deltas.skillLevels?.[name])}</div>`).join("");
@@ -177,9 +182,6 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
       ${valueHtml(formatResistanceValue(value),deltas.resistances?.[key])}</button>`];
   }).join("");
   const empty = message => `<div class="squad-empty">${message}</div>`;
-  const level=Math.max(1,Math.floor(Number(unit?.level??unit?.lv??unit?.Lv)||1));
-  const identity=unit?`<div class="v39-unit-lineage v39-unit-lineage-pair"><span>種族：${escapeHtml(unit.race||'-')}</span><span>クラス：${escapeHtml(unit.className||'-')}</span></div>`:'';
-  const aura=adjusted?.cityAuraSkillNames?.length?`<div class="v39-unit-lineage">都市常時：${escapeHtml(adjusted.cityAuraSkillNames.join(' / '))}</div>`:'';
   const state=globalThis.window?.getV39GameState?.({includeWorlds:false});
   const owner=state?.players?.find(player=>player.factionState?.units?.some(row=>row.id===unit?.id));
   const sustained=(owner?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||[]).filter(effect=>effect.sustained);
@@ -187,7 +189,7 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false } = {}) {
     const cost=v39SustainCost(effect.skillRow);
     return `<div class="v39-char-growth-row"><span>${escapeHtml(effect.skillName)}</span><b>毎ターン AP${cost.ap} / HP${cost.hp}</b><button type="button" data-v39-sustain-cancel="${escapeHtml(effect.skillName)}" data-v39-sustain-unit="${escapeHtml(unit.id)}">解除</button></div>`;
   }).join('')):'';
-  return ongoing+renderV39DetailSection(unit?`ステータス Lv${level}`:'ステータス', `${identity}${aura}<div class="squad-detail-stats v39-char-status-grid">${stats}</div>`)
+  return ongoing+status
     + renderV39DetailSection("技能", `<div class="proficiency-grid"${id("detailProficiencyList")}>${skills || empty("技能データなし")}</div>`)
     + renderV39DetailSection("軽減・耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("軽減・耐性データなし")}</div>`)
     + renderV39UnitConditions(unit);

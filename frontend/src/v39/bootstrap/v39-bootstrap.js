@@ -1,4 +1,6 @@
 import { installV39ModalGallery } from "../dev/v39-modal-gallery.js";
+import {loadV39SharedIconSettings} from "../../lib/v39-shared-icon-settings.js";
+import {loadV39EnchantmentColors} from "../../lib/v39-enchantment-color-state.js";
 
 // Load the v39 runtime in ordered groups so startup progress is visible without changing module order.
 const BOOTSTRAP_STAGES = Object.freeze([
@@ -62,6 +64,7 @@ async function bootstrap() {
   const overlay = installLoadingOverlay();
   setLoadingProgress(overlay, 3, "起動準備中...");
   try {
+    await Promise.all([loadV39SharedIconSettings().catch(() => {}), loadV39EnchantmentColors()]);
     let loadedModules = 0;
     for (const stage of BOOTSTRAP_STAGES) {
       const beforePercent = Math.max(3, Math.floor((loadedModules / BOOTSTRAP_MODULE_COUNT) * 98));

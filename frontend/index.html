@@ -550,6 +550,15 @@ body{
   gap:6px;
 }
 .resource-set{gap:5px}
+.v39-production-chip .value-main{white-space:nowrap}
+.v39-production-point-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:6px 0 0}
+.v39-production-point-summary>div{padding:5px;border:1px solid #3d5964;border-radius:6px;text-align:center}
+.v39-production-point-summary dt{color:#b4d1d9;font-size:var(--font-secondary)}
+.v39-production-point-summary dd{margin:0;font-weight:700;overflow-wrap:anywhere}
+.v39-production-point-summary dd small{display:block;color:#add7b8;font-weight:400}
+.v39-production-list{display:grid;gap:6px;margin:6px 0 0;padding:0;list-style:none}
+.v39-production-list li{display:grid;gap:2px;padding:6px;border:1px solid #3d5964;border-radius:6px;background:#15262d}
+.v39-production-list small{color:#b4d1d9}
 .res-chip{
   min-width:84px;
   min-height:42px;
@@ -2408,6 +2417,10 @@ html,body{
   display:block!important;
   font-size:var(--font-size-22)!important;
   line-height:1!important;
+}
+#resourceDrawerBody .resource-sub .sub-ico{
+  transform:scale(1.3);
+  transform-origin:left center;
 }
 .resource-sub b{
   text-align:left!important;
@@ -4385,7 +4398,7 @@ html,body{
 
 <!-- Equipment -->
 <div class="modal-backdrop" id="equipmentModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="equipmentModalTitle">
-  <div class="modal-head"><h2 id="equipmentModalTitle">装備</h2><button type="button" class="close" data-close aria-label="閉じる">×</button></div>
+  <div class="modal-head"><h2 id="equipmentModalTitle">装備</h2><button type="button" class="v39-enchantment-color-open" data-v39-enchantment-color-open>付与カラー設定</button><button type="button" class="close" data-close aria-label="閉じる">×</button></div>
   <div class="modal-body v39-equipment-body"><p class="v39-equip-empty">装備データを読み込み中</p></div>
 </div></div>
 

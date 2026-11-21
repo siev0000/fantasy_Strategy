@@ -490,6 +490,7 @@ function install() {
       const preferred=promotion.dataset.v39ClassAcquire;
       window.openV39AcquisitionPicker?.({kind:'class',race:unit.race,
         choices:[preferred,...choices.filter(name=>name!==preferred)].filter(name=>choices.includes(name)),
+        unmet:options.filter(option=>!option.available).map(option=>({name:option.row.名前,reasons:option.reasons})),
         subtitle:`${unit.name}の${baseAcquisition?'基礎クラス':'上位職'}を選択（${baseAcquisition?"現在職の超過Lvを移します":"現在職から最大10Lvを移します"}）`,
         onConfirm:className=>{
           const current=window.getV39GameState();

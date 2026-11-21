@@ -407,6 +407,53 @@ def is_repeated_header_row(pairs):
     return len(nonempty) >= 2 and all(str(v).strip() == h for h, v in nonempty)
 
 
+def expand_enchantment_stages(record):
+    from cs_skill_json_converter import parse_data_field
+
+    if not any(key in record for key in ("最大段階", "Lv上昇間隔", "初期効果", "段階上昇量")):
+        return [record]
+    name = record["付与能力"]
+    level = record.get("Lv")
+    maximum = record.get("最大段階", 1)
+    interval = record.get("Lv上昇間隔", 0)
+    for key, value, minimum in (("Lv", level, 1), ("最大段階", maximum, 1), ("Lv上昇間隔", interval, 0)):
+        if type(value) not in (int, float) or not math.isfinite(value) or int(value) != value or value < minimum:
+            raise ValueError(f"{key}は{minimum}以上の整数で指定してください")
+    maximum = int(maximum)
+    labels = ("Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ", "Ⅷ", "Ⅸ", "Ⅹ", "Ⅺ", "Ⅻ")
+    if maximum > 100:
+        raise ValueError("最大段階は100以下で指定してください")
+    metadata = ("付与能力", "ルビ", "装備名接頭辞", "対象装備", "獲得スキル", "Lv", "必要道具",
+                "効果案・備考", "鍛冶Lv", "魔法Lv", "信仰Lv", "軍事Lv", "経済Lv")
+    initial_text = record.get("初期効果", "")
+    step_text = record.get("段階上昇量", "")
+    def effects(value, field):
+        initial, duplicates, unparsed = parse_data_field(str(value))
+        if duplicates or unparsed:
+            raise ValueError(f"{field}に重複または未解釈の記法があります: {value}")
+        if set(initial) & (set(metadata) | {"付与系統", "段階", "効果未設定"}):
+            raise ValueError(f"{field}に管理項目を指定できません")
+        return initial
+    initial = effects(initial_text, "初期効果")
+    step = effects(step_text, "段階上昇量") if step_text else {
+        key: value for key, value in initial.items() if type(value) in (int, float)
+    }
+    if any(key not in initial or type(value) not in (int, float)
+           or type(initial[key]) not in (int, float) for key, value in step.items()):
+        raise ValueError("段階上昇量は初期効果にある数値項目だけ指定できます")
+    stages = []
+    for index in range(maximum):
+        stage = {key: record[key] for key in metadata if key in record}
+        suffix = labels[index] if index < len(labels) else f" 段階{index + 1}"
+        stage.update({"付与能力": name + suffix if maximum > 1 else name,
+                      "付与系統": name, "段階": index + 1, "Lv": int(level + interval * index)})
+        stage.update({key: value + index * step[key] if key in step else value for key, value in initial.items()})
+        if not initial and not record.get("獲得スキル"):
+            stage["効果未設定"] = True
+        stages.append(stage)
+    return stages
+
+
 def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=False):
     result = SheetResult(sheet_name, output_name)
     rows = list(logical_table_rows(reader, sheet_name))
@@ -544,7 +591,13 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
                 if type(value) in (int, float) and not 0 <= value <= 100:
                     result.errors.append({"type": "invalid_climate_humidity", "row": row_no, "header": header,
                                           "message": "湿潤度は0〜100にしてください"})
-        result.records.append(record)
+        if sheet_name == "付与":
+            try:
+                result.records.extend(expand_enchantment_stages(record))
+            except ValueError as error:
+                result.errors.append({"type": "invalid_enchantment_stage", "row": row_no, "message": str(error)})
+        else:
+            result.records.append(record)
 
     key_fields = UNIQUE_KEYS.get(sheet_name)
     if key_fields:

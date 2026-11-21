@@ -1,4 +1,4 @@
-import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
+import {tileCenter, tileMetrics} from "./v39-tile-geometry.js";
 import { V39_PROVISIONAL_DISASTER_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import {resolveV39DisasterIcon} from '../../lib/disaster-icon-artwork.js';
 import {isV39AtmosphereDisaster,isV39AtmosphereMarkerHidden} from '../../lib/v39-atmosphere-display.js';
@@ -43,22 +43,6 @@ function ensureFrame(scene,artwork){
 
 const text = value => String(value ?? "").trim();
 const integer = value => Math.floor(Number(value) || 0);
-
-function tileMetrics() {
-  const width = Number(HEX_TILE_CONFIG?.width) || 40;
-  const height = Number(HEX_TILE_CONFIG?.height) || 48;
-  const rowStep = Number(HEX_TILE_CONFIG?.rowStep) || 36;
-  const oddRowOffsetX = Number(HEX_TILE_CONFIG?.oddRowOffsetX) || width / 2;
-  return { width, height, rowStep, oddRowOffsetX };
-}
-
-function tileCenter(x, y) {
-  const { width, height, rowStep, oddRowOffsetX } = tileMetrics();
-  return {
-    x:(x * width) + (y % 2 === 1 ? oddRowOffsetX : 0) + width / 2,
-    y:(y * rowStep) + height / 2
-  };
-}
 
 function activeScene() {
   const game = window.__v39FieldRuntime?.game;

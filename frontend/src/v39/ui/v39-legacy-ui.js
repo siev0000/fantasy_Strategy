@@ -1,5 +1,11 @@
 import { showV39Feedback } from "./v39-feedback.js";
 import { renderV39SpecialtyHeader } from "./v39-specialty-ui.js";
+import { renderV39ResourceItemSprite } from "./v39-resource-item-icon.js";
+import {renderV39ScreenIcon} from "./v39-screen-icons.js";
+import {getSelectedSettlement} from "../../lib/settlement-state.js";
+import {forecastV39ProductionWork,v39EnchantmentPoints,v39FacilityProductionProgress,v39ProductionPoints} from "../../lib/v39-production-work.js";
+import {getV39ProductionUnitBonus} from "../../lib/v39-production-unit-support.js";
+import {getV39EquipmentEnhancementDisplay} from "../../lib/v39-equipment-rules.js";
 
 function applyViewportScale(){
   const vv=window.visualViewport;
@@ -57,6 +63,79 @@ let resourceMode="detail";
 const resourceSet=document.getElementById("resourceSet");
 const resourceDrawer=document.getElementById("resourceDrawer");
 function currentResourceDetail(){return window.getV39ResourceSnapshot?.()||{}}
+const productionButton=document.createElement("button");
+productionButton.type="button";
+productionButton.className="res-chip tappable resource-group-btn v39-production-chip";
+productionButton.title="製作ポイント・作業一覧";
+productionButton.innerHTML='<span class="ico" aria-hidden="true">⚒</span><b class="value-main"></b>';
+productionButton.addEventListener("click",event=>{event.stopPropagation();openResourceGroup("production",productionButton);});
+
+function productionContext(){
+  const player=window.getV39ActivePlayer?.();
+  const state=window.getV39EnemyTurnState?.();
+  const village=getSelectedSettlement(player?.factionState);
+  return village?.placed&&state?{player,state,village}:null;
+}
+
+function productionDetails(body,{player,state,village}){
+  const turn=state.timeline?.turnNumber;
+  const points=document.createElement("dl");
+  points.className="v39-production-point-summary";
+  for(const [label,field,value] of [
+    ["製作","work",v39ProductionPoints(player,village,turn)],
+    ["魔術","magic",v39EnchantmentPoints(player,village,"enchantMagicUsed",turn)],
+    ["信仰","faith",v39EnchantmentPoints(player,village,"enchantFaithUsed",turn)]
+  ]){
+    const pair=document.createElement("div");
+    const name=document.createElement("dt");
+    name.textContent=label;
+    const amount=document.createElement("dd");
+    amount.textContent=`${fmtNum(value.remaining)}/${fmtNum(value.max)}`;
+    pair.append(name,amount);
+    const bonus=getV39ProductionUnitBonus(village,field,turn);
+    if(bonus>0){
+      const detail=document.createElement("small");
+      detail.textContent=`ユニット +${fmtNum(bonus)}`;
+      amount.append(detail);
+    }
+    points.append(pair);
+  }
+  const list=document.createElement("ul");
+  list.className="v39-production-list";
+  const jobs=[
+    ...(village.constructionQueue||[]).map(job=>({...v39FacilityProductionProgress(job),label:job.facilityName})),
+    ...(village.equipmentProductionQueue||[]).map(job=>({...job,label:`${getV39EquipmentEnhancementDisplay(job.item).name} ×${job.count}`}))
+  ].sort((left,right)=>(left.workOrder||0)-(right.workOrder||0));
+  const dates=jobs.length?forecastV39ProductionWork(player,village,state):new Map();
+  for(const job of jobs){
+    const row=document.createElement("li");
+    const name=document.createElement("strong");
+    name.textContent=job.label;
+    const progress=document.createElement("small");
+    progress.textContent=[
+      `製作 ${job.workProgress||0}/${job.workRequired}`,
+      job.magicRequired&&`魔術 ${job.magicProgress||0}/${job.magicRequired}`,
+      job.faithRequired&&`信仰 ${job.faithProgress||0}/${job.faithRequired}`,
+      dates.has(job.id)&&`完成予定 T${dates.get(job.id)}`
+    ].filter(Boolean).join("　");
+    row.append(name,progress);
+    list.append(row);
+  }
+  for(const plan of (village.operationPlans||[]).filter(plan=>plan.kind==="construction")){
+    const row=document.createElement("li");
+    row.textContent=`${plan.facilityName}　${plan.reason||"建設フェーズで着手"}`;
+    list.append(row);
+  }
+  const title=document.createElement("b");
+  title.textContent=`${village.name||"拠点"}の製作`;
+  body.replaceChildren(title,points);
+  if(list.children.length)body.append(list);
+  else {
+    const empty=document.createElement("p");
+    empty.textContent="作業予約はありません";
+    body.append(empty);
+  }
+}
 
 
 function fmtNum(v){return Number(v).toLocaleString("ja-JP")}
@@ -67,10 +146,10 @@ function signed(v){
   const n=value<0?-rounded:rounded;
   return n===0?"0":(n>0?"+":"")+fmtNum(n);
 }
-function resourceIconMarkup(icon,color,className){
+function resourceIconMarkup(name,icon,color,className){
   const safeColor=/^#[0-9a-f]{3,8}$/i.test(String(color||"").trim())?String(color).trim():"";
   const style=safeColor?` style="color:${safeColor}"`:"";
-  return `<span class="${className}"${style}>${icon||""}</span>`;
+  return `<span class="${className}"${style}>${renderV39ResourceItemSprite(name)||icon||""}</span>`;
 }
 function renderResourceTop(){
   const snapshot=currentResourceDetail();
@@ -87,7 +166,7 @@ function renderResourceTop(){
       b.addEventListener("click",e=>{e.stopPropagation();openResourceGroup(key,b)});
     }
     b.className=`res-chip ${g.className} tappable resource-group-btn`;
-    const markup=`${resourceIconMarkup(g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.title}</span><b class="value-main"></b><small class="value-delta"></small></span>`;
+    const markup=`${resourceIconMarkup(g.iconKey,g.icon,g.iconColor,"ico")}<span><span class="resource-label">${g.title}</span><b class="value-main"></b><small class="value-delta"></small></span>`;
     if(b.__v39ResourceMarkup!==markup){b.innerHTML=markup;b.__v39ResourceMarkup=markup;}
     const total=fmtNum((g.items||[]).reduce((sum,item)=>sum+item.value,0));
     const delta=signed((g.items||[]).reduce((sum,item)=>sum+item.delta,0));
@@ -100,18 +179,41 @@ function renderResourceTop(){
     index++;
   }
   renderV39SpecialtyHeader(resourceSet,snapshot);
+  const production=productionContext();
+  if(!production){productionButton.remove();return;}
+  const {player,state,village}=production;
+  const {remaining,max}=v39ProductionPoints(player,village,state.timeline?.turnNumber);
+  const points=`${remaining}/${max}`;
+  const icon=renderV39ScreenIcon("製作ポイント");
+  if(productionButton._productionIcon!==icon){
+    productionButton.querySelector(".ico").innerHTML=icon;
+    productionButton._productionIcon=icon;
+  }
+  const value=productionButton.querySelector(".value-main");
+  if(value.textContent!==points)value.textContent=points;
+  productionButton.setAttribute("aria-label",`製作ポイント ${points}。作業一覧を開く`);
+  if(resourceSet.lastElementChild!==productionButton)resourceSet.append(productionButton);
+  if(resourceDrawer.classList.contains("show")&&resourceDrawer.dataset.group==="production"){
+    productionDetails(document.getElementById("resourceDrawerBody"),production);
+  }
 }
 
 function openResourceGroup(key,anchor){
 
-  const g=currentResourceDetail()[key];if(!g)return;
-
   const body=document.getElementById("resourceDrawerBody");
+  if(key==="production"){
+    const context=productionContext();
+    if(!context)return;
+    productionDetails(body,context);
+  }else{
+  const g=currentResourceDetail()[key];if(!g)return;
   body.innerHTML=
     `<div class="resource-subgrid">`+
-      g.items.map(i=>`<div class="resource-sub ${i.rare?"rare":""}"><span>${resourceIconMarkup(i.icon,i.iconColor,"sub-ico")}<strong class="sub-label">${i.name}</strong></span><b>${fmtNum(i.value)}</b><small>${signed(i.delta)}</small></div>`).join("")+
+      g.items.map(i=>`<div class="resource-sub ${i.rare?"rare":""}"><span>${resourceIconMarkup(i.name,i.icon,i.iconColor,"sub-ico")}<strong class="sub-label">${i.name}</strong></span><b>${fmtNum(i.value)}</b><small>${signed(i.delta)}</small></div>`).join("")+
     `</div>`;
+  }
 
+  resourceDrawer.dataset.group=key;
   resourceDrawer.classList.add("show");
 
   requestAnimationFrame(()=>{

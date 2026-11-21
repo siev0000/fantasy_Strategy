@@ -126,8 +126,6 @@
 }
 
 .v39-item-list-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.v39-item-list-enhancement-option > button { width: 100%; }
-.v39-item-list-enhancement-option > .v39-item-list-cost { padding: 4px 6px; }
 .v39-item-list-candidate-badge {
   display: block;
   padding-inline: 4px;

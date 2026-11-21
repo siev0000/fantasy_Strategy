@@ -97,8 +97,29 @@ function hasAdjacentMeetingTiles(sides) {
   }
   return false;
 }
+export function exchangeTradePrisoners(state,contract){
+  const sides=contract.sides;
+  if(!sides.some(side=>side.prisonerId))return {ok:true,state};
+  const parties=sides.map(side=>state.players.find(p=>p.id===side.partyId));
+  const outgoing=sides.map((side,i)=>side.prisonerId?parties[i]?.factionState.villagePrisoners?.find(p=>p.unit.id===side.prisonerId):null);
+  if(sides.some(side=>!tradeBank(state,side)))return failure(state,'受渡拠点がありません');
+  if(parties.some(p=>!p)||sides.some((s,i)=>s.prisonerId&&!outgoing[i]))return failure(state,'引き渡す捕虜がいません');
+  const players=state.players.map(player=>{
+    const i=parties.indexOf(player);if(i<0)return player;
+    const faction={...player.factionState,villagePrisoners:(player.factionState.villagePrisoners||[]).filter(p=>p!==outgoing[i])};
+    const incoming=outgoing[1-i];
+    if(incoming?.ownerPlayerId===player.id){
+      const bank=tradeBank(state,sides[i]);
+      faction.squads=faction.squads.map(s=>s.id==='solo'?{...s,unitIds:[...new Set([...(s.unitIds||[]),incoming.unit.id])]}:s);
+      faction.units=[...faction.units,{...incoming.unit,settlementId:bank.id,x:bank.x,y:bank.y,position:[bank.x,bank.y],worldId:'surface',squadId:'solo'}];
+    }else if(incoming)faction.villagePrisoners.push(incoming);
+    return {...player,factionState:faction};
+  });
+  return {ok:true,state:{...state,players}};
+}
 function validateSide(state,side,assign=false,travels=true) {
   const bank=tradeBank(state,side),members=tradeMembers(state,side);
+  if(side.prisonerId&&!state.players.find(p=>p.id===side.partyId)?.factionState.villagePrisoners?.some(p=>p.unit.id===side.prisonerId))return '引き渡す捕虜がいません';
   if(!bank)return '取引拠点を選択してください';
   if(travels&&(!members.length||members.some(unit=>!tradeAlive(unit)||(unit.worldId||'surface')!=='surface')))return '地上の生存担当者と取引拠点を選択してください';
   if(!side.center||![side.center.x,side.center.y,side.radius].every(Number.isSafeInteger)||side.center.x<0||side.center.y<0||side.radius<0||side.radius>config.maxRadius)return '待ち合わせマス・範囲が不正です';
@@ -123,7 +144,7 @@ function isNpcTradeTurn(state,playerId,context) {
 export function proposeV39Trade(state,playerId,request,context={}) {
   if((!isNpcTradeTurn(state,playerId,context)&&(state.activePlayerId!==playerId||state.timeline?.phase!=='player'))||(state.activeWorldId||'surface')!=='surface')return failure(state,'地上の操作中プレイヤーから提案してください');
   const sides=(request.sides||[]).map(side=>({kind:side.kind,partyId:side.partyId,settlementId:side.settlementId,unitId:side.unitId,
-    center:structuredClone(side.center),radius:side.radius,goods:structuredClone(side.goods||{})}));
+    prisonerId:String(side.prisonerId||''),center:structuredClone(side.center),radius:side.radius,goods:structuredClone(side.goods||{})}));
   if(sides.length!==2||sides[0].kind!=='player'||sides[0].partyId!==playerId||sides[0].partyId===sides[1].partyId)return failure(state,'相手を選択してください');
   const deliveryMode=request.deliveryMode??'meeting',courier=tradeCourierIndex({deliveryMode});
   if(!['proposer','partner','meeting'].includes(deliveryMode))return failure(state,'使者の配送方式が不正です');
@@ -141,7 +162,8 @@ export function proposeV39Trade(state,playerId,request,context={}) {
   if(getHexDistance(sides[0].center||{},sides[1].center||{})>n(sides[0].radius)+n(sides[1].radius))return failure(state,'指定範囲が重なりません');
   for(let i=0;i<2;i++){const reason=validateSide(state,sides[i],true,courier<0||courier===i);if(reason)return failure(state,reason);}
   if(courier<0&&!hasAdjacentMeetingTiles(sides))return failure(state,'共通範囲に双方が停止できる隣接2マスが必要です。許容範囲を広げてください');
-  if(!sides.some(side=>Object.keys(side.goods).length))return failure(state,'取引する物資を指定してください');
+  if(sides.some(s=>s.prisonerId)&&(sides.some(s=>s.kind!=='player')||period||request.method==='mail'&&sides[1].prisonerId))return failure(state,'捕虜は勢力間の単発取引で引き渡せます');
+  if(!sides.some(side=>side.prisonerId||Object.keys(side.goods).length))return failure(state,'取引する物資を指定してください');
   if(request.method==='mail'&&Object.keys(sides[1].goods).length)return failure(state,'郵送の受取側は提供数量を0にしてください');
   for(let i=0;i<2;i++)if((courier<0||courier===i)&&Object.values(sides[1-i].goods).reduce((sum,value)=>sum+value,0)>tradeCapacity(tradeMembers(state,sides[i]),state))return failure(state,'受け取る物資が担当部隊の積載量を超えています');
   const firstReserve=Object.fromEntries(Object.entries(sides[0].goods).map(([name,amount])=>[name,tradeReserveAmount(name,amount)]));
