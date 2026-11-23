@@ -59,7 +59,6 @@
 .v39-item-list-cost { flex-wrap: wrap; }
 .v39-item-list-cost > b { color: #b8dce0; }
 
-.v39-item-list-help > summary,
 .v39-item-list-resource > summary {
   list-style: none;
   cursor: pointer;
@@ -70,29 +69,7 @@
   padding: 3px 6px;
 }
 
-.v39-item-list-help > summary {
-  display: grid;
-  place-items: center;
-  min-width: 34px;
-  min-height: 34px;
-}
-
-.v39-item-list-help > summary::-webkit-details-marker,
 .v39-item-list-resource > summary::-webkit-details-marker { display: none; }
-
-.v39-item-list-help-content {
-  position: absolute;
-  z-index: 2;
-  inset: 100% 8px auto auto;
-  width: min(350px, calc(100% - 16px));
-  max-height: 55svh;
-  overflow: auto;
-  padding: 8px;
-  border: 1px solid #6aa9b8;
-  border-radius: 6px;
-  background: #102025;
-  color: #eef9f9;
-}
 
 .v39-item-list-resource { position: relative; }
 .v39-item-list-resource-name {

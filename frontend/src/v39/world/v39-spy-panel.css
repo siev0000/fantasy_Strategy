@@ -89,18 +89,6 @@
 .v39-spy-settlement-overview [data-settlement-page][hidden] { display: none; }
 .v39-spy-settlement-overview .settlement-pages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .v39-spy-settlement-overview .settlement-pages button { padding-inline: 2px; overflow-wrap: anywhere; }
-.v39-spy-settlement-overview .v39-facility-operations { position: relative; isolation: isolate; }
-.v39-spy-settlement-overview .v39-facility-operations:has(.v39-spy-facility-art) { min-block-size: 84px; }
-.v39-spy-facility-art {
-  position: absolute;
-  inset: 4px 8px auto auto;
-  width: min(76px, 48%);
-  aspect-ratio: 1;
-  background-repeat: no-repeat;
-  opacity: .24;
-  z-index: -1;
-  pointer-events: none;
-}
 .v39-spy-roster .storage-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .v39-spy-roster .squad-member-list { min-width: 0; }
 

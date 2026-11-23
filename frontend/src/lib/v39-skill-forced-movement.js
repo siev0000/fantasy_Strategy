@@ -20,7 +20,9 @@ export function applyV39SkillForcedMovement(state,map,attacker,skillRow,hitEntri
   const seen=new Set(),requests=[];
   for(const entry of hitEntries){
     const id=entry.targetId;
-    const hit=entry.hitCount>0||entry.hitResults?.some(result=>result.hit===true)||entry.total>0;
+    const hit=entry.hitResults?.length
+      ? entry.hitResults.some(result=>result.hit===true && !result.chainDamageType)
+      : entry.hitCount>0||entry.total>0;
     if(!id||id===attacker.id||seen.has(id)||!hit)continue;
     seen.add(id);
     requests.push({...spec,power:spec.power*Math.max(0,Number(entry.detail?.scale??1)||0),targetIds:[id],worldId:state.activeWorldId||'surface',turn:state.timeline?.turnNumber});

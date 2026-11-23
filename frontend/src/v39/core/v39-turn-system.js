@@ -29,7 +29,6 @@ import { showV39SideNotice } from "../ui/v39-notification-rail.js";
 import {advanceV39GolemOrders} from "../../lib/v39-golem-workshop.js";
 import { withV39WorldContext, v39TurnWorldIds } from "./v39-world-context.js";
 import {advanceV39RecruitTraining} from "../../lib/v39-recruit-training.js";
-import {advanceV39RecruitInstructorMovement} from "../../lib/v39-recruit-instructor.js";
 import { advanceV39ExpeditionTools, advanceV39ToolSites } from "../../lib/v39-expedition-tools.js";
 import {advanceV39ToolProduction} from "../../lib/v39-consumables.js";
 import {advanceV39SquadRallies} from '../../lib/v39-squad-coordination.js';
@@ -164,7 +163,7 @@ function renderControls() {
   const counter=document.getElementById('v39-turn-phase-count');
   if(counter){counter.hidden=!phased;counter.textContent=String(display.count);}
   const planningKey=nation?`${timeline.turnNumber}:${timeline.activeTurnPlayerId||window.getV39ActivePlayerId?.()}`:'';
-  if(planningKey&&planningKey!==displayedPlanningKey)queueMicrotask(()=>window.openV39TerritoryManagement?.());
+  if(planningKey&&planningKey!==displayedPlanningKey)queueMicrotask(()=>window.openV39TerritoryManagement?.({openTab:false}));
   displayedPlanningKey=planningKey;
   const next=document.getElementById('v39-turn-next');
   if(next)next.textContent=nation?'拠点フェーズを終了':'ターン終了';
@@ -334,7 +333,7 @@ function focusUnactedUnit(state, playerId, turnNumber) {
 }
 
 export async function advanceTurn(options = {}) {
-  if (advancing || window.isV39MapInputLocked?.()) return false;
+  if (advancing || window.isV39MapInputLocked?.() || window.isV39FixedMapEditing?.()) return false;
   let state = window.getV39GameState?.();
   if (!state) return false;
   if (state?.victory?.completed === true) {
@@ -388,8 +387,7 @@ export async function advanceTurn(options = {}) {
     const transportWorld=v39TurnWorldIds().includes("surface")?"surface":state.activeWorldId;
     await withV39WorldContext(transportWorld,()=>{
       const scoped=window.getV39GameState({includeWorlds:false});
-      const instructors=advanceV39RecruitInstructorMovement(scoped,currentPlayerId,window.__v39FieldRuntime?.mapData,before.turnNumber);
-      const transport=advanceV39AutomaticTransport(instructors.state,currentPlayerId,window.__v39FieldRuntime?.mapData,
+      const transport=advanceV39AutomaticTransport(scoped,currentPlayerId,window.__v39FieldRuntime?.mapData,
         before.turnNumber,window.__v39FieldRuntime?.mapData?.worldWrapEnabled!==false);
       if(transport.state!==scoped){
         window.setV39GameState({players:transport.state.players},{reason:"automatic-transport",returnState:false});

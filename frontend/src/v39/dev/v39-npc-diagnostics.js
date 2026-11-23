@@ -68,10 +68,11 @@ function construction(player){
 function research(player){
   const faction=player.factionState,state=normalizeResearchState(faction.research),growth=faction.aiState?.growthPlan;
   const progress=RESEARCH_CATEGORY_ORDER.map(category=>{
-    const id=state.selection[category],found=findResearchItem(id),actor=faction.units.find(unit=>unit.id===state.assignedUnitIdByCategory[category]);
+    const id=state.selection[category],found=findResearchItem(id);
+    const base=(faction.settlements||[]).find(row=>row.settlementId===state.settlementIdByCategory[category]);
     const completed=Object.values(state.progress.completedByCategoryLevel[category]||{}).flat().map(id=>findResearchItem(id)?.item.name||id);
     return card(`${category.replace(/Lv$/,'')} Lv${resolveCompletedResearchLevel(state,category)}`,
-      `<p>${esc(found?.item.name||'研究未選択')}${found?` / EXP ${amount(state.progress.targetExpMap[id])}/${requiredResearchExp(found.level)} / 担当 ${esc(actor?.name||'不在')}`:''}</p><p>完了: ${esc(completed.join('・')||'なし')}</p>`);
+      `<p>${esc(found?.item.name||'研究未選択')}${found?` / EXP ${amount(state.progress.targetExpMap[id])}/${requiredResearchExp(found.level)}${base?` / 拠点 ${esc(base.name)}`:''}`:''}</p><p>完了: ${esc(completed.join('・')||'なし')}</p>`);
   }).join('');
   const equipment=growth?.equipment,rare=growth?.rare;
   return card('優先研究の目標',(growth?.researchRequests||[]).map(request=>`<p>${esc(request.category)} ${amount(resolveCompletedResearchLevel(state,request.category))}/${amount(request.level)}</p>`).join('')||empty)

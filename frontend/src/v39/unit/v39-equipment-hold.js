@@ -4,6 +4,8 @@ const holdTarget = [
   "#characterModal [data-v39-character-row]",
   "#characterModal [data-v39-squad-member]",
   "#characterModal [data-v39-character-equip-open]:not(:disabled)",
+  "#detailEquipmentHeading[data-v39-equip-hold-unit]",
+  "#detailEquipmentList[data-v39-equip-hold-unit]",
   "#detailEquipmentList [data-v39-equip-hold-slot]"
 ].join(",");
 
@@ -29,7 +31,7 @@ export function installV39EquipmentHold(openUnit, openSlot) {
       if (!target.isConnected || !target.getClientRects().length) return;
       const {v39CharacterRow, v39SquadMember, v39CharacterEquipOpen, v39EquipHoldSlot, v39EquipHoldUnit} = target.dataset;
       const slot = v39CharacterEquipOpen || v39EquipHoldSlot;
-      suppressClick = slot ? openSlot(v39EquipHoldUnit, slot) : openUnit(v39CharacterRow || v39SquadMember);
+      suppressClick = slot ? openSlot(v39EquipHoldUnit, slot) : openUnit(v39CharacterRow || v39SquadMember || v39EquipHoldUnit);
     }, holdDelay);
     press = {id:event.pointerId, x:event.clientX, y:event.clientY, timer};
   }, true);

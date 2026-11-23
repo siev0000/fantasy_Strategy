@@ -10,6 +10,7 @@ import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from
 import "./v39-unit-detail.css";
 import {canV39ChangeUnitEquipmentSlot} from '../../lib/v39-equipment-rules.js';
 import {EQUIPMENT_SLOT_KEYS} from '../../constants/unitCommon.js';
+import {renderV39EquipmentDisplayRow} from '../ui/v39-equipment-display.js';
 import {resolveV39UnitWeatherMovement} from '../../lib/v39-terrain-traversal.js';
 import {V39_UNIT_ACHIEVEMENT_FIELDS} from '../../lib/v39-unit-achievements.js';
 import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
@@ -40,8 +41,7 @@ export function renderV39UnitEquipment(unit,{readOnly=true,disabled=false}={}){
   const equipment=Array.isArray(unit?.equipment)?unit.equipment:[];
   return `<div class="v39-char-equipment-list">${EQUIPMENT_SLOT_KEYS.map(slot=>{
     const item=equipment.find(row=>row.slot===slot);
-    const quality=item?.qualityLabel||item?.quality;
-    const content=`<span>${escapeHtml(slot)}</span><b>${escapeHtml(item?.name||'なし')}${quality?` [${escapeHtml(quality)}]`:''}</b>`;
+    const content=item?renderV39EquipmentDisplayRow(item,{slot,inline:true}):`<span>${escapeHtml(slot)}</span><b>なし</b>`;
     return readOnly?`<div class="v39-char-equipment-row">${content}</div>`
       :`<button type="button" class="v39-char-equipment-row" data-v39-character-equip-open="${escapeHtml(slot)}" data-v39-equip-hold-unit="${escapeHtml(unit.id)}"${disabled||!canV39ChangeUnitEquipmentSlot(unit,slot)?' disabled':''}>${content}</button>`;
   }).join('')}</div>`;
@@ -98,12 +98,12 @@ export function renderV39UnitConditions(unit){
   for(const [bucket,label]of [['abilityDamage','能力ダメージ'],['abilityCurses','呪い'],['abilityPoison','毒による低下']])for(const [key,value]of Object.entries(unit?.[bucket]||{}))if(Number(value)>0)debuffs.push([label+'：'+key,'-'+value]);
   for(const kind of ['毒','燃焼']){
     const doses=(unit?.periodicDamage||[]).filter(effect=>effect.kind===kind&&effect.remainingTurns>0);
-    if(doses.length)debuffs.push([kind,doses.reduce((sum,e)=>sum+Number(e.value||0),0)+'ダメージ/ターン / 残り'+Math.max(...doses.map(e=>e.remainingTurns))+'T']);
+    if(doses.length)debuffs.push([kind,'次回の内訳 '+Number(doses.reduce((sum,e)=>sum+Number(e.value||0),0).toFixed(4))+' / 残り'+Math.max(...doses.map(e=>e.remainingTurns))+'T']);
   }
   const hold=inspectV39Restraint(unit),holdPenalty=getV39RestraintPenalty(unit,state);
   if(hold.value)debuffs.push(['拘束',hold.value+' / '+hold.cap+'（段階'+hold.stage+'） / 自然抵抗 '+resolveV39RestraintRecovery(resolveV39UnitAbilityDisplay(unit,{state}).current.status)+'/T']);
   if(holdPenalty)debuffs.push(['命中・回避','-'+Math.round(holdPenalty*100)+'%'+(unit.restraint?.grapplerId?' / 組み付かれ中':'' )]);
-  if(bleed)debuffs.push(['出血',bleed.value+' / 次回 '+bleed.damage+'ダメージ / 残り'+bleed.remainingTurns+'T']);
+  if(bleed)debuffs.push(['出血',bleed.value+' / 次回の内訳 '+Number(bleed.damage.toFixed(4))+' / 残り'+bleed.remainingTurns+'T']);
   if(Number(unit?.guard)>0&&active(unit.guardExpiresAtTurn))buffs.push(['ガード',unit.guard+' / '+remaining(unit.guardExpiresAtTurn)]);
   for(const [key,label]of [['shield','盾'],['barrier','障壁']]){
     const effect=unit?.[key];

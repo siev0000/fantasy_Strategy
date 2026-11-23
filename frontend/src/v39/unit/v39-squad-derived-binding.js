@@ -154,6 +154,11 @@ function equipmentDetailMarkup(item) {
 function renderEquipment(unit) {
   const host = document.getElementById("detailEquipmentList");
   if (!(host instanceof HTMLElement)) return;
+  const heading = document.getElementById("detailEquipmentHeading");
+  for (const target of [host, heading]) {
+    if (unit?.id && unit.hp > 0) target?.setAttribute("data-v39-equip-hold-unit", unit.id);
+    else target?.removeAttribute("data-v39-equip-hold-unit");
+  }
   const equipment = Array.isArray(unit?.equipment) ? unit.equipment.filter(Boolean) : [];
   if (!equipment.length) {
     updateMarkup(host, '<div class="equipment-empty">装備なし</div>');
@@ -197,8 +202,7 @@ function getFactionState() {
     : null;
 }
 
-function getUnits() {
-  const factionState = getFactionState();
+function getUnits(factionState = getFactionState()) {
   return (factionState?.units || []).flatMap(unit => unit.boardingPilot
     ? [unit,{...unit.boardingPilot,boardingHost:unit,x:unit.x,y:unit.y,worldId:unit.worldId}]
     : [unit]);
@@ -258,9 +262,9 @@ function squadKeyForUnitId(targetUnitId) {
   return unit ? squadKey(unit) : "";
 }
 
-function findUnit(targetUnitId) {
+function findUnit(targetUnitId, faction = getFactionState()) {
   const id = text(targetUnitId);
-  return getUnits().find((row, index) => unitId(row, index) === id) || null;
+  return getUnits(faction).find((row, index) => unitId(row, index) === id) || null;
 }
 
 function syncSelectionFromGameState() {
@@ -276,9 +280,10 @@ function syncSelectionFromGameState() {
 
 function persistSelectedUnit(targetUnitId, reason = "squad-unit-selected") {
   const id = text(targetUnitId);
-  const unit = findUnit(id);
-  if (!id || !unit) return;
+  if (!id) return;
   const faction = getFactionState();
+  const unit = findUnit(id, faction);
+  if (!unit) return;
   if (unit.boardingHost) {
     inspectedPilotId = id;
     inspectionAnchorId = text(faction?.selectedUnitId);
@@ -286,11 +291,11 @@ function persistSelectedUnit(targetUnitId, reason = "squad-unit-selected") {
     return;
   }
   inspectedPilotId = "";
+  const mapFocusHandled = focusV39MapTile(unit, { worldId:unit.worldId || "surface", select:true, notify:false });
   if (text(faction?.selectedUnitId) !== id && typeof window.updateV39ActiveFactionState === "function") {
-    window.updateV39ActiveFactionState({ selectedUnitId:id }, { reason });
+    window.updateV39ActiveFactionState({ selectedUnitId:id }, { reason, returnState:false });
   }
-  window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail:{ unitId:id, unit } }));
-  focusV39MapTile(unit,{worldId:unit.worldId||'surface',select:true,notify:false});
+  window.dispatchEvent(new CustomEvent("v39:unit-selected", { detail:{ unitId:id, unit, mapFocusHandled } }));
 }
 
 function updateSelectorCounts() {
@@ -351,11 +356,10 @@ function renderDetail() {
     updateV39UnitAbility(document.getElementById("detailAbilitySections"), null, {fieldIds:true});
     const prof = document.getElementById("detailProficiencyList");
     const resistance = document.getElementById("detailResistanceList");
-    const equipment = document.getElementById("detailEquipmentList");
     const tech = document.getElementById("detailTechniqueRows");
     updateMarkup(prof, '<div class="squad-empty">技能データなし</div>');
     updateMarkup(resistance, '<div class="squad-empty">耐性データなし</div>');
-    updateMarkup(equipment, '<div class="equipment-empty">装備なし</div>');
+    renderEquipment(null);
     updateMarkup(tech, '<div class="squad-empty">行動データなし</div>');
     expandedEquipmentKey = "";
     notifyDetailRendered();

@@ -7,6 +7,7 @@ import {normalizeV39RecoveryWaitPercent,updateV39RecoveryWaitSettings} from '../
 import {normalizeV39DetectionScoutBonus,V39_DETECTION_BONUS_MIN,V39_DETECTION_BONUS_MAX} from '../../lib/v39-detection-settings.js';
 import {normalizeV39DamageMultiplier,V39_DAMAGE_MULTIPLIER_MIN,V39_DAMAGE_MULTIPLIER_MAX,V39_DAMAGE_MULTIPLIER_STEP} from '../../lib/v39-combat-settings.js';
 import { GAME_START_FIELD_VISION_BONUS_MAX, GAME_START_FIELD_VISION_BONUS_MIN, normalizeFieldVisionBonusTiles, normalizeGameStartSettings } from '../../lib/game-start-settings.js';
+import {openV39AudioSettings} from "../ui/v39-audio-settings.js";
 
 const SAVE_VERSION = 4;
 
@@ -307,6 +308,7 @@ function installSettingsUi() {
   const body = modal?.querySelector(".modal-body");
   if (!(body instanceof HTMLElement)) return;
   body.innerHTML = `<div class="v39-save-settings">
+    <section><button type="button" id="v39-game-audio-settings" data-audio-se="open">音設定</button></section>
     <section><h3>セーブ・ロード</h3><p>マップ、全プレイヤー、領土、研究、経済、戦闘、外交、地形イベント、カメラ位置を保存します。</p>
       <div><button type="button" id="v39-save-download">セーブを保存</button><button type="button" id="v39-save-load">セーブを読込</button><input id="v39-save-file" type="file" accept="application/json,.json" hidden></div>
       <output id="v39-save-status">未実行</output>
@@ -337,6 +339,7 @@ function installSettingsUi() {
     </section>
     <section><h3>部隊編制</h3><p>ユニット一覧の「部隊」タブから部隊の作成・メンバー変更・解散ができます。</p></section>
   </div>`;
+  body.querySelector("#v39-game-audio-settings").addEventListener("click",openV39AudioSettings);
   const status = document.getElementById("v39-save-status");
   const input = document.getElementById("v39-save-file");
   const foodAuto=document.getElementById('v39-food-auto-resupply');

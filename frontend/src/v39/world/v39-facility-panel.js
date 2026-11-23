@@ -1,4 +1,5 @@
 import {readV39ItemListAction,renderV39ItemListScreen1} from '../ui/v39-item-list-screen-1.js';
+import {V39_SCREEN_HELP_COPY} from '../ui/v39-screen-help-copy.js';
 import {applyV39DerivedCharacterData} from '../unit/v39-character-derived-rules.js';
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import {describeV39EnchantmentEffects,getV39GolemEnchantmentLimitReason,golemEnchantParts} from '../../lib/v39-equipment-rules.js';
@@ -100,9 +101,11 @@ function openGolemWorkshop(request){
     renderedCheck=check;
     const facility=getGameDataRows('施設').find(row=>row.施設名===request.facilityName);
     const reach=golemWorkshopSizes.indexOf(request.facilityName);
+    const copy=V39_SCREEN_HELP_COPY.golem;
     const help=[
+      reviewing?copy.review:draft?copy.enhance:copy.select,
       request.facilityName,facility?.詳細,
-      reach>0?`材料となる地形は、工房から周囲${reach}マス以内を参照します。`:'材料となる地形は工房のマスを参照します。'
+      copy.terrain(reach)
     ].filter(Boolean);
     const costs={...check.material,...check.food};
     const getStock=name=>Number((Object.hasOwn(check.food,name)?check.base?.foodStockByType:check.base?.materialStockByType)?.[name])||0;
@@ -311,11 +314,15 @@ export function renderV39FacilityOperations(state,playerId,facility,intel){
   const storage=owned?renderV39FacilityStorageButtons(state,playerId,base,{tileKey,name}):'';
   const protection=!intel&&name==='墓地'?getV39DeathProtectionStatus(window.__v39FieldRuntime?.mapData,state,playerId,base.settlementId||base.id):null;
   const queue=(base.constructionQueue||[]).filter(item=>item.tileKey===tileKey&&tileKey);
-  const art=intel?resolveFacilityIconArtwork(name):null;
+  const art=resolveFacilityIconArtwork(name);
   const artworkStyle=art&&resolveV39IconSpriteStyle({...art.sheetFrame,src:art.src},art.sheetFrame.slotNumber+1);
+  const maxHp=Math.max(1,Math.round(health?.maxHp||100));
+  const hp=Math.max(0,Math.round(health?.hp||0));
+  const hpRatio=Math.min(1,hp/maxHp);
+  const hpTone=hpRatio>0.6?'healthy':hpRatio>0.3?'damaged':'critical';
   return `<div class="v39-facility-operations" data-facility-detail="${esc(facility.id)}">
-    ${artworkStyle?`<span class="v39-spy-facility-art" aria-hidden="true" style="background-image:${esc(artworkStyle.backgroundImage)};background-size:${artworkStyle.backgroundSize};background-position:${artworkStyle.backgroundPosition}"></span>`:""}
-    ${health?`<p>HP ${Math.max(0,Math.round(health.hp||0))}/${Math.round(health.maxHp||100)}</p>`:''}
+    ${artworkStyle?`<span class="v39-facility-art" aria-hidden="true" style="background-image:${esc(artworkStyle.backgroundImage)};background-size:${artworkStyle.backgroundSize};background-position:${artworkStyle.backgroundPosition}"></span>`:""}
+    ${health?`<p class="v39-facility-hp"><span>HP ${hp}/${maxHp}</span><span class="v39-facility-hp-track" data-hp-tone="${hpTone}" aria-hidden="true"><span style="width:${hpRatio*100}%"></span></span></p>`:''}
     ${queue.map(item=>`<p>改築中: ${esc(item.facilityName)} · ${formatV39FacilityProductionProgress(item)}</p>`).join('')}
     ${protection?.capacity?`<p data-v39-cemetery-quota>死亡時の浄化保護 残り${protection.remaining}/${protection.capacity}件（このターン）</p>`:''}
     ${intel?(row?.格納種別==='生体'? `<button type="button" class="settlement-chip" data-surveyed-storage="${esc(facility.id)}">格納ユニット一覧（${intel.storedUnits.filter(unit=>unit.tileKey===tileKey&&unit.facilityName===name).length}）</button>`:''):

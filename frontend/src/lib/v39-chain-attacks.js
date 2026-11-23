@@ -1,8 +1,23 @@
+import {DAMAGE_TYPE_FIELDS} from "../constants/unitCommon.js";
+
 const chainScales = [1/2,5/12,1/3,1/4];
 
+export function resolveV39ChainSpec(effects) {
+  let selected = null;
+  for (const effect of String(effects ?? "").split(/[\s,:：;；/／|｜、]+/u)) {
+    const match = effect.match(/^連鎖_([1-4])(?:_([^_]+))?$/);
+    const depth = effect === "連鎖" ? 1 : Number(match?.[1]) || 0;
+    const attribute = match?.[2] ?? "";
+    if (!depth || attribute && !DAMAGE_TYPE_FIELDS.includes(attribute)) continue;
+    if (!selected || depth > selected.depth || depth === selected.depth && attribute && !selected.attribute) {
+      selected = {depth, attribute};
+    }
+  }
+  return selected;
+}
+
 export function resolveV39ChainDepth(row) {
-  const effects=String(row?.効果??'').split(/[\s,:：;；/／|｜、]+/u);
-  return Math.max(0,...effects.map(effect=>effect==='連鎖'?1:Number(effect.match(/^連鎖_([1-4])$/)?.[1])||0));
+  return resolveV39ChainSpec(row?.効果)?.depth ?? 0;
 }
 
 export function runV39ChainAttacks({depth,entries,targets,canSpread,strike}) {

@@ -15,10 +15,10 @@
   line-height: 1.1;
 }
 
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="uncommon"] { --v39-rarity-color: #97e39c; }
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="rare"] { --v39-rarity-color: #7bc3ff; }
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="epic"] { --v39-rarity-color: #d6a2ff; }
-:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow)[data-quality="legendary"] { --v39-rarity-color: #ffd18b; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow, .v39-equip-tile)[data-quality="uncommon"] { --v39-rarity-color: #97e39c; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow, .v39-equip-tile)[data-quality="rare"] { --v39-rarity-color: #7bc3ff; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow, .v39-equip-tile)[data-quality="epic"] { --v39-rarity-color: #d6a2ff; }
+:is(.v39-equipment-rarity-badge, .v39-equipment-display-row, .v39-equipment-weapon-glow, .v39-equip-tile)[data-quality="legendary"] { --v39-rarity-color: #ffd18b; }
 
 .v39-equipment-display-row {
   --v39-rarity-color: #b8b8b8;

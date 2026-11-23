@@ -1,5 +1,6 @@
 import {updateV39RetainedMarkup} from '../ui/v39-retained-markup.js';
 import {readV39ItemListAction,renderV39ItemListScreen1} from '../ui/v39-item-list-screen-1.js';
+import {V39_SCREEN_HELP_COPY} from '../ui/v39-screen-help-copy.js';
 import {getV39SummonEntries,inspectV39Summon,summonV39Units,getV39SummonEquipmentGroups} from "../../lib/v39-summon-rules.js";
 import {renderV39UnitCard} from "./v39-unit-card.js";
 import {renderV39UnitAbility,renderV39DetailTabs} from "./v39-unit-detail.js";
@@ -124,10 +125,12 @@ function render() {
     if(check.count>1)controls.push({id:'formation',label:'配置',attribute:'data-summon-formation',value:check.formation,
       options:[{value:'split',label:'1体ずつ配置'},{value:'army',label:'軍隊1駒にまとめる'}]});
   }
+  const copy=V39_SCREEN_HELP_COPY.summon;
   const help=facilityMode&&check?[
+    copy.select,
     `${check.slot?.row.施設名||'召喚施設'}　召喚上限Lv${check.facility.maximumLevel}（${check.facility.family||'全般'}）`,
-    `配置先は${check.radius?`施設から周囲${check.radius}マス以内`:'施設マス'}です。`,
-    `施設ごとに同種1組を維持できます。召喚体に期限はなく、全員が消滅してから${check.slot?.row.施設召喚再使用T??0}T後に再召喚できます。`
+    copy.placement(check.radius),
+    copy.cooldown(check.slot?.row.施設召喚再使用T??0)
   ]:[];
   const costs=[];
   if(entry){

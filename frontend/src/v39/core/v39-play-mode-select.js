@@ -1,6 +1,7 @@
 // 初回の開始導線だけを担当する。ゲーム状態・通信状態はここでは変更しない。
 import "./v39-cave-test.js";
 import {openV39EnchantmentColorSettings} from "../unit/v39-enchantment-color-settings.js";
+import {openV39AudioSettings} from "../ui/v39-audio-settings.js";
 const PLAY_MODE_OPTIONS = Object.freeze({
   "single-normal":{ label:"通常プレイ", description:"テストデータを使わず、新規ゲームとして開始します。" },
   "single-test":{ label:"テストプレイ", description:"通常プレイと同じ流れ・ルールで開始し、テストデータとテスト操作を追加します。" },
@@ -10,6 +11,8 @@ const PLAY_MODE_OPTIONS = Object.freeze({
 let modal = null;
 let selectedPlayMode = "";
 let loadingSave = false;
+let loadingFixedMap = false;
+let editingFixedMap = false;
 
 function createStyles() {
   if (document.getElementById("v39-play-mode-select-style")) return;
@@ -29,6 +32,7 @@ function createStyles() {
 .v39-play-mode-settings .v39-play-mode-reference { margin-top:0; }
 .v39-play-mode-reference-status { display:block; margin-top:4px; color:#efaa96; }
 .v39-play-mode-reference-status:empty { display:none; }
+[data-v39-fixed-map-status] { white-space:pre-line; }
 `;
   document.head.appendChild(style);
 }
@@ -54,9 +58,13 @@ function createModal() {
         <div class="v39-play-mode-options single">
           <button type="button" data-v39-play-mode="single-normal"><strong>${PLAY_MODE_OPTIONS["single-normal"].label}</strong><small>${PLAY_MODE_OPTIONS["single-normal"].description}</small></button>
           <button type="button" data-v39-play-mode="single-test"><strong>${PLAY_MODE_OPTIONS["single-test"].label}</strong><small>${PLAY_MODE_OPTIONS["single-test"].description}</small></button>
+          <button type="button" data-v39-start-fixed-map><strong>固定マップで開始</strong><small>固定マップのJSONを選び、ターン1から始めます。</small></button>
+          <button type="button" data-v39-edit-fixed-map><strong>固定マップ作成</strong><small>地形と勢力を配置し、JSONに保存します。</small></button>
           <button type="button" data-v39-test-tools><strong>テスト操作</strong><small>召喚・呼集、輸送・道具・支援、侵入・再巣化などの専用テストを選択します。</small></button>
           <button type="button" data-v39-cave-test><strong>洞窟生成テスト</strong><small>洞窟の形状・出入口・モンスター配置を確認します。</small></button>
         </div>
+        <input id="v39-start-fixed-map-file" type="file" accept="application/json,.json" hidden>
+        <output class="v39-play-mode-reference-status" data-v39-fixed-map-status role="status"></output>
       </section>
       <section class="v39-play-mode-group">
         <h3>マルチプレイ</h3>
@@ -68,6 +76,7 @@ function createModal() {
       <div id="v39-start-settings" class="v39-play-mode-settings" hidden>
         <button type="button" class="v39-play-mode-reference" data-v39-equipment-icon-reference>アイコン設定</button>
         <button type="button" class="v39-play-mode-reference" data-v39-start-enchantment-colors>付与カラー設定</button>
+        <button type="button" class="v39-play-mode-reference" data-v39-start-audio data-audio-se="open">音設定</button>
       </div>
       <output class="v39-play-mode-reference-status" data-v39-equipment-icon-reference-status role="status"></output>
     </section>`;
@@ -103,8 +112,27 @@ function createModal() {
   modal.querySelector("[data-v39-start-enchantment-colors]").addEventListener("click", () => {
     void openV39EnchantmentColorSettings();
   });
+  modal.querySelector("[data-v39-start-audio]").addEventListener("click",openV39AudioSettings);
+  const fixedMapInput = modal.querySelector("#v39-start-fixed-map-file");
+  const fixedMapStatus = modal.querySelector("[data-v39-fixed-map-status]");
+  modal.querySelector("[data-v39-start-fixed-map]").addEventListener("click", () => fixedMapInput.click());
+  fixedMapInput.addEventListener("change", async () => {
+    const file = fixedMapInput.files?.[0];
+    fixedMapInput.value = "";
+    if (!file || loadingFixedMap) return;
+    fixedMapStatus.textContent = "固定マップを読み込んでいます…";
+    try {
+      await runFixedMapStart(await file.text());
+      fixedMapStatus.textContent = "";
+    } catch (error) {
+      fixedMapStatus.textContent = error.message;
+    }
+  });
+  modal.querySelector("[data-v39-edit-fixed-map]").addEventListener("click", event => {
+    void openFixedMapEditor(event.currentTarget, fixedMapStatus);
+  });
   modal.addEventListener("click", event => {
-    if (loadingSave) return;
+    if (loadingSave || loadingFixedMap) return;
     const iconReference = event.target instanceof Element ? event.target.closest("[data-v39-equipment-icon-reference]") : null;
     if (iconReference) {
       void openEquipmentIconReference(iconReference);
@@ -130,6 +158,90 @@ function createModal() {
   return modal;
 }
 
+async function runFixedMapStart(input) {
+  if (loadingFixedMap) throw new Error("固定マップを読み込んでいます。");
+  loadingFixedMap = true;
+  try {
+    const {parseV39FixedMap,buildV39FixedMapStart} = await import("../../lib/v39-fixed-map.js");
+    const setup = buildV39FixedMapStart(typeof input === "string" ? parseV39FixedMap(input) : input);
+    if (typeof window.startV39FixedMapSession !== "function" || typeof window.loadV39FieldSnapshot !== "function") {
+      throw new Error("ゲームの準備中です。少し待ってから再度お試しください。");
+    }
+    await window.setV39TestMode?.(false);
+    selectedPlayMode = "single-normal";
+    window.startV39FixedMapSession(setup);
+    closePlayModeSelection();
+  } finally {
+    loadingFixedMap = false;
+  }
+}
+
+async function openFixedMapEditor(button, status) {
+  if (loadingSave || loadingFixedMap || button.disabled) return;
+  button.disabled = true;
+  status.textContent = "";
+  let host;
+  let app;
+  let restore;
+  try {
+    const [{createApp},{default:Editor}] = await Promise.all([
+      import("vue"),import("../../components/V39FixedMapEditor.vue")
+    ]);
+    if (loadingSave || loadingFixedMap || !modal.classList.contains("open")) return;
+    if (!document.querySelector(".footer-body") || typeof window.startV39FixedMapSession !== "function"
+      || typeof window.loadV39FieldSnapshot !== "function") {
+      throw new Error("ゲームの準備中です。少し待ってから再度お試しください。");
+    }
+    const oldState = window.getV39GameState();
+    const {mapData:oldMap,settings:oldSettings} = window.__v39FieldRuntime ?? {};
+    restore = () => {
+      window.clearV39GameState({silent:true});
+      window.setV39GameState(oldState,{reason:"save-loaded"});
+      if (oldMap) window.loadV39FieldSnapshot(oldMap,oldSettings,{worldId:oldState.activeWorldId});
+    };
+    host = document.createElement("div");
+    document.body.append(host);
+    const close = () => {
+      app.unmount();
+      host.remove();
+      editingFixedMap = false;
+      document.body.classList.remove("v39-fixed-map-editing");
+    };
+    app = createApp(Editor,{
+      onClose:() => {
+        close();
+        restore();
+        window.activateV39FooterTab?.("squad");
+        openPlayModeSelection();
+        button.focus();
+      },
+      onStart:async (data, reportError) => {
+        try {
+          await runFixedMapStart(data);
+          close();
+          window.activateV39FooterTab?.("squad");
+        } catch (error) {
+          reportError(error);
+        }
+      }
+    });
+    editingFixedMap = true;
+    document.body.classList.add("v39-fixed-map-editing");
+    closePlayModeSelection();
+    app.mount(host);
+  } catch (error) {
+    app?.unmount();
+    host?.remove();
+    editingFixedMap = false;
+    document.body.classList.remove("v39-fixed-map-editing");
+    restore?.();
+    openPlayModeSelection();
+    status.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function normalizePlayMode(value) {
   if (value === "multiplayer") return "multiplayer";
   if (value === "single-test") return "single-test";
@@ -141,11 +253,14 @@ function openPlayModeSelection() {
   createModal();
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
+  window.dispatchEvent(new CustomEvent("v39:play-mode-opened"));
 }
 
 function closePlayModeSelection() {
+  const wasOpen = modal?.classList.contains("open");
   modal?.classList.remove("open");
   modal?.setAttribute("aria-hidden", "true");
+  if (wasOpen) window.dispatchEvent(new CustomEvent("v39:play-mode-closed"));
 }
 
 async function openEquipmentIconReference(button) {
@@ -215,6 +330,7 @@ function boot() {
   window.openV39PlayModeSelection = openPlayModeSelection;
   window.closeV39PlayModeSelection = closePlayModeSelection;
   window.getV39PlayMode = () => selectedPlayMode;
+  window.isV39FixedMapEditing = () => editingFixedMap;
 }
 
 boot();

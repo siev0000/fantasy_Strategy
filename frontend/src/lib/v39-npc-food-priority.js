@@ -5,7 +5,7 @@ import {getFactionSettlements,getSelectedSettlement,replaceFactionSettlement} fr
 
 const n=value=>Number(value)||0;
 const alive=unit=>n(unit?.hp??unit?.currentHp)>0&&unit.state!=='死亡';
-const foodIncome=metrics=>Object.fromEntries(NORMAL_FOOD_RESOURCE_KEYS.map(key=>[key,n(metrics.food[key])+n(metrics.facilityFixedIncome?.[key])]));
+const foodIncome=metrics=>Object.fromEntries(NORMAL_FOOD_RESOURCE_KEYS.map(key=>[key,n(metrics.food[key])+n(metrics.facilityFixedIncome?.[key])+n(metrics.initialSubsistenceFood?.[key])]));
 export function inspectV39NpcFoodBalance(state,player,map){
   const selected=getSelectedSettlement(player?.factionState),fallback=selected?.settlementId||selected?.id;
   return getFactionSettlements(player?.factionState).filter(base=>base.placed&&(base.worldId||'surface')===(state.activeWorldId||'surface')).map(base=>{

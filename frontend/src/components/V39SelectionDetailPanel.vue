@@ -2,6 +2,8 @@
 import { computed, ref } from "vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import ResistanceGrid from "./ResistanceGrid.vue";
+import { renderV39EquipmentIcon } from "../v39/ui/v39-equipment-display.js";
+import { createV39EquipmentEntry } from "../lib/v39-equipment-rules.js";
 
 const props = defineProps({
   statusRows: { type:Array, default:() => [] },
@@ -17,6 +19,13 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:activeTab"]);
+const equipmentIcons = computed(() => {
+  if (props.equipmentMode !== "additions") return {};
+  return Object.fromEntries(props.equipmentRows.filter(row=>row.value).map(row=>{
+    const item = createV39EquipmentEntry(row.value, undefined, row.key);
+    return [row.key, renderV39EquipmentIcon(item ?? {name:row.value, slot:row.key})];
+  }));
+});
 
 const collapsedSections = ref({
   status:false,
@@ -146,7 +155,10 @@ function toggleSection(key) {
               >
                 <span>{{ item.label }}</span>
                 <b v-if="equipmentMode === 'slots'">{{ item.enabled === false ? "×" : "可" }}</b>
-                <b v-else>{{ item.value || "-" }}</b>
+                <b v-else class="operation-equipment-value">
+                  <span v-if="equipmentIcons[item.key]" class="operation-equipment-icon" aria-hidden="true" v-html="equipmentIcons[item.key]" />
+                  {{ item.value || "-" }}
+                </b>
               </div>
             </div>
             <div v-else class="operation-empty">{{ equipmentMode === "additions" ? "装備追加なし" : "装備データなし" }}</div>
@@ -367,6 +379,8 @@ button.operation-detail-section-title:hover {
   border-color:#563a3a;
   background:#241719;
 }
+.operation-equipment-value{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.operation-equipment-item .operation-equipment-icon{flex:none;font-size:17px;line-height:1}
 
 .operation-equipment-item.disabled span,
 .operation-equipment-item.disabled b {

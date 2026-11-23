@@ -9,9 +9,10 @@ import { isMobUnit } from "../composables/unitCoreUtils.js";
 import { RESEARCH_CATEGORY_ORDER } from "./research-tree-config.js";
 import {newV39ProductionOrder,v39EnchantmentPoints} from "./v39-production-work.js";
 import {V39_PRODUCTION_POINT_UNIT} from "./v39-production-point-scale.js";
-import namedWeaponRecipes from "../../../config/v39-named-weapons.json";
+import {namedWeaponRecipes} from "./v39-named-weapon-rules.js";
 import {hasV39FacilityPrerequisites} from "./v39-facility-development-rules.js";
 import {getV39WeaponCraftSpecialists} from "./v39-weapon-craft-specialists.js";
+import {parseV39EquipmentSkillNames} from "./v39-equipment-skill-effects.js";
 
 const text = value => String(value ?? "").trim();
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -87,6 +88,13 @@ export function getV39EquipmentSlotCandidates(rowOrName) {
   if (part === "足") return ["足"];
   if (part === "装飾") return ["装飾1", "装飾2"];
   return [];
+}
+
+export function getV39EquipmentCategory(rowOrName) {
+  const row = typeof rowOrName === "string" ? equipmentByName.get(text(rowOrName)) : rowOrName;
+  const part = text(row?.装備箇所 ?? row?.装備部位);
+  if (part === "武器") return text(row?.武器分類) === "盾" ? "防具" : "武器";
+  return part === "装飾" ? "装飾" : "防具";
 }
 
 function scaleCriticalPower(value, multiplier) {
@@ -181,6 +189,7 @@ export function normalizeV39EquipmentItem(item, index = 0, options = {}) {
     qualityLabel:normalized.qualityLabel,
     ...(text(item?.id) ? { id:text(item.id) } : {}),
     ...(text(item?.instanceId) ? { instanceId:text(item.instanceId) } : {}),
+    ...(text(item?.効果) ? {効果:text(item.効果)} : {}),
     ...(namedWeapon ? {namedWeapon:{...namedWeapon}} : {}),
     resistanceBonus,
     power:hasSavedAttack?number(item.power,normalized.power):normalized.power+sum("全威力"),
@@ -191,6 +200,7 @@ export function normalizeV39EquipmentItem(item, index = 0, options = {}) {
     enchantments,
     enchantAttackFields:item?.enchantAttackFields??Object.fromEntries(enchantAttackFields.map(key=>[key,sum(key)])),
     enchantEffects:item?.enchantEffects??[...new Set(enchanted.flatMap(row=>text(row.効果).split("/").filter(Boolean)))],
+    enchantSkillNames:[...new Set(enchanted.flatMap(enchantmentSkillNames))],
     enchantAttackCount:item?.enchantAttackCount??sum("攻撃回数"),
     enchantBonus:item?.enchantBonus && typeof item.enchantBonus === "object" ? { ...item.enchantBonus } : {},
     enchantResistanceBonus:item?.enchantResistanceBonus && typeof item.enchantResistanceBonus === "object" ? normalizeV39ReductionFields(item.enchantResistanceBonus) : {}
@@ -212,7 +222,9 @@ function inventoryKey(name, rarity, enchantments = []) {
 }
 
 function equipmentItemKey(item) {
-  return item.namedWeapon && item.instanceId ? item.instanceId : inventoryKey(item.name,item.quality,item.enchantments);
+  if(item.namedWeapon && item.instanceId)return item.instanceId;
+  const key=inventoryKey(item.name,item.quality,item.enchantments);
+  return item.効果 ? `${key}::${item.効果}` : key;
 }
 
 export function normalizeV39EquipmentInventory(inventory) {
@@ -242,13 +254,13 @@ function storeInventoryItem(inventory, item, amount = 1) {
   return normalizeV39EquipmentInventory([...normalizeV39EquipmentInventory(inventory), { item, count:amount }]);
 }
 
-function takeInventoryItem(inventory, name, rarity, requestedKey = "") {
+export function takeV39EquipmentInventoryItem(inventory, name, rarity, requestedKey = "", amount = 1) {
   const rows = normalizeV39EquipmentInventory(inventory);
   const key = text(requestedKey) || inventoryKey(name, rarity);
   const index = rows.findIndex(row => row.key === key);
-  if (index < 0 || rows[index].count < 1) return { ok:false, inventory:rows, item:null };
+  if (!Number.isInteger(amount) || amount < 1 || index < 0 || rows[index].count < amount) return { ok:false, inventory:rows, item:null };
   const item = { ...rows[index].item };
-  rows[index] = { ...rows[index], count:rows[index].count - 1 };
+  rows[index] = { ...rows[index], count:rows[index].count - amount };
   return { ok:true, item, inventory:rows.filter(row => row.count > 0) };
 }
 
@@ -320,6 +332,7 @@ export function reserveV39EquipmentCraft(state, playerId, request = {}) {
 
 export function canV39ChangeUnitEquipmentSlot(unit,slot) {
   if(!unit||unit.summon)return false;
+  if(unit.namedUnit && unit.namedUnit.weaponSlot===slot)return false;
   if(unit.golemBuild){
     if(slot!=='武器1'&&slot!=='武器2')return false;
     return (unit.techniques||[]).some(technique=>{
@@ -337,6 +350,7 @@ export function changeV39UnitEquipment(state, playerId, request = {}) {
   if (unit.summon) return {ok:false,state,reason:"召喚ユニットの装備は交換できません"};
   const slot = normalizeV39EquipmentSlot(request.slot);
   if (!slot) return { ok:false, reason:"装備部位が不正です", state };
+  if (unit.namedUnit?.weaponSlot === slot) return {ok:false,state,reason:"ネームド化に使った武器は外せません"};
   if (!canV39ChangeUnitEquipmentSlot(unit,slot)) return {ok:false,state,reason:unit.golemBuild?"この装備枠は変更できません":"モブは固定装備です。レア度一新を使用してください"};
   const village = selectedVillage(player);
   if (!village?.placed) return { ok:false, reason:"装備変更には拠点配置が必要です", state };
@@ -347,7 +361,7 @@ export function changeV39UnitEquipment(state, playerId, request = {}) {
   if (text(request.name)) {
     const template = createV39EquipmentEntry(request.name, request.rarity, slot);
     if (!template || !getV39EquipmentSlotCandidates(template.source).includes(slot)) return { ok:false, reason:"この部位には装備できません", state };
-    const taken = takeInventoryItem(inventory, template.name, template.quality, request.inventoryKey);
+    const taken = takeV39EquipmentInventoryItem(inventory, template.name, template.quality, request.inventoryKey);
     if (!taken.ok) return { ok:false, reason:"装備在庫がありません", state };
     inventory = taken.inventory;
     nextItem = { ...taken.item, slot, slotLabel:SLOT_LABELS[slot] };
@@ -428,8 +442,11 @@ export function getV39NamedWeaponOptions(item, village, faction) {
     stages.set(family,Math.max(number(stages.get(family)),number(affix.段階,1)));
   }
   return recipes.map(recipe=>{
-    const minimum=getV39EquipmentRarity(recipe.minimumQuality);
-    const missing=quality<minimum.level?[`${minimum.label}以上`]:[];
+    const minimumKey=normalizeV39EquipmentRarity(recipe.minimumQuality,"");
+    const minimum=V39_EQUIPMENT_RARITIES.find(rarity=>rarity.key===minimumKey);
+    const missing=[];
+    if(recipe.minimumQuality&&!minimum)missing.push(`不明な品質: ${recipe.minimumQuality}`);
+    if(minimum&&quality<minimum.level)missing.push(`${minimum.label}以上`);
     if(recipe.requiredFacility&&!hasV39FacilityPrerequisites(village??{},{前提施設:recipe.requiredFacility})){
       missing.push(`必要施設: ${recipe.requiredFacility}`);
     }
@@ -693,6 +710,10 @@ function applyEnchantment(item, row) {
   return applyNormalizedEnchantment(normalizeV39EquipmentItem(item),row);
 }
 
+function enchantmentSkillNames(row) {
+  return [...text(row?.獲得スキル).split(/[／/]/u).map(text).filter(Boolean), ...parseV39EquipmentSkillNames(row?.効果)];
+}
+
 function applyNormalizedEnchantment(next, row) {
   const enchantBonus = { ...(next.enchantBonus || {}) };
   const enchantResistanceBonus = { ...(next.enchantResistanceBonus || {}) };
@@ -705,6 +726,7 @@ function applyNormalizedEnchantment(next, row) {
   const rangeBonus=number(row?.射程補正??row?.射程);
   if (rangeBonus) next.range = Math.max(1, Math.round(number(next.range) + rangeBonus));
   next.enchantEffects=[...new Set([...next.enchantEffects,...text(row?.効果).split("/").filter(Boolean)])];
+  next.enchantSkillNames=[...new Set([...next.enchantSkillNames,...enchantmentSkillNames(row)])];
   next.enchantAttackCount+=number(row?.攻撃回数);
   next.enchantments = [...(next.enchantments || []), text(row.付与能力)];
   next.enchantBonus = enchantBonus;
@@ -755,7 +777,7 @@ export function applyV39EquipmentEnchantment(state, playerId, request = {}) {
   if (!row) return { ok:false, reason:"付与データが見つかりません", state };
   const result = applyEquipmentEnchantmentToItem(player, village, target.item, row, state?.timeline?.turnNumber);
   if (!result.ok) return {...result, state};
-  const taken = takeInventoryItem(inventory, target.name, target.quality, target.key);
+  const taken = takeV39EquipmentInventoryItem(inventory, target.name, target.quality, target.key);
   if (!taken.ok) return { ok:false, reason:"付与対象を取り出せません", state };
   const {item, cost} = result;
   const nextVillage = normalizeV39Village({

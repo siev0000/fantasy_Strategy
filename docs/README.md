@@ -4,8 +4,10 @@
 
 ## 最初に読む資料
 
+- [ChatGPT向けの仕様目次・運用メモ](CHATGPT_GUIDE.md) — ゲームの全体像、テーマ別の参照先、相談内容の残し方。
 - [現状ゲーム仕様メモ](現状ゲーム仕様メモ.md): 現在の仕様の概要と実装先。
-- [統合タスク一覧](ALL_TASKS_UNIFIED.md): 残作業の入口。詳細の進捗は対応する Issue と照合する。
+- [Codexの実装タスク](ALL_TASKS_UNIFIED.md) — 実装・調査・検証の残作業。詳細の進捗は対応する Issue と照合する。
+- [ChatGPTからの相談・タスク候補](tasks/CHATGPT_TASKS.md) — 仕様相談、アイデア、Codexへの引き渡し待ち。
 - [スプレッドシート更新手順](SPREADSHEET_DATA_WORKFLOW.md): `@game_data` が編集原本。生成JSONを先に直さない。
 - [クラス・スキル配置ルール](CLASS_SKILL_RULES.md): クラス作成・再設計前の必読資料。
 - [ユニット画像生成ルール](UNIT_PORTRAIT_GENERATION_RULES.md): 画像生成・編集前の必読資料。

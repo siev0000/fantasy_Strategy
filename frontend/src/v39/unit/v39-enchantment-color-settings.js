@@ -1,17 +1,12 @@
 import {V39_ENCHANTMENT_COLOR_FIELDS,normalizeV39EnchantmentColor} from "../../../../config/v39-enchantment-color-rules.mjs";
 import {getV39EnchantmentColors,loadV39EnchantmentColors,setV39EnchantmentColors,v39EnchantmentColorKeys} from "../../lib/v39-enchantment-color-state.js";
 import {createV39EquipmentEntry} from "../../lib/v39-equipment-rules.js";
-import {renderV39EquipmentIcon,renderV39EquipmentRarityBadge} from "../ui/v39-equipment-display.js";
+import {renderV39EnchantmentMark,renderV39EquipmentIcon,renderV39EquipmentRarityBadge} from "../ui/v39-equipment-display.js";
 import "./v39-equipment-ui.css";
 
 const endpoint = "/api/local/enchantment-colors";
 const defaultColor = "#c0c9cc";
 const fieldLabels = {bodyColor:"武器本体の色", outlineColor:"武器の輪郭の色"};
-
-export function renderV39EnchantmentMark(name, color) {
-  const title = String(name).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  return `<i title="${title}"${color ? ` style="--affix-color:${color}"` : ""}></i>`;
-}
 
 function renderPreview(item, name, appearance) {
   if (!item || !name) return "";

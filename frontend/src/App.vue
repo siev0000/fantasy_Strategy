@@ -1,7 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { io } from "socket.io-client";
-import { bindGameAudioInteractions, getGameAudioController } from "./lib/audio-player.js";
+import { bindGameAudioInteractions } from "./lib/audio-player.js";
 import { GAME_VIEW_HEIGHT, GAME_VIEW_WIDTH, UI_MANUAL_SCALE_CONFIG } from "./lib/phaser-map-panel-config.js";
 import { RESEARCH_CATEGORY_ORDER } from "./lib/research-tree-config.js";
 import { raceData as raceSelectionDb } from "./lib/game-data-registry.js";
@@ -1799,10 +1799,6 @@ onBeforeUnmount(() => {
   }
   saveSnapshotWaiters = [];
 });
-
-watch(gameSetupReady, ready => {
-  getGameAudioController().setBgmScene(ready ? "field" : "title");
-}, {flush:"sync"});
 
 watch(gameOnlyMode, () => {
   updateAppRootScale();

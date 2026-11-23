@@ -17,7 +17,7 @@ import {applyV39NpcCitySpecializations} from '../../lib/v39-npc-city-specializat
 import {startV39NpcResourceExpansion} from '../../lib/v39-npc-resource-expansion.js';
 import {assignV39NpcResourceTeams,getV39NpcResourceUnitIds,advanceV39NpcResourceTeams} from '../../lib/v39-npc-resource-teams.js';
 import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tree-config.js";
-import { isResearchCompleted, inspectResearchUnlock, normalizeResearchState, selectResearch } from "../../lib/research-progress.js";
+import { isResearchCompleted, inspectResearchUnlock, normalizeResearchState, resolveV39ResearchSettlement, selectResearch } from "../../lib/research-progress.js";
 import { getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
 import { getHexDistance } from "../../lib/hex-grid.js";
 import { resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
@@ -327,18 +327,16 @@ function planAiTerritoryAssault(state, player) {
 
 function selectAiResearch(state, player) {
   let research = normalizeResearchState(player?.factionState?.research);
-  const units = (player?.factionState?.units || []).filter(alive).sort((a, b) => number(b?.level) - number(a?.level));
+  const base = resolveV39ResearchSettlement(player.factionState);
   const commands = [];
   for (const category of RESEARCH_CATEGORY_ORDER) {
     if (research.selection?.[category]) continue;
     let selected = null;
     for (const levelRow of researchTreeData.categories?.[category]?.levels || []) {
-      const assignee = units[0];
-      if (!assignee) continue;
       const item = (levelRow.items || []).find(candidate => !isResearchCompleted(research, category, levelRow.level, candidate.id)
         && inspectResearchUnlock(research,candidate.id,researchTreeData).unlocked);
       if (!item) continue;
-      selected = selectResearch(research, category, item.id, assignee, researchTreeData);
+      selected = selectResearch(research, category, item.id, null, researchTreeData, base?.settlementId);
       if (selected.changed) {
         research = selected.state;
         commands.push(`研究:${item.name}`);

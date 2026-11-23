@@ -6,6 +6,7 @@ defineProps({
   show:Boolean, title:String, subtitle:String, listLabel:String, categoryLabel:String,
   categories:Array, category:String, rows:Array, selectedId:String, selected:Object, detail:Object,
   preview:Object, activeDetailTab:String, skillTitle:String, emptyText:String, backLabel:String, confirmLabel:String,
+  compactPreview:Boolean,
   categoryAttribute:{type:String,default:"data-v39-list2-category"},
   rowAttribute:{type:String,default:"data-v39-list2-option"},
   confirmAttribute:{type:String,default:"data-v39-list2-confirm"}
@@ -16,7 +17,8 @@ defineEmits(["close", "back", "category", "select", "detail-tab", "confirm"]);
 <template>
   <base-modal :show="show" :title="title" :subtitle="subtitle" :wide="true"
     :close-on-backdrop="false" variant="v39" @close="$emit('close')">
-    <div v-if="categories.length || rows.length" class="class-screen-layout v39-item-list-screen-2" :class="{ 'no-preview':!preview }">
+    <div v-if="categories.length || rows.length" class="class-screen-layout v39-item-list-screen-2"
+      :class="{ 'no-preview':!preview, 'with-compact-preview':compactPreview && preview }">
       <section v-if="preview" class="class-preview-frame" :aria-label="preview.label">
         <div class="class-preview-inner">
           <div v-if="preview.style" class="class-preview-sprite" :style="preview.style" role="img" :aria-label="preview.label" />
@@ -60,10 +62,13 @@ defineEmits(["close", "back", "category", "select", "detail-tab", "confirm"]);
             </header>
             <v39-selection-detail-panel v-bind="detail" :active-tab="activeDetailTab" :skill-title="skillTitle"
               @update:active-tab="$emit('detail-tab',$event)" />
-            <div class="class-actions">
-              <button v-if="backLabel" type="button" class="secondary" @click="$emit('back')">{{ backLabel }}</button>
-              <button type="button" v-bind="{ [confirmAttribute]:'' }" :disabled="selected.unavailable"
-                @click="$emit('confirm')">{{ confirmLabel }}</button>
+            <div class="class-detail-footer">
+              <slot name="before-actions" />
+              <div class="class-actions">
+                <button v-if="backLabel" type="button" class="secondary" @click="$emit('back')">{{ backLabel }}</button>
+                <button type="button" v-bind="{ [confirmAttribute]:'' }" :disabled="selected.unavailable"
+                  @click="$emit('confirm')">{{ confirmLabel }}</button>
+              </div>
             </div>
           </section>
           <section v-else class="class-detail class-detail-empty"><strong>候補を選択してください</strong></section>
@@ -535,6 +540,17 @@ defineEmits(["close", "back", "category", "select", "detail-tab", "confirm"]);
 }
 
 .class-screen-layout.no-preview, .class-layout.no-categories { grid-template-rows:minmax(0,1fr); }
+.class-screen-layout.with-compact-preview{
+  grid-template-columns:auto minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr);
+}
+.with-compact-preview .class-layout{display:contents}
+.with-compact-preview .class-preview-frame{grid-area:1/1;padding:4px}
+.with-compact-preview .class-preview-sprite,.with-compact-preview .class-preview-image{width:88px;height:88px}
+.with-compact-preview .class-category-pane{grid-area:1/2;align-content:center}
+.with-compact-preview .class-category-tabs{height:auto;grid-template-columns:repeat(auto-fit,minmax(74px,1fr))}
+.with-compact-preview .class-category-tabs button{height:auto;min-height:30px}
+.with-compact-preview .class-main-pane{grid-area:2/1/3/-1}
 .class-item-name small { display:block; color:#b8c7c9; }
 .class-title { max-height:30vh; overflow:auto; }
 .class-actions button:disabled { opacity:.55; cursor:default; }

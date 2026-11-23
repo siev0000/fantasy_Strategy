@@ -7,7 +7,7 @@ let pendingUnitSelection=false;
 export function focusV39MapTile(tile, {worldId, select=false,notify=true}={}) {
   const runtime=window.__v39FieldRuntime, map=runtime?.mapData;
   const scene=runtime?.game?.scene?.getScenes(true)?.[0], camera=scene?.cameras?.main;
-  const activeWorldId=window.getV39GameState?.({includeWorlds:false})?.activeWorldId||'surface';
+  const activeWorldId=window.getV39ActiveWorldId?.()||'surface';
   if(window.isV39MapInputLocked?.()||(worldId&&worldId!==activeWorldId))return false;
   // A newly added Phaser scene is not active until the next scene update.
   if(!camera||(scene.v39WorldId&&scene.v39WorldId!==activeWorldId)){
@@ -31,12 +31,15 @@ export function focusV39MapTile(tile, {worldId, select=false,notify=true}={}) {
 function syncSelectedUnitTile(){
   if(window.isV39MapInputLocked?.())return;
   const faction=window.getV39ActiveFactionState?.(),unit=faction?.units?.find(row=>row.id===faction.selectedUnitId);
-  const state=window.getV39GameState?.({includeWorlds:false}),scene=window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
-  const worldId=state?.activeWorldId||'surface';
+  const scene=window.__v39FieldRuntime?.game?.scene?.getScenes(true)?.[0];
+  const worldId=window.getV39ActiveWorldId?.()||'surface';
   if(!unit||(unit.worldId||'surface')!==worldId||(scene?.v39WorldId&&scene.v39WorldId!==worldId))return;
   if(scene?.v39Input?.selectTile?.(unit,false,{notify:false}))pendingUnitSelection=false;
 }
-for(const type of ['v39:unit-selected','v39:unit-moved'])window.addEventListener(type,()=>{pendingUnitSelection=true;syncSelectedUnitTile();});
+for(const type of ['v39:unit-selected','v39:unit-moved'])window.addEventListener(type,event=>{
+  pendingUnitSelection=event.detail?.mapFocusHandled!==true;
+  if(pendingUnitSelection)syncSelectedUnitTile();
+});
 window.addEventListener('v39:map-input-lock-changed',()=>{if(pendingUnitSelection)syncSelectedUnitTile();});
 
 window.addEventListener('v39:field-input-ready',()=>{

@@ -10,7 +10,7 @@ const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39
   });
   builder.onLoad({filter:/(?:icon-library|facility-icon-artwork|map-entity-artwork|monster-sheet-artwork|unit-sheet-artwork)\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/g,'{};'),resolveDir:dirname(args.path),loader:'js'}));
 }}]});
-globalThis.document={addEventListener(){}};globalThis.window={};
+globalThis.document={addEventListener(){}};globalThis.window=new EventTarget();
 const warn=console.warn;let m;try{console.warn=()=>{};m=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);}finally{console.warn=warn;}
 const map={w:10,h:10,worldWrapEnabled:false,grid:Array.from({length:10},()=>Array(10).fill('森')),heightLevelMap:Array.from({length:10},()=>Array(10).fill(0)),defenseStructures:[]};
 // Initial surveying never spends actions or reveals another player's territory.
@@ -185,28 +185,36 @@ assert.deepEqual(scoped.map(row=>row.id),['e2','b1','e1','b2'],'expansion reorde
 const expandHtml=m.renderV39OperationPlans(grouped,grouped.players[0],groupedBase,{scope:'expansion',showFinish:false});
 assert(expandHtml.includes('data-plan-id="e1"'));assert(!expandHtml.includes('data-plan-id="b1"'));assert(!expandHtml.includes('data-plans-confirm'));assert(!expandHtml.includes('次の領土運営まで自動進行'));
 const buildHtml=m.renderV39OperationPlans(grouped,grouped.players[0],groupedBase,{scope:'construction',showFinish:false});assert(buildHtml.includes('data-plan-id="b1"'));assert(!buildHtml.includes('data-plan-id="e1"'));
-const review=m.renderV39TerritoryPhaseReview(grouped);assert(review.includes('領土拡張 2件 / 建設 2件'));assert(m.renderV39TerritoryPhaseReview({...grouped,players:[{...grouped.players[0],factionState:{settlements:[base]}}]}).includes('予約がありません'));
+const review=m.renderV39TerritoryPhaseReview(grouped);assert(review.includes('領土拡張 2件 / 土地開発 2件'));assert(m.renderV39TerritoryPhaseReview({...grouped,players:[{...grouped.players[0],factionState:{settlements:[base]}}]}).includes('予約はありません'));
 let dialog,focused=false;
 document.body={appendChild:()=>{}};
 document.createElement=()=>dialog={setAttribute(){},showModal(){this.shown=true;},addEventListener(name,fn){this[name]=fn;},querySelector(){return {focus(){focused=true;}};},remove(){this.removed=true;}};
 let answer=m.confirmV39TerritoryPhaseEnd(grouped);assert(dialog.shown);assert(focused);assert(dialog.innerHTML.includes('戻って見直す'));dialog.returnValue='cancel';dialog.close();assert.equal(await answer,false);assert(dialog.removed);
 answer=m.confirmV39TerritoryPhaseEnd(grouped);dialog.returnValue='confirm';dialog.close();assert.equal(await answer,true);
-const settlementUi=readFileSync('frontend/src/v39/world/v39-settlement-ui.js','utf8');assert(settlementUi.includes("territoryGuideStep='expansion';activePage='expansion'"));assert(settlementUi.includes('window.reviewV39TerritoryPlans'));assert(settlementUi.includes('construction-plans'));
+const settlementUi=readFileSync('frontend/src/v39/world/v39-settlement-ui.js','utf8');assert(settlementUi.includes("changeGuideStep(activeContext().state,'expansion')"));assert(settlementUi.includes('window.reviewV39TerritoryPlans'));assert(settlementUi.includes('construction-plans'));
 console.log('PASS: separate expansion/construction order, overview entry, phase-end cancellation and review dialog accept/back behavior. No browser.');
 
-for(const [step,next,label] of [['expansion','construction','1/3 領土拡張'],['construction','units','2/3 建設'],['units','review','3/3 ユニット追加']]){
- const html=m.renderV39TerritoryGuide(grouped,step);assert(html.includes(label));assert(html.includes(`data-territory-guide="${next}"`));
+for(const [step,number] of [['expansion',1],['construction',2],['units',3]]){
+ const html=m.renderV39TerritoryGuide(grouped,step);
+ for(const label of ['領土拡張','土地開発','ユニット追加'])assert(html.includes(`<span>${label}</span>`));
+ for(const target of m.V39_TERRITORY_GUIDE_STEPS)assert(html.includes(`data-territory-guide="${target}"`));
+ assert(html.includes(`data-territory-guide="${step}" aria-current="step"><b>${number}</b>`));
+ assert.equal((html.match(/aria-current="step"/g)||[]).length,1);
+ assert.doesNotMatch(html,/前へ|次へ/);
+ assert.equal(html.includes('>ターン終了</button>'),number===3);
 }
 assert.equal(m.renderV39TerritoryGuide({...grouped,gameSettings:{turnProgressionMode:'standard'}},'expansion'),'');
 const trainingReview=m.renderV39TerritoryPhaseReview({...grouped,players:[{...grouped.players[0],factionState:{...grouped.players[0].factionState,settlements:[base],unitTrainingQueue:[{settlementId:'b'}]}}]});
-assert(trainingReview.includes('訓練中・予約 1件'));assert(!trainingReview.includes('予約がありません'));
+assert(trainingReview.includes('訓練中・予約 1件'));assert(!trainingReview.includes('予約はありません'));
 const setterSource=settlementUi.slice(settlementUi.indexOf('window.setV39TerritoryGuideStep=step=>'),settlementUi.indexOf('window.reviewV39TerritoryPlans=async()=>'));
 let guideState=grouped;const navigation=[];
-Object.assign(window,{openV39TerritoryManagement:()=>navigation.push('expansion'),openV39SettlementConstructionPlans:()=>navigation.push('construction'),openV39UnitCreate:()=>navigation.push('units')});
-const setter=new Function('activeContext','isV39TerritoryPhase','V39_TERRITORY_GUIDE_STEPS','guideStep','openConstructionForGuide',`let territoryGuideStep;${setterSource};return window.setV39TerritoryGuideStep;`)(()=>({state:guideState}),m.isV39TerritoryPhase,m.V39_TERRITORY_GUIDE_STEPS,()=>{},()=>navigation.push('builder'));
-setter('expansion');setter('construction');setter('units');assert.deepEqual(navigation,['expansion','construction','builder','units']);
-guideState={...grouped,timeline:{...grouped.timeline,operationPhase:'expedition'}};setter('expansion');assert.equal(navigation.length,4);
-assert(readFileSync('frontend/src/v39/unit/v39-unit-create-ui.js','utf8').includes("renderV39TerritoryGuide(state,'units')"));
+Object.assign(window,{openV39TerritoryManagement:options=>navigation.push(['expansion',options.openTab]),openV39SettlementConstructionPlans:()=>navigation.push('construction'),activateV39FooterTab:tab=>navigation.push(tab)});
+const setter=new Function('activeContext','isV39TerritoryPhase','V39_TERRITORY_GUIDE_STEPS','changeGuideStep',`${setterSource};return window.setV39TerritoryGuideStep;`)(()=>({state:guideState}),m.isV39TerritoryPhase,m.V39_TERRITORY_GUIDE_STEPS,()=>{});
+setter('expansion');setter('construction');setter('units');assert.deepEqual(navigation,[['expansion',false],'construction','squad']);
+guideState={...grouped,timeline:{...grouped.timeline,operationPhase:'expedition'}};setter('expansion');assert.equal(navigation.length,3);
+assert(m.renderV39TerritoryGuide(grouped,'units',{highlightNext:true}).includes('v39-territory-guide-highlight" data-territory-guide="review"'));
+assert.match(m.renderV39TerritoryGuide(grouped,'expansion',{target:'settlement'}),/v39-territory-guide-hint.*「拠点」/);
+assert(readFileSync('frontend/src/v39/unit/v39-unit-create-ui.js','utf8').includes("renderV39TerritoryGuide(state,'units',{target:guideTarget,highlightNext})"));
 console.log('PASS: guided expansion/build/unit steps, existing screen routing, optional unit stage and training counts in final review. No browser.');
 const serialBase={...base,constructionQueue:[
   {id:'first',facilityName:'農場',tileKey:'3,3',remainingTurns:1,totalTurns:1,startedTurn:1},

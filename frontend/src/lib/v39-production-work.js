@@ -51,6 +51,15 @@ export function formatV39FacilityProductionProgress(item) {
   return item.workRequired>0?`製作 ${whole(item.workProgress)}/${item.workRequired}`:`残${whole(item.remainingTurns)}T`;
 }
 
+export function formatV39ProductionJobProgress(job, completionTurn) {
+  return [
+    `製作 ${whole(job.workProgress)}/${whole(job.workRequired)}`,
+    job.magicRequired && `魔術 ${whole(job.magicProgress)}/${whole(job.magicRequired)}`,
+    job.faithRequired && `信仰 ${whole(job.faithProgress)}/${whole(job.faithRequired)}`,
+    completionTurn && `完成予定 T${completionTurn}`
+  ].filter(Boolean).join("　");
+}
+
 export function v39ProductionJobComplete(job) {
   return progressFields.every(field=>whole(job[field+"Progress"])>=whole(job[field+"Required"]));
 }
@@ -76,7 +85,7 @@ export function allocateV39ProductionPoints(jobs, budget, field="work") {
   return grants;
 }
 
-export function advanceV39ProductionWork(player,village,turn,mode){
+export function advanceV39ProductionWork(player,village,turn,mode,phaseTurns=1){
   village=normalizeV39ProductionPointUnits(village);
   const planning=mode==="planning";
   const usage=village.productionWorkUsage?.turn===turn?village.productionWorkUsage:{turn,used:0};
@@ -88,9 +97,13 @@ export function advanceV39ProductionWork(player,village,turn,mode){
   if(planning&&!construction.length)return village;
   if(!equipment.length&&!construction.length)return village;
   const facilities=mode==="economy"?[]:construction;
-  const work=allocateV39ProductionPoints([...facilities,...equipment],v39ProductionPoints(player,village,turn).remaining);
+  const budget=v39ProductionPoints(player,village,turn).remaining;
+  const work=allocateV39ProductionPoints([...facilities,...equipment],budget);
+  const extraWork=planning&&phaseTurns>1
+    ?allocateV39ProductionPoints(facilities.map(job=>({...job,workProgress:whole(job.workProgress)+(work.get(job.id)||0)})),budget*(phaseTurns-1))
+    :new Map();
   if(facilities.length)construction=construction.map(job=>{
-    const workProgress=whole(job.workProgress)+(work.get(job.id)||0);
+    const workProgress=whole(job.workProgress)+(work.get(job.id)||0)+(extraWork.get(job.id)||0);
     return {...job,workProgress,remainingTurns:Math.max(1,Math.ceil((job.workRequired-workProgress)/V39_PRODUCTION_BALANCE.facilityPointsPerTurn))};
   });
   equipment=equipment.map(job=>planning
@@ -125,7 +138,7 @@ export function forecastV39ProductionWork(player,village,state){
   });
   for(let index=0;index<240&&(simulated.constructionQueue?.length||simulated.equipmentProductionQueue?.length);index++,turn++){
     if(phase){
-      simulated=advanceV39ProductionWork(player,simulated,turn,"planning");
+      simulated=advanceV39ProductionWork(player,simulated,turn,"planning",interval);
       simulated={...simulated,constructionQueue:finish(simulated.constructionQueue||[],turn)};
     }
     simulated=advanceV39ProductionWork(player,simulated,turn,phased?"economy":"standard");

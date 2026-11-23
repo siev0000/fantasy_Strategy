@@ -3,6 +3,8 @@ import {renderV39ScreenIcon} from "./v39-screen-icons.js";
 import { V39_TEST_GAME_STATE } from "../dev/v39-test-data.js";
 import './v39-operation-layout.css';
 import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
+import {renderV39ScreenHelp} from './v39-screen-help.js';
+import {V39_SCREEN_HELP_COPY} from './v39-screen-help-copy.js';
 
 (function initializeOperationUi() {
   "use strict";
@@ -122,10 +124,10 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
       #footSquad .equipment-detail-line b{color:#e8f0ed}
       #footSquad .equipment-empty{padding:6px;color:#aebec1;font-size:var(--font-size-11)}
       #footSquad #detailTechniqueRows{display:contents!important}
-      #footSquad .system-action-card .technique-icon-system-move{
+      #footSquad .technique-icon-system-move{
         border-color:#a98b45!important;background:linear-gradient(135deg,#4a3a18 0%,#75601f 100%)!important
       }
-      #footSquad .system-action-card .technique-icon-system-wait{
+      #footSquad .technique-icon-system-wait{
         border-color:#8c8061!important;background:linear-gradient(135deg,#3f3827 0%,#6c6040 100%)!important
       }
       #footSquad .system-action-card.active{
@@ -162,6 +164,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
         <section id="footSquad" class="mobile-squad-panel v39-footer-panel-active" aria-hidden="false">
           <div class="v39-squad-toolbar" id="v39-squad-main">
             <div class="v39-squad-shortcuts">
+              <button type="button" class="v39-footer-shortcut v39-fixed-editor-only" data-open="unitCreate">作成・訓練</button>
               <button type="button" class="v39-footer-shortcut v39-footer-icon-shortcut" data-open="character" data-tooltip="ユニット一覧" aria-label="ユニット一覧" title="ユニット一覧">${renderV39ScreenIcon("一覧") || "♟"}</button>
             </div>
             <div class="squad-selector" id="squadSelector"></div>
@@ -175,7 +178,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
               <div class="squad-detail-tab-content" id="detailTechniqueList">
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="status" role="tabpanel" aria-hidden="false">
                   <div id="detailAbilitySections">${renderV39UnitAbility(null, {fieldIds:true})}</div>
-                  <details class="squad-detail-section" open><summary class="squad-detail-section-title">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
+                  <details class="squad-detail-section" open><summary class="squad-detail-section-title" id="detailEquipmentHeading">装備</summary><div class="squad-detail-section-body"><div class="equipment-list" id="detailEquipmentList"></div></div></details>
                 </section>
                 <section class="squad-detail-tab-panel" data-squad-detail-panel="basic" role="tabpanel" hidden aria-hidden="true">
                   <button type="button" id="v39-basic-action-heading" class="v39-basic-action-heading" hidden aria-label="行動一覧へ戻る" aria-controls="v39-basic-action-options">↩</button>
@@ -281,7 +284,7 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
           </div>
         </section>
         <section id="footTile" class="land-panel" hidden aria-hidden="true">
-          <header class="v39-land-head"><strong id="v39-land-heading">マスを選択</strong><small id="v39-land-heading-owner"></small></header>
+          <header class="v39-land-head"><strong id="v39-land-heading">土地</strong><small id="v39-land-heading-owner"></small>${renderV39ScreenHelp('土地開発',V39_SCREEN_HELP_COPY.land)}</header>
           <nav class="v39-land-tabs" role="tablist" aria-label="土地の表示内容">${V39_LAND_TABS.map((tab,index)=>`<button type="button" role="tab" id="v39-land-tab-${tab.id}" data-land-tab="${tab.id}" aria-controls="v39-land-page-${tab.id}" aria-selected="${index===0}" tabindex="${index===0?0:-1}">${tab.label}</button>`).join('')}</nav>
           <div id="v39-land-scroll">
           ${V39_LAND_TABS.map((tab,index)=>`<section id="v39-land-page-${tab.id}" data-land-page="${tab.id}" role="tabpanel" aria-labelledby="v39-land-tab-${tab.id}"${index?' hidden':''}>
@@ -337,11 +340,14 @@ import {V39_LAND_TABS,getV39LandFieldTab} from './v39-land-tabs.js';
   }
 
   function activateFooterTab(tabKey) {
+    const editingFixedMap = window.isV39FixedMapEditing?.() === true;
     // 初期配置が終わるまで、通常タブで配置確認・決定ボタンを隠さない。
     const placementActive = window.getV39ActiveFactionState?.()?.villagePlacementMode === true;
     const testEnabled = window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
-    const requested = placementActive ? "placement" : tabKey === "test" && !testEnabled ? "squad" : tabKey;
-    const normalized = requested === "placement" || data.tabs.some(tab => tab.key === requested) ? requested : data.tabs[0].key;
+    const requested = editingFixedMap ? (["placement","tile","settlement","squad"].includes(tabKey) ? tabKey : "map")
+      : placementActive ? "placement" : tabKey === "test" && !testEnabled ? "squad" : tabKey;
+    const fixedMapTab = requested === "map" && editingFixedMap;
+    const normalized = fixedMapTab || requested === "placement" || data.tabs.some(tab => tab.key === requested) ? requested : data.tabs[0].key;
     document.querySelectorAll("[data-foot]").forEach(button => button.classList.toggle("active", button.dataset.foot === normalized));
     [...data.tabs, { key:"placement" }].forEach(tab => {
       const panel = document.getElementById(`foot${tab.key[0].toUpperCase()}${tab.key.slice(1)}`);

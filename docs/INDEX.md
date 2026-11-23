@@ -9,6 +9,7 @@
 
 - [ai-simulation-report.json](ai-simulation-report.json) : `ai-simulation-report.json`
 - [実装ロードマップ / 設計バックログ](ALL_TASKS_UNIFIED.md) : `ALL_TASKS_UNIFIED.md`
+- [ChatGPT向けの仕様目次・運用メモ](CHATGPT_GUIDE.md) : `CHATGPT_GUIDE.md`
 - [クラススキル構成ルール](CLASS_SKILL_RULES.md) : `CLASS_SKILL_RULES.md`
 - [文書・メモ運用ルール](DOCUMENTATION_RULES.md) : `DOCUMENTATION_RULES.md`
 - [ファンタジーストラテジーゲーム 概要メモ](MEMO.md) : `MEMO.md`
@@ -104,6 +105,7 @@
 
 ## 分野別タスク
 
+- [ChatGPTからの相談・タスク候補](tasks/CHATGPT_TASKS.md) : `tasks/CHATGPT_TASKS.md`
 - [UI修正一覧](tasks/UI_FIX_QUEUE.md) : `tasks/UI_FIX_QUEUE.md`
 - [戦闘エフェクト設定タスク](tasks/%E6%88%A6%E9%97%98%E3%82%A8%E3%83%95%E3%82%A7%E3%82%AF%E3%83%88%E8%A8%AD%E5%AE%9A%E3%82%BF%E3%82%B9%E3%82%AF.md) : `tasks/戦闘エフェクト設定タスク.md`
 

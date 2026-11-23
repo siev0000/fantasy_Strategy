@@ -8,7 +8,7 @@ import {V39_RESOURCE_ICON_DEFS, V39_SPECIAL_RESOURCE_ICON_CANDIDATES, V39_UI_ICO
 import {V39_EQUIPMENT_ICON_SHEETS as sheets, resolveV39EquipmentIconSheet} from "../lib/v39-equipment-icon-sheets.js";
 import {normalizeV39IconColor, resolveV39IconAssignment, resolveV39IconColorFilter, resolveV39IconSpriteStyle} from "../lib/v39-icon-assignment.js";
 
-import {loadV39SharedIconSettings, saveV39SharedIconSettings, iconStorageKey, saveBrowserIconSettings} from "../lib/v39-shared-icon-settings.js";
+import {defaultIconRows, loadV39SharedIconSettings, saveV39SharedIconSettings, iconStorageKey, saveBrowserIconSettings} from "../lib/v39-shared-icon-settings.js";
 
 defineProps({show:{type:Boolean,default:false}});
 const emit = defineEmits(["close"]);
@@ -296,6 +296,8 @@ onMounted(async () => {
       const count = applyIconSettings(JSON.parse(saved));
       status.value = shared ? `このブラウザーの下書き${count}を復元しました。共有するには保存してください`
         : `保存済みの${count}を復元しました`;
+    } else if (defaultIconRows.length) {
+      applyIconSettings(defaultIconRows);
     }
   } catch (error) {
     status.value = error.message || "アイコン設定を復元できませんでした";

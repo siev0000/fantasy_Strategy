@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import V39ItemListScreen2 from "./V39ItemListScreen2.vue";
 import { classData as classDb, descriptionData as skillDescDb } from "../lib/game-data-registry.js";
 import { getV39ClassSelectionDetail } from "../lib/v39-selection-detail.js";
+import { renderV39ResourceIcon } from "../v39/ui/v39-resource-item-icon.js";
 import { getIconSrcByName, hasIconName } from "../lib/icon-library.js";
 import { resolveFactionUnitSheetFrame } from "../lib/unit-sheet-artwork.js";
 import { resolveUnitImageArtwork } from "../lib/map-entity-artwork.js";
@@ -22,7 +23,8 @@ const props = defineProps({
   allowedClasses: { type: Array, default: null },
   unmetClasses: { type: Array, default: () => [] },
   baseClassesOnly: { type: Boolean, default: false },
-  setupProgressText: { type: String, default: "" }
+  setupProgressText: { type: String, default: "" },
+  getTrainingQuote: Function
 });
 
 const emit = defineEmits(["close", "confirm", "back"]);
@@ -312,6 +314,12 @@ const selected = computed(() => activeClass.value ? {
   unavailable:props.unmetClasses.some(option => option.name === activeClass.value.名前),
   reasons:props.unmetClasses.find(option => option.name === activeClass.value.名前)?.reasons
 } : null);
+const trainingQuote = computed(() => activeClass.value && props.getTrainingQuote?.(activeClass.value.名前));
+const costGroups = computed(() => trainingQuote.value ? [
+  {label:"訓練",rows:trainingQuote.value.training},
+  {label:"装備生成",rows:trainingQuote.value.equipment}
+] : []);
+const formatCost = new Intl.NumberFormat("ja-JP",{maximumFractionDigits:4});
 </script>
 
 <template>
@@ -319,11 +327,60 @@ const selected = computed(() => activeClass.value ? {
     :categories="classCategories" :category="activeClassCategory" category-label="クラス系統"
     :rows="candidateRows" :selected-id="activeClassName" :selected="selected"
     :list-label="`種族: ${selectedRace}`" category-attribute="data-v39-class-category" row-attribute="data-v39-class-option"
-    :preview="{style:activeClassSheetStyle,src:activeClassIndividualSrc,label:`${selectedRace} ${activeClassName} ユニット画像`,fallback:`${selectedRace} / ${activeClassName || '-'}`}"
+    compact-preview :preview="{style:activeClassSheetStyle,src:activeClassIndividualSrc,label:`${selectedRace} ${activeClassName} ユニット画像`,fallback:`${selectedRace} / ${activeClassName || '-'}`}"
     :detail="{statusRows:statusRowGroups,skillRows,resistanceRows,equipmentRows,equipmentMode,equipmentTitle,skillNames:classLv5SkillNames,statusSource:activeClass}"
     :active-detail-tab="activeDetailTab" skill-title="クラススキル (Lv1-5)"
     :empty-text="selectedRace ? 'この種族に対応するクラスデータがありません。' : '先に種族を選択してください。'"
     :back-label="allowedClasses || baseClassesOnly ? '戻る' : '種族へ戻る'" confirm-label="このクラスで決定"
     @close="$emit('close')" @back="$emit('back')" @category="selectClassCategory" @select="selectClass"
-    @detail-tab="activeDetailTab = $event" @confirm="confirmClass" />
+    @detail-tab="activeDetailTab = $event" @confirm="confirmClass">
+    <template #before-actions>
+      <section v-if="trainingQuote" class="class-training-quote" aria-label="訓練予約の消費" aria-live="polite">
+        <header><strong>消費 {{ trainingQuote.count }}ユニット分</strong><small>必要 / 在庫</small></header>
+        <div class="class-training-quote-row">
+          <small>拠点人口</small>
+          <b :class="{ shortage:trainingQuote.population.shortage }">
+            {{ formatCost.format(trainingQuote.population.required) }} / {{ formatCost.format(trainingQuote.population.stock) }}人
+          </b>
+        </div>
+        <div v-for="group in costGroups" :key="group.label" class="class-training-quote-row">
+          <small>{{ group.label }}</small>
+          <div class="class-training-quote-resources">
+            <span v-for="item in group.rows" :key="item.name" :class="{ shortage:item.shortage }"
+              :title="item.name" :aria-label="`${item.name} 必要 ${item.required}、在庫 ${item.stock}${item.shortage?'、不足':''}`" role="img">
+              <span aria-hidden="true" v-html="renderV39ResourceIcon(item.name)" />
+              {{ formatCost.format(item.required) }}/{{ formatCost.format(item.stock) }}
+            </span>
+            <span v-if="!group.rows.length">なし</span>
+          </div>
+        </div>
+      </section>
+    </template>
+  </v39-item-list-screen2>
 </template>
+
+<style scoped>
+.class-training-quote {
+  max-height:min(24svh, 145px);
+  overflow:auto;
+  overscroll-behavior:contain;
+  margin:0 0 6px;
+  padding:5px 6px;
+  border:1px solid #40565e;
+  border-radius:6px;
+  background:#12242b;
+  font-size:var(--font-body);
+}
+.class-training-quote header,.class-training-quote-row {
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:4px 8px;
+  flex-wrap:wrap;
+}
+.class-training-quote-row {margin-top:3px}
+.class-training-quote small {color:#b8cbd0}
+.class-training-quote-resources {display:flex;flex-wrap:wrap;gap:3px 6px}
+.class-training-quote-resources>span {white-space:nowrap}
+.class-training-quote .shortage {color:#ff9b9b}
+</style>

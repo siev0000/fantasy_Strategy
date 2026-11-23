@@ -26,7 +26,10 @@ try{for(const width of [390,1100]){
  await page.locator('[data-v39-character-tab="create"]').click();
  assert.equal(await page.locator('#characterModal #v39-unit-create-panel').count(),1);
  assert.equal(await page.locator('#footSquad #v39-unit-create-panel').count(),0);
- await page.locator('#v39-unit-class').selectOption('ファイター');
+ await page.locator('#v39-unit-class-picker').click();
+ await page.locator('[data-v39-class-option="ファイター"]').click();
+ await page.getByRole('button',{name:'このクラスで決定',exact:true}).click();
+ assert.equal(await page.locator('#characterModal .modal-head #v39-create-settlement').count(),1);
  await page.locator('#v39-unit-mode').selectOption('army');
  await page.locator('#v39-unit-training-level').fill('5');await page.locator('#v39-unit-training-level').dispatchEvent('change');
  await page.locator('[data-v39-character-tab="character"]').click();
@@ -36,9 +39,8 @@ try{for(const width of [390,1100]){
  await page.locator('#v39-create-settlement').selectOption(bases.second);
  assert.equal(await page.evaluate(()=>window.getV39ActiveFactionState().selectedSettlementId),bases.second);
  await page.locator('#v39-create-settlement').selectOption(bases.first);
- await page.locator('.v39-instructor-picker summary').click();
- assert(await page.locator('[data-v39-instructor-id]').count()>0,'instructor controls retained');
- await page.locator('.v39-instructor-picker summary').click();
+ assert.equal(await page.locator('.v39-instructor-picker').count(),0);
+ assert.match(await page.locator('.v39-unit-training').textContent(),/待機支援/);
  const dimensions=await page.evaluate(()=>{
   const panel=document.getElementById('v39-unit-create-panel'),pane=document.getElementById('v39-create-pane');
   const head=panel.querySelector('header').getBoundingClientRect(),footer=panel.querySelector('footer').getBoundingClientRect();

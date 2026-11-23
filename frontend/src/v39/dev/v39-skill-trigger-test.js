@@ -4,8 +4,9 @@ import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
 import {declareV39War} from '../../lib/v39-diplomacy-rules.js';
 import {focusV39MapTile} from '../map/v39-map-focus.js';
 import {getSelectedSettlement,replaceFactionSettlement} from '../../lib/settlement-state.js';
-import {normalizeV39EquipmentInventory} from '../../lib/v39-equipment-rules.js';
+import {getV39EquipmentCatalog,normalizeV39EquipmentInventory} from '../../lib/v39-equipment-rules.js';
 import {MATERIAL_RESOURCE_KEYS} from '../../lib/v39-economy-rules.js';
+import {getHexNeighborCoords} from '../../lib/hex-grid.js';
 
 function createTestMap({width,height}=fixture.mapSize){
   const grid=value=>Array.from({length:height},()=>Array(width).fill(value));
@@ -28,7 +29,7 @@ export function createV39SkillTriggerFieldFixture(player,{craftEquipment=false}=
       units,settlements:[],village:null,selectedSettlementId:null,
       squads:[{id:'solo',name:'単独',unitIds:units.map(unit=>unit.id)}],selectedSquadId:'solo',selectedUnitId:units[0].id,combatRuntime:{}}};
   });
-  const {unit,targets,equipmentNames,startingQualities,weaponCraftSpecialist}=fixture.equipmentTest;
+  const {unit,targets,equipmentNames,startingQualities,weaponCraftSpecialist,skillGrantTestUnit,skillGrantThief,skillGrantStock}=fixture.equipmentTest;
   const qualities=craftEquipment ? startingQualities : [undefined];
   const equipmentStock=equipmentNames.flatMap(name=>qualities.map(quality=>({name,quality})));
   const tester={...buildV39UnitEntity(unit),worldId:'surface',testOnly:true,squadId:'solo'};
@@ -37,39 +38,56 @@ export function createV39SkillTriggerFieldFixture(player,{craftEquipment=false}=
     testTrainingTarget:true,squadId:'solo',hp:fixture.hp,currentHp:fixture.hp,maxHp:fixture.hp,
     ap:0,currentAp:0,maxAp:0
   }));
-  for(const [index, additions] of [[0,[tester]],[1,dummies]]){
+  const testers=[tester];
+  if(!craftEquipment){
+    const {unit:reaper,weapon,actions,additionalSkillNames}=fixture.namedUnitTest;
+    const baseWeapon=getV39EquipmentCatalog().some(({name})=>name==="刀")?"刀":weapon.name;
+    testers.push({...buildV39UnitEntity({...reaper,equipment:[{...weapon,name:baseWeapon}]}),
+      worldId:"surface",testOnly:true,testSkillNames:[...actions.map(row=>row.名前),...additionalSkillNames]});
+  }
+  if(craftEquipment){
+    const stockedRareTypes=new Set(equipmentStock.filter(item=>item.quality==="rare").map(item=>item.name));
+    for(const {name} of getV39EquipmentCatalog()){
+      if(!stockedRareTypes.has(name))equipmentStock.push({name,quality:"rare"});
+    }
+    equipmentStock.push(skillGrantStock);
+    testers.push(...[skillGrantTestUnit,skillGrantThief].map(sample=>({
+      ...buildV39UnitEntity(sample),worldId:'surface',testOnly:true,squadId:'solo'
+    })));
+  }
+  for(const [index, additions] of [[0,testers],[1,dummies]]){
     const faction=players[index].factionState;
     faction.units=craftEquipment?additions:[...faction.units,...additions];
     faction.squads[0].unitIds=faction.units.map(member=>member.id);
     faction.selectedUnitId=craftEquipment?faction.units[0].id:faction.selectedUnitId;
   }
+  const map={...createTestMap(),skillTriggerTestFixture:true,equipmentCraftTestFixture:craftEquipment};
   const base=getSelectedSettlement(player.factionState)||{id:'equipment-test-base',settlementId:'equipment-test-base',
     name:'武具検証拠点',x:4,y:4,placed:true,type:'村',population:50};
   const tileKey=`${base.x},${base.y}`;
+  const neighbors=craftEquipment?getHexNeighborCoords(map.w,map.h,base.x,base.y):[];
+  const territoryTileKeys=[tileKey,...neighbors.map(tile=>tile.key)];
+  const forge=neighbors.find(tile=>!players.some(side=>side.factionState.units.some(member=>member.x===tile.x&&member.y===tile.y)))??base;
   if(craftEquipment){
     const {id,name,className,craftSkill,passiveSkillNames}=weaponCraftSpecialist;
     const faction=players[0].factionState;
-    const occupying=faction.units.find(member=>member.x===base.x&&member.y===base.y);
-    if(occupying){
-      const position=[[2,6],[1,6],[2,5]].find(([x,y])=>!players.some(side=>side.factionState.units.some(member=>member.x===x&&member.y===y)));
-      if(position){const [x,y]=position;Object.assign(occupying,{x,y,position});}
-    }
-    const smith=buildV39UnitEntity({id,name,race:unit.race,className:"ファイター",level:10,x:base.x,y:base.y});
+    const smith=buildV39UnitEntity({id,name,race:unit.race,className:"ファイター",level:10,x:forge.x,y:forge.y});
     faction.units.push({...smith,worldId:"surface",squadId:"solo",testOnly:true,
       testWeaponCraft:{className,craftSkill},testSkillNames:passiveSkillNames});
     faction.squads[0].unitIds.push(id);
   }
   const facilities=['鍛冶場'];
+  const facilitiesByTile={[`${forge.x},${forge.y}`]:facilities};
   players[0].factionState=replaceFactionSettlement(players[0].factionState,{
-    ...base,buildings:facilities,tileFacilityMap:{[tileKey]:facilities},territoryTileKeys:[tileKey],
+    ...base,buildings:facilities,tileFacilityMap:facilitiesByTile,territoryTileKeys,
+    ...(craftEquipment?{facilityStateByTile:{},constructionQueue:[]}:{}),
     cityLevels:{...base.cityLevels, ...(craftEquipment ? {鍛冶Lv:5, 魔法Lv:7, 信仰Lv:5} : {鍛冶Lv:1})},
     materialStockByType:{...base.materialStockByType,...Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(name=>[name,100])),
       ...(craftEquipment?{金:300}:{})},
     equipmentInventory:normalizeV39EquipmentInventory(equipmentStock)
   },{ownerPlayerId:player.id});
-  const map={...createTestMap(),skillTriggerTestFixture:true,equipmentCraftTestFixture:craftEquipment};
-  return {map,players,facilitiesByTile:{[tileKey]:facilities},territoryOwnerByTile:{[tileKey]:player.id},
-    territoryStateByTile:{[tileKey]:{status:'領土',settlementId:base.settlementId||base.id}},
+  return {map,players,facilitiesByTile,territoryOwnerByTile:Object.fromEntries(territoryTileKeys.map(key=>[key,player.id])),
+    territoryStateByTile:Object.fromEntries(territoryTileKeys.map(key=>[key,{status:'領土',settlementId:base.settlementId||base.id}])),
     diplomacyRelations:declareV39War({players,diplomacyRelations:{}},players[0].id,players[1].id,1).diplomacyRelations};
 }
 
@@ -86,8 +104,8 @@ export function selectV39SkillTriggerTestSide(index){
   window.refreshV39SquadDerivedUI?.();window.refreshV39MapEntities?.();
   focusV39MapTile(player.factionState.units[0],{worldId:'surface',select:true,notify:false});
   window.showV39TurnBanner?.(window.__v39FieldRuntime.mapData.equipmentCraftTestFixture
-    ? '武具作成テスト。検証拠点の在庫に剣・弓・篭手があります。装備変更・生成・付与を試せます。'
-    : player.name+'を操作中。操作する兵は部隊一覧で選択。武具検証ユニットで剣・弓・篭手・素手を比較できます。');
+    ? '武具作成テスト。シーフに戦士の短剣（レア）を装備すると闘気撃が出ます。'
+    : player.name+'を操作中。部隊一覧の「死神検証・フェンサー」は、成長でスカーミッシャーを取得すると死神になります。武具検証ユニットでは剣・弓・篭手・素手を比較できます。');
   return true;
 }
 

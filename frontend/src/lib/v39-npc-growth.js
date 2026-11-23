@@ -16,7 +16,7 @@ import {createV39ClimateLookup,matchesV39ClimateConditions} from './v39-climate-
 import {getV39SurveyTileKeys,startV39SurveyTask,inspectV39Survey} from './v39-exploration-rules.js';
 import {moveV39ResourceTeam} from './v39-resource-team-movement.js';
 import {researchTreeData} from './research-tree-config.js';
-import {normalizeResearchState,findResearchItem,isResearchCompleted,inspectResearchUnlock,selectResearch,resolveCompletedResearchLevel} from './research-progress.js';
+import {normalizeResearchState,findResearchItem,isResearchCompleted,inspectResearchUnlock,selectResearch,resolveCompletedResearchLevel,resolveV39ResearchSettlement} from './research-progress.js';
 
 const n=value=>Number(value)||0;
 const playerOf=(state,id)=>state.players.find(row=>row.id===id);
@@ -54,7 +54,7 @@ export function inspectV39NpcEquipmentPlan(player,development){
 }
 
 // Follow the data's prerequisite graph; never complete a research node by assigning its level directly.
-export function selectV39NpcRequiredResearch(source,requests,assignee){
+export function selectV39NpcRequiredResearch(source,requests,settlementId){
   let research=normalizeResearchState(source);const commands=[];
   const done=row=>isResearchCompleted(research,row.categoryKey,row.level,row.item.id);
   const next=(row,seen=new Set())=>{
@@ -66,8 +66,8 @@ export function selectV39NpcRequiredResearch(source,requests,assignee){
   };
   for(const request of requests){
     const target=researchItems.find(row=>(row.categoryKey===request.category||row.item.id.startsWith(`${request.category.replace(/Lv$/,'')}Lv:`))&&row.level>=request.level);
-    const chosen=next(target);if(!chosen||research.selection[chosen.categoryKey]||!assignee)continue;
-    const selected=selectResearch(research,chosen.categoryKey,chosen.item.id,assignee);
+    const chosen=next(target);if(!chosen||research.selection[chosen.categoryKey])continue;
+    const selected=selectResearch(research,chosen.categoryKey,chosen.item.id,null,undefined,settlementId);
     if(selected.changed){research=selected.state;commands.push(`優先研究:${chosen.item.name}`);}
   }
   return {research,commands};
@@ -133,7 +133,7 @@ export function advanceV39NpcGrowth(source,playerId,map,turn,development){
   const resourceGoals=equipment?.shortages||[];
   const rare=inspectV39NpcRareResourcePlan(state,player,map,[...development.resourceGoals,...resourceGoals]);
   if(rare?.status==='研究待ち')requests.unshift(rare.requirement);
-  const research=selectV39NpcRequiredResearch(player.factionState.research,requests,player.factionState.units.filter(alive).sort((a,b)=>n(b.level)-n(a.level))[0]);
+  const research=selectV39NpcRequiredResearch(player.factionState.research,requests,resolveV39ResearchSettlement(player.factionState)?.settlementId);
   if(research.commands.length){state={...state,players:state.players.map(row=>row.id===playerId?{...row,factionState:{...row.factionState,research:research.research}}:row)};commands.push(...research.commands);}
   const busyIds=[];
   const surveyBlockedUntilByTile=Object.fromEntries(Object.entries(player.factionState.aiState?.growthPlan?.surveyBlockedUntilByTile||{}).filter(([,until])=>n(until)>turn));

@@ -1,6 +1,6 @@
 import {formatV39FacilityProductionProgress} from '../../lib/v39-production-work.js';
 import {usesV39OperationPhases,isV39TerritoryPhase} from '../../lib/v39-operation-phases.js';
-import {renderV39OperationPlans,renderV39TerritoryGuide,V39_TERRITORY_GUIDE_STEPS} from './v39-operation-plan-ui.js';
+import {renderV39OperationPlans,V39_TERRITORY_GUIDE_STEPS} from './v39-operation-plan-ui.js';
 import { getFactionSettlements, selectFactionSettlement, territorySettlementId } from "../../lib/settlement-state.js";
 import { inspectV39CitySpecializationNotice, acknowledgeV39CitySpecializations, selectV39CitySpecialization, getV39SelectedCityDefinitions, describeV39CitySpecialization } from "../../lib/v39-city-specialization-rules.js";
 import { resolveV39SettlementProductionMetrics } from "../../lib/v39-economy-rules.js";
@@ -15,12 +15,19 @@ import {inspectV39SettlementResourceFlow} from '../../lib/v39-settlement-resourc
 import {renderV39SettlementResourceFlow} from './v39-settlement-resource-flow-ui.js';
 import {settlementProductionEffects} from '../../lib/v39-settlement-intel.js';
 import {renderV39PopulationTrend} from '../../lib/v39-population-trend.js';
+import {resolveV39OccupiedHousing} from '../../lib/v39-population-economy.js';
 
 const panel = document.getElementById("footSettlement");
 const openSections = new Set(["population", "food"]);
 let activePage = 'overview';
 let territoryGuideKey='',territoryGuideStep='expansion';
 function guideStep(state){const key=`${state.activePlayerId}:${state.timeline?.turnNumber}`;if(key!==territoryGuideKey){territoryGuideKey=key;territoryGuideStep='expansion';}return territoryGuideStep;}
+window.getV39TerritoryGuideStep=guideStep;
+function changeGuideStep(state,step){
+  const previous=guideStep(state);
+  territoryGuideStep=step;
+  if(previous!==step)window.dispatchEvent(new Event('v39:territory-guide-changed'));
+}
 let resourceFlowMode='forecast';
 let renderDirty=true;
 const selectedFacilityByBase = new Map();
@@ -79,7 +86,7 @@ function populationRows(settlement) {
       <div class="settlement-population-meta">
         <span>成長ゲージ ${progress}</span>
         ${renderV39PopulationTrend(settlement,race)}
-        ${condition ? `<span title="人口増加に使う資源です。毎ターンの維持食料とは別です。">増加条件: ${escapeHtml(condition)}</span>` : ""}
+        ${condition ? `<span title="${condition === "食事" ? "通常の維持費を賄うと成長します。産出が維持費を十分に上回ると、余剰の一部を使って早く成長します。" : "人口増加に使う資源です。毎ターンの維持食料とは別です。"}">増加条件: ${escapeHtml(condition)}</span>` : ""}
         ${alert}
       </div>
     </div>`;
@@ -136,12 +143,17 @@ function render() {
   const scrollTop = panel.scrollTop;
   const listScrollTop = panel.querySelector(".settlement-fold-list")?.scrollTop || 0;
   const { state, player, settlements, settlement } = activeContext();
+  const editorButtons = window.isV39FixedMapEditing?.()
+    ? `<div class="settlement-inline-facts"><button type="button" class="settlement-chip" data-fixed-map-base="owned"${player?'':' disabled'}>拠点を追加</button><button type="button" class="settlement-chip" data-fixed-map-base="neutral">一般村を追加</button></div>`
+    : '';
   if (!settlement) {
-    panel.innerHTML = `<div class="settlement-empty-state">拠点未配置</div>`;
+    panel.innerHTML = `<div class="settlement-empty-state">拠点未配置${editorButtons}</div>`;
     return;
   }
   const listScroll = panel.querySelector('.settlement-tabs')?.scrollTop || 0;
-  panel.innerHTML = renderV39SettlementView({state,player,settlements,settlement,activePage,openSections,resourceFlowMode});
+  const resourceBreakdownOpen = panel.querySelector('[data-resource-flow-breakdown]')?.open || false;
+  panel.innerHTML = renderV39SettlementView({state,player,settlements,settlement,activePage,openSections,resourceFlowMode,resourceBreakdownOpen});
+  if(editorButtons)panel.querySelector('.settlement-detail-pane .settlement-heading')?.insertAdjacentHTML('beforeend',editorButtons);
   panel.scrollTop = scrollTop;
   panel.querySelector('.settlement-tabs').scrollTop = listScroll;
   const foldList = panel.querySelector(".settlement-fold-list");
@@ -149,7 +161,7 @@ function render() {
 }
 
 export function renderV39SettlementView({state,player,settlements,settlement,activePage,
-  openSections=new Set(["population"]),resourceFlowMode="forecast",intel,facilityId,unitsPage=""}){
+  openSections=new Set(["population"]),resourceFlowMode="forecast",resourceBreakdownOpen=false,intel,facilityId,unitsPage=""}){
   const readOnly=Boolean(intel);
   const settlementId = text(settlement.settlementId || settlement.id);
   const badge=key=>intel?.[key]?"T"+escapeHtml(intel[key].turn):"未調査";
@@ -195,14 +207,15 @@ export function renderV39SettlementView({state,player,settlements,settlement,act
     </div>`
     : renderV39SettlementResourceFlow(settlement,resourceFlowMode==='recorded'?settlement.lastEconomyDelta:
         inspectV39SettlementResourceFlow(state,player,settlement,window.__v39FieldRuntime?.mapData),
-      resourceFlowMode,{metrics:production,facilityEffects:settlementProductionEffects(settlement)});
+      resourceFlowMode,{metrics:production,facilityEffects:settlementProductionEffects(settlement),breakdownOpen:resourceBreakdownOpen});
   // 領土に紐づく雇用枠から再計算した稼働率を表示する。
   const employmentRate = Math.max(0, Math.min(1, number(production.employmentRate)));
   const overcrowding = Math.max(0, Math.floor(number(settlement.overcrowdingPopulation)));
   const overcrowdingText = overcrowding > 0
     ? `<span>人口過多 <b>${formatNumber(overcrowding)}</b></span><span>流出 <b>-${formatNumber(settlement.lastPopulationOutflow)}</b></span><span>幸福/治安 <b>${formatNumber(settlement.overcrowdingHappinessPenalty)}</b></span>`
     : "";
-  const populationSummary = `<div class="settlement-inline-facts"><span title="土地用途の許容人数と拠点規模の収容力の合計です。">人口許容 <b>${formatNumber(production.populationCapacity)}</b> <small>(土地 ${formatNumber(production.landUsePopulationCapacity)} + 規模 ${formatNumber(production.settlementScalePopulationCapacity)})</small></span><span>雇用枠 <b>${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div><div class="settlement-inline-facts" title="各生産項目は、人口構成から求めた対応技能値を生産倍率表へ換算した値です。"><span>農業 <b>${formatNumber(production.productionMultipliers.農業 * 100)}%</b></span><span>林業 <b>${formatNumber(production.productionMultipliers.林業 * 100)}%</b></span><span>漁業 <b>${formatNumber(production.productionMultipliers.漁業 * 100)}%</b></span><span>工業 <b>${formatNumber(production.productionMultipliers.工業 * 100)}%</b></span></div>${populationRows(settlement)}`;
+  const occupiedHousing = resolveV39OccupiedHousing(settlement.populationByRace, settlement.population);
+  const populationSummary = `<div class="settlement-inline-facts"><span title="使用枠は住民の種族ごとの基準SIZから計算します。">居住枠 <b>${formatNumber(occupiedHousing)} / ${formatNumber(production.populationCapacity)}</b> <small>(土地 ${formatNumber(production.landUsePopulationCapacity)} + 規模 ${formatNumber(production.settlementScalePopulationCapacity)})</small></span><span>雇用枠 <b>${formatNumber(production.employmentSlots)}</b></span><span>稼働率 <b>${formatNumber(employmentRate * 100)}%</b></span>${overcrowdingText}</div><div class="settlement-inline-facts" title="各生産項目は、人口構成から求めた対応技能値を生産倍率表へ換算した値です。"><span>農業 <b>${formatNumber(production.productionMultipliers.農業 * 100)}%</b></span><span>林業 <b>${formatNumber(production.productionMultipliers.林業 * 100)}%</b></span><span>漁業 <b>${formatNumber(production.productionMultipliers.漁業 * 100)}%</b></span><span>工業 <b>${formatNumber(production.productionMultipliers.工業 * 100)}%</b></span></div>${populationRows(settlement)}`;
   const repair = readOnly?intel.operations?.data?.repair:window.inspectV39TerritoryRepair?.(player?.id, settlementId);
   const repairTargets = repair?.targets || [];
   const repairable = repairTargets.filter(row => !row.blockedReason).length;
@@ -262,10 +275,9 @@ export function renderV39SettlementView({state,player,settlements,settlement,act
     </nav>
     <div class="settlement-detail-pane">
     <header class="settlement-heading">${readOnly?"":'<button type="button" class="settlement-expansion-open" data-expansion-action="open">領土拡張</button>'}<strong>${escapeHtml(settlement.name || settlement.type || '拠点')}</strong><span>${escapeHtml(settlement.type || '')}</span>${cityNotice.changeable.length?`<button type="button" class="settlement-city-shortcut" data-open-city-specialization>${cityNotice.unseen.length?'<span class="settlement-city-new" data-city-header-notice aria-label="未確認">!</span> ':''}都市特化を変更可能</button>`:''}</header>
-    ${!readOnly&&usesV39OperationPhases(state)?`<section class="v39-territory-management" data-territory-planning="${isV39TerritoryPhase(state)}">${isV39TerritoryPhase(state)?renderV39TerritoryGuide(state,guideStep(state)):'<strong>戦闘・探索中</strong><small>予約は自動進行中。編集は次の拠点フェーズで行います。</small><button type="button" data-open-construction-plans>建設順を確認</button>'}</section>`:''}
+    ${!readOnly&&usesV39OperationPhases(state)&&!isV39TerritoryPhase(state)?'<section class="v39-territory-management" data-territory-planning="false"><strong>戦闘・探索中</strong><small>予約は自動進行中。編集は次の拠点フェーズで行います。</small><button type="button" data-open-construction-plans>建設順を確認</button></section>':''}
     <nav class="settlement-pages" aria-label="拠点の操作">${[['overview','概況'],['production','生産'],['facility','施設'],...(readOnly?[['units','ユニット']]:[]),['operation','運用']].map(([key,label])=>`<button type="button" data-settlement-page-select="${key}" aria-pressed="${activePage===key}">${label}</button>`).join('')}</nav>
-    <div class="settlement-fold-list"><section data-settlement-page="construction-plans"${activePage==='construction-plans'?'':' hidden'}>${activePage==='construction-plans'?`<h3>建設順</h3>${isV39TerritoryPhase(state)?'<button type="button" class="settlement-chip" data-open-construction-building>建設先・施設を選ぶ</button>':''}${renderV39OperationPlans(state,player,settlement,{scope:'construction',showFinish:false})}`:''}</section>
-      ${readOnly?"":`<div class="settlement-page-actions" data-settlement-page="overview"${activePage === 'overview' ? '' : ' hidden'}><button type="button" class="settlement-development-open" data-settlement-development>拠点発展</button></div>`}
+    <div class="settlement-fold-list"><section data-settlement-page="construction-plans"${activePage==='construction-plans'?'':' hidden'}>${activePage==='construction-plans'?`<h3>建設順</h3>${renderV39OperationPlans(state,player,settlement,{scope:'construction',showFinish:false})}`:''}</section>
 
       ${section("population", "人口", formatNumber(settlement.population), populationSummary+(readOnly?"":subjectPopulationControls(player,settlement)),"population")}
       ${resourceFlow}
@@ -324,7 +336,6 @@ panel?.addEventListener("click", event => {
   }
   if(event.target.closest?.('[data-open-city-specialization]')){openCityCandidates();return;}
   if(event.target.closest?.('[data-open-construction-plans]')){window.openV39SettlementConstructionPlans();return;}
-  if(event.target.closest?.('[data-open-construction-building]')){openConstructionForGuide();return;}
 
   const pageButton = event.target.closest?.('[data-settlement-page-select]');
   if (pageButton) {
@@ -348,7 +359,7 @@ panel?.addEventListener("click", event => {
     return;
   }
   const developmentButton = event.target instanceof Element ? event.target.closest("[data-settlement-development]") : null;
-  if (developmentButton) {
+  if (developmentButton && !developmentButton.disabled) {
     window.openV39SettlementDevelopment?.();
     return;
   }
@@ -401,33 +412,34 @@ panel?.addEventListener('change',event=>{
 });
 window.renderV39SettlementPanel = render;
 
-window.openV39SettlementExpansion=()=>{guideStep(activeContext().state);territoryGuideStep='expansion';activePage='expansion';window.activateV39FooterTab?.('settlement');render();};
+window.openV39SettlementExpansion=()=>{changeGuideStep(activeContext().state,'expansion');activePage='expansion';window.activateV39FooterTab?.('settlement');render();};
 
 window.openV39OperationPlans=()=>window.openV39TerritoryManagement?.();
 
-window.openV39TerritoryManagement=()=>{const {state}=activeContext();guideStep(state);territoryGuideStep='expansion';activePage='expansion';window.activateV39FooterTab?.('settlement');window.beginV39LandExpansionSelection?.();render();};
-window.openV39SettlementConstructionPlans=()=>{guideStep(activeContext().state);territoryGuideStep='construction';activePage='construction-plans';window.activateV39FooterTab?.('settlement');render();};
-
-function openConstructionForGuide(){
-  const {state,player,settlement}=activeContext();if(!settlement)return;
-  const center=`${settlement.x},${settlement.y}`,chosen=window.getV39SelectedLandDetail?.();
-  const planned=chosen&&(settlement.operationPlans||[]).some(plan=>plan.kind==='expansion'&&plan.tile.x===chosen.x&&plan.tile.y===chosen.y);
-  const key=chosen&&(planned||state.territoryStateByTile?.[`${chosen.x},${chosen.y}`]?.settlementId===settlement.settlementId)?`${chosen.x},${chosen.y}`:
-    Object.keys(state.territoryOwnerByTile||{}).find(key=>state.territoryOwnerByTile[key]===player.id&&state.territoryStateByTile?.[key]?.settlementId===settlement.settlementId&&key!==center&&!settlement.tileFacilityMap?.[key]?.length&&!settlement.constructionQueue?.some(row=>row.tileKey===key))||center;
-  const [x,y]=key.split(',').map(Number);window.openV39LandConstruction?.({x,y});
-}
+window.openV39TerritoryManagement=({openTab=true}={})=>{
+  changeGuideStep(activeContext().state,'expansion');
+  window.clearV39LandExpansionSelection?.();
+  activePage='overview';
+  if(openTab)window.activateV39FooterTab?.('settlement');
+  render();
+};
+window.openV39SettlementConstructionPlans=()=>{
+  changeGuideStep(activeContext().state,'construction');
+  window.clearV39LandExpansionSelection?.();
+  activePage='construction-plans';
+  window.activateV39FooterTab?.('settlement');
+  render();
+};
 window.setV39TerritoryGuideStep=step=>{
   const {state}=activeContext();if(!isV39TerritoryPhase(state)||!V39_TERRITORY_GUIDE_STEPS.includes(step))return;
-  guideStep(state);territoryGuideStep=step;
+  changeGuideStep(state,step);
   document.getElementById('characterModal')?.classList.remove('open');
-  if(step==='expansion'){window.openV39TerritoryManagement();return;}
-  if(step==='construction'){window.openV39SettlementConstructionPlans();openConstructionForGuide();return;}
-  window.openV39UnitCreate?.();
+  if(step==='expansion'){window.openV39TerritoryManagement({openTab:false});return;}
+  if(step==='construction'){window.openV39SettlementConstructionPlans();return;}
+  window.activateV39FooterTab?.('squad');
 };
 window.reviewV39TerritoryPlans=async()=>{
   const {state}=activeContext();if(!isV39TerritoryPhase(state))return;
-  guideStep(state);territoryGuideStep='units';activePage='overview';
-  document.getElementById('characterModal')?.classList.remove('open');
-  window.activateV39FooterTab?.('settlement');render();
-  await window.advanceV39Turn?.();
+  changeGuideStep(state,'units');activePage='overview';
+  if(await window.advanceV39Turn?.())document.getElementById('characterModal')?.classList.remove('open');
 };

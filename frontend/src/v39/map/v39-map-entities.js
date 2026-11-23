@@ -33,6 +33,7 @@ import {v39FieldUnitAngle,v39FieldUnitDepth,v39FieldUnitGroupKey} from '../../li
 import {getV39TeleportGates} from '../../lib/v39-teleport-rules.js';
 import teleportBalance from '../../../../config/v39-teleport.json';
 import {resolveV39ActiveTransformationArtwork} from '../../lib/v39-transformation-artwork.js';
+import {resolveV39NamedUnitArtwork} from '../../lib/v39-named-unit-artwork.js';
 import {resolveV39TransformedUnitSiz} from '../../lib/v39-transformation.js';
 
 const STRUCTURE_LAYER_DEPTH = 10;
@@ -75,6 +76,7 @@ function gameState() {
 }
 
 function isTestMode() {
+  if (window.isV39FixedMapEditing?.()) return true;
   return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
 }
 
@@ -125,7 +127,7 @@ function visualUnitSignature(unit) {
   if (!unit || typeof unit !== "object") return "";
   const profile = unit.combatProfile || {};
   return [
-    unit.id ?? unit.unitId ?? unit.characterId,
+    unit.id ?? unit.unitId ?? unit.characterId, unit.namedUnit?.name,
     unit.x, unit.y, unit.name, unit.race, unit.raceName, unit.className, unit.class,
     unit.imageName, unit.image, unit.illustrationName, unit.画像,
     unit.icon, unit.iconName, unit.subIconName,
@@ -163,7 +165,7 @@ function visualNestSignature(nest) {
 function structureSignature(faction, state) {
   const map = window.__v39FieldRuntime?.mapData;
   return JSON.stringify([
-    state.activePlayerId, state.activeWorldId, isTestMode(), markerArtworkVersion, window.__v39VisibilityRenderVersion,
+    state.activePlayerId, state.activeWorldId, isTestMode(), map?.spyTestFixture, markerArtworkVersion, window.__v39VisibilityRenderVersion,
     getV39TeleportGates(state), map?.terrainDamage, map?.defenseStructures,
     (state.settlements || []).map(visualSettlementSignature), visualSettlementSignature(getSelectedSettlement(faction)),
     getFactionSettlements(faction).map(visualSettlementSignature),
@@ -368,12 +370,11 @@ function addTileTextMarker(scene, container, tileKey, label, options = {}) {
 function addTileFacilityMarker(scene, container, tileKey, facilityName, options = {}) {
   const label = firstCharacter(facilityName);
   const artwork = resolveFacilityIconArtwork(facilityName);
-  if (!artwork || !ensureArtworkTexture(scene, artwork)) {
-    return addTileTextMarker(scene, container, tileKey, label, options)?.setData("facilityName", String(facilityName || ""));
-  }
-  const frameKey = ensureArtworkSheetFrame(scene, artwork);
+  const frameKey = artwork && ensureArtworkTexture(scene, artwork) ? ensureArtworkSheetFrame(scene, artwork) : null;
   if (!frameKey) {
-    return addTileTextMarker(scene, container, tileKey, label, options)?.setData("facilityName", String(facilityName || ""));
+    const fallbackLabel = options.showFacilityName ? String(facilityName).replace("（", "\n（") : label;
+    const fallbackOptions = options.showFacilityName ? {...options,literalGlyph:true,fontTiles:0.13} : options;
+    return addTileTextMarker(scene, container, tileKey, fallbackLabel, fallbackOptions)?.setData("facilityName", String(facilityName || ""));
   }
   const [x, y] = String(tileKey || "").split(",").map(Number);
   if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
@@ -422,7 +423,7 @@ function addResidentialVillageMarker(scene, container, tileKey, options = {}) {
   return marker;
 }
 
-function drawSettlementTileMarkers(scene, container, faction, {settlements=getFactionSettlements(faction),visibleOnly=false}={}) {
+function drawSettlementTileMarkers(scene, container, faction, {settlements=getFactionSettlements(faction),visibleOnly=false,showFacilityName=false}={}) {
   const state=gameState(),storageCounts=new Map();
   for(const facility of visibleOnly?[]:getV39StorageFacilities(state,state.activePlayerId)){
     const count=getV39FacilityStoredEntries(state,state.activePlayerId,facility).length;
@@ -475,6 +476,7 @@ function drawSettlementTileMarkers(scene, container, faction, {settlements=getFa
       (Array.isArray(facilityNames) ? facilityNames : []).slice(0, 1).forEach(facilityName => {
         addTileFacilityMarker(scene, container, tileKey, facilityName, {
           name:"v39-facility-marker",
+          showFacilityName,
           offsetX:completedOffsetX,
           offsetY:completedOffsetY,
           iconPx:villageIconSize,
@@ -608,9 +610,10 @@ function addUnitOwnerBorder(scene,marker,color){
 }
 
 function addUnitArtwork(scene, marker, unit, diameter) {
-  const transformation=resolveV39ActiveTransformationArtwork(unit,gameState());
-  const baseArtwork=transformation||resolveUnitArtwork(unit);
-  const brightness=transformation?1:getV39UnitArtworkBrightness(unit);
+  const state=gameState();
+  const transformation=resolveV39ActiveTransformationArtwork(unit,state);
+  const baseArtwork=transformation||resolveV39NamedUnitArtwork(unit,{state})||resolveUnitArtwork(unit);
+  const brightness=transformation||baseArtwork?.type==="named-unit"?1:getV39UnitArtworkBrightness(unit);
   const artwork=baseArtwork&&brightness>1
     ? {...baseArtwork,brightness,textureKey:`${baseArtwork.textureKey}-brightness-${brightness}`}
     : baseArtwork;
@@ -620,17 +623,22 @@ function addUnitArtwork(scene, marker, unit, diameter) {
   const image = frameKey
     ? scene.add.image(0, 0, artwork.textureKey, frameKey).setOrigin(0.5)
     : scene.add.image(0, 0, artwork.textureKey).setOrigin(0.5);
-  const sourceWidth = Math.max(1, Number(image.width) || 1);
-  const sourceHeight = Math.max(1, Number(image.height) || 1);
   const target = diameter * MAP_ENTITY_SIZE_RULES.unit.imageFill
-    * resolveV39UnitImageScale({status:{SIZ:resolveV39TransformedUnitSiz(unit,gameState())}});
-  const scale = Math.min(target / sourceWidth, target / sourceHeight);
-  image.setScale(scale);
+    * resolveV39UnitImageScale({status:{SIZ:resolveV39TransformedUnitSiz(unit,state)}});
+  scaleUnitArtwork(image,target);
+  if(artwork.type==="named-unit"){
+    image.setName("v39-named-unit-image").setData("artworkSize",target);
+    marker.setData("namedUnit", {id:unit.id,namedUnit:unit.namedUnit});
+  }
   image.setAngle(v39FieldUnitAngle(unit));
   if (unit?.state === "死亡" || Number(unit?.hp ?? unit?.currentHp) <= 0) image.setTint(0x777f82).setAlpha(0.72);
   else image.setTint(getV39UnitWaitTint(unit, window.getV39TimelineState?.()?.turnNumber));
   marker.add(image);
   return true;
+}
+
+function scaleUnitArtwork(image,target) {
+  image.setScale(Math.min(target / Math.max(1,image.width), target / Math.max(1,image.height)));
 }
 
 function addDeadMark(scene, marker, unit, radius) {
@@ -694,7 +702,12 @@ function ensureArtworkSheetFrame(scene, artwork) {
   const x = Math.max(0, Number(frame.column) || 0) * width;
   const y = Math.max(0, Number(frame.row) || 0) * height;
 
-  texture.add(frameKey, 0, x, y, width, height);
+  if (frame.integerBounds) {
+    const left = Math.round(x), top = Math.round(y);
+    texture.add(frameKey, 0, left, top, Math.round(x + width) - left, Math.round(y + height) - top);
+  } else {
+    texture.add(frameKey, 0, x, y, width, height);
+  }
   return frameKey;
 }
 
@@ -776,6 +789,11 @@ function drawUnitGroup(scene, container, group, selectedUnitId, ownerColor) {
   marker.setSize(diameter, diameter);
   marker.setInteractive({ useHandCursor: true });
   marker.on("pointerdown", (_pointer, _lx, _ly, event) => {
+    if (window.isV39FixedMapEditing?.()) {
+      event?.stopPropagation?.();
+      scene.v39Input?.selectTile?.({x,y});
+      return;
+    }
     if(window.getV39SpyTargetSelection?.())return;
     event?.stopPropagation?.();
     if(window.isV39SoulRecoverySelecting?.())return;
@@ -1105,7 +1123,13 @@ function renderEntityLayers() {
     if (!underground) drawBases(scene, structureContainer, state?.settlements, getSelectedSettlement(faction),state?.activePlayerId);
     drawEnemyNests(scene, structureContainer, state?.enemyNests);
     if (!underground) {
-      drawSettlementTileMarkers(scene, structureContainer, faction);
+      const spyTest = isTestMode() && window.__v39FieldRuntime?.mapData?.spyTestFixture === true;
+      drawSettlementTileMarkers(scene, structureContainer, faction, {showFacilityName:spyTest});
+      if (spyTest) {
+        const otherPlayerIds = new Set(state.players.filter(side=>side.id!==state.activePlayerId).map(side=>side.id));
+        const testSettlements = state.settlements.filter(village=>otherPlayerIds.has(village.ownerPlayerId));
+        drawSettlementTileMarkers(scene, structureContainer, {}, {settlements:testSettlements,visibleOnly:true,showFacilityName:true});
+      }
       drawSettlementTileMarkers(scene, structureContainer, {}, {settlements:(state.neutralVillages||[]).filter(v=>!v.abandoned),visibleOnly:true});
     }
     drawDefenseStructures(scene, constructionLabelContainer, structureContainer, activePlayer?.factionState);
@@ -1220,6 +1244,20 @@ function scheduleRefresh(delay = 0) {
 }
 
 function install() {
+  window.addEventListener("v39:named-unit-pose", ({detail}) => {
+    const marker = markerByEntityId.get(detail.unitId);
+    const unit = marker?.getData("namedUnit");
+    const image = marker?.getByName("v39-named-unit-image");
+    if (unit?.id !== detail.unitId || !image) return;
+    const state = window.getV39EnemyTurnState?.() || gameState();
+    const artwork = resolveV39ActiveTransformationArtwork(unit,state) || resolveV39NamedUnitArtwork(unit,{state});
+    if (artwork?.type !== "named-unit" || !ensureArtworkTexture(marker.scene, artwork)) return;
+    const frame = ensureArtworkSheetFrame(marker.scene, artwork);
+    if (!frame) return;
+    image.setTexture(artwork.textureKey,frame);
+    scaleUnitArtwork(image,image.getData("artworkSize"));
+    marker.scene.game.v39InvalidateRender?.();
+  });
   window.addEventListener('v39:construction-preview-changed',()=>renderConstructionPreview());
   window.addEventListener("v39:field-generated", () => {
     lastStructureSignature = null;

@@ -1,5 +1,6 @@
 import { normalizeFactionSettlements } from "./settlement-state.js";
 import {collectV39TradeResourceKnowledge} from './v39-trade-knowledge.js';
+import {collectV39AcquiredToolNames} from './v39-tool-knowledge.js';
 import { normalizeV39SquadLogistics } from "./v39-logistics-state.js";
 import {normalizeV39CountryBonuses} from './v39-country-bonuses.js';
 
@@ -37,6 +38,7 @@ export function createEmptyResearchState(source = {}) {
     },
     selection: cloneRecord(source?.selection),
     assignedUnitIdByCategory: cloneRecord(source?.assignedUnitIdByCategory),
+    settlementIdByCategory: cloneRecord(source?.settlementIdByCategory),
     lastProcessedTurn: Math.max(0, Math.floor(Number(source?.lastProcessedTurn) || 0))
   };
 }
@@ -79,8 +81,10 @@ export function createPlayerFactionState(source = {}, ownerPlayerId = "") {
     settlements: settlementState.settlements,
     selectedSettlementId: settlementState.selectedSettlementId,
     knownTradeResourceNames:collectV39TradeResourceKnowledge({...source,settlements:settlementState.settlements}),
+    acquiredToolNames:collectV39AcquiredToolNames({...source,settlements:settlementState.settlements}),
     units: cloneRows(source?.units),
     unitTrainingQueue: cloneRows(source?.unitTrainingQueue),
+    lastTrainingToolLoadout: cloneRows(source?.lastTrainingToolLoadout),
     recruitInstructorByTile:cloneRecord(source?.recruitInstructorByTile),
     recruitInstructorTransfers:cloneRecord(source?.recruitInstructorTransfers),
     squads: cloneRows(source?.squads).map(normalizeV39SquadLogistics),
@@ -147,12 +151,14 @@ export function createPlayerRecord(source = {}, index = 0) {
 export const PLAYER_FACTION_STATE_KEYS = Object.freeze([
   "countryBonuses",
   "knownTradeResourceNames",
+  "acquiredToolNames",
   "tradeContracts",
   "negotiationAttempts",
   "settlements",
   "selectedSettlementId",
   "units",
   "unitTrainingQueue",
+  "lastTrainingToolLoadout",
   "recruitInstructorByTile",
   "recruitInstructorTransfers",
   "squads",

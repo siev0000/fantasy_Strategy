@@ -811,7 +811,7 @@ function ensureInitialEnemiesSpawned(reason = "initial-placement-check") {
   ensureSpawnTimer = window.setTimeout(() => {
     const data = window.__v39FieldRuntime?.mapData;
     const state = window.getV39GameState?.();
-    if (!data || !state) return;
+    if (!data || !state || data.fixedMapName) return;
     if (hasInitialSpawnEnemies(state)) return;
     if (!allInitialPlacementsComplete(state)) return;
 

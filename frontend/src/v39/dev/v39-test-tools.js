@@ -28,7 +28,7 @@ import disasterTest from '../../../../config/v39-disaster-test.json';
 import {HEX_TILE_CONFIG} from '../../lib/phaser-map-panel-config.js';
 import {createV39EquipmentEntry} from '../../lib/v39-equipment-rules.js';
 import {previewV39NamedWeaponReveal} from '../unit/v39-named-weapon-presentation.js';
-import namedWeaponRecipes from '../../../../config/v39-named-weapons.json';
+import {namedWeaponRecipes} from '../../lib/v39-named-weapon-rules.js';
 import {
   resolveV39UnitRaceCategory,
   resolveV39UnitTotalExpForLevel,

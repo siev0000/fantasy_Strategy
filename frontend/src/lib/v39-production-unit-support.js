@@ -13,13 +13,9 @@ export function getV39ProductionUnitBonus(village, field, turn) {
   return bonus?.turn === turn ? Number(bonus?.[field]) || 0 : 0;
 }
 
-export function settleV39ProductionUnitSupport(player, state, turn, nextTurn) {
-  const faction = player.factionState;
-  const bases = getFactionSettlements(faction);
-  const assigned = new Map(bases.filter(base => base.placed).map(base => [base.settlementId, base.worldId || "surface"]));
-  if (!assigned.size) return faction;
-  const totals = new Map();
-  for (const unit of faction.units || []) {
+export function collectV39WaitingSupportUnits(player, state, turn) {
+  const groups = new Map();
+  for (const unit of player?.factionState?.units || []) {
     if (Number(unit.productionWaitTurn) !== turn || Number(unit.waitTurnNumber) !== turn
       || Number(unit.lastCombatActionTurn) === turn || !(Number(unit.hp ?? unit.currentHp) > 0)
       || (unit.state || unit.statusName) === "死亡" || unit.characterStorage
@@ -29,15 +25,26 @@ export function settleV39ProductionUnitSupport(player, state, turn, nextTurn) {
     const tile = `${unit.x},${unit.y}`;
     if (spatial?.territoryOwnerByTile?.[tile] !== player.id) continue;
     const id = territorySettlementId(spatial.territoryStateByTile?.[tile]);
-    if (assigned.get(id) !== world) continue;
-    const points = totals.get(id) ?? {turn:nextTurn,work:0,magic:0,faith:0};
-    for (const [field, skill] of Object.entries(skills)) points[field] += supportPoints(unit, skill);
-    totals.set(id, points);
+    if (!id) continue;
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(unit);
   }
+  return groups;
+}
+
+export function settleV39ProductionUnitSupport(player, state, turn, nextTurn) {
+  const faction = player.factionState;
+  const bases = getFactionSettlements(faction);
+  if (!bases.some(base => base.placed)) return faction;
+  const groups = collectV39WaitingSupportUnits(player, state, turn);
   let next = faction;
   for (const base of bases) {
-    const total = totals.get(base.settlementId);
-    const productionUnitBonus = total && (total.work || total.magic || total.faith) ? total : undefined;
+    const total = {turn:nextTurn,work:0,magic:0,faith:0};
+    for (const unit of base.placed ? groups.get(base.settlementId) || [] : []) {
+      if ((unit.worldId || "surface") !== (base.worldId || "surface")) continue;
+      for (const [field, skill] of Object.entries(skills)) total[field] += supportPoints(unit, skill);
+    }
+    const productionUnitBonus = total.work || total.magic || total.faith ? total : undefined;
     if (!productionUnitBonus && !base.productionUnitBonus) continue;
     next = replaceFactionSettlement(next, {...base, productionUnitBonus}, {ownerPlayerId:player.id,select:false});
   }

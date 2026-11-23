@@ -1,0 +1,125 @@
+[
+  {
+    "name": "死神",
+    "requiredWeapon": "空刀・無影",
+    "requiredClasses": [
+      "アサシン",
+      "スカーミッシャー"
+    ],
+    "requiredRace": "只人",
+    "minimumLevel": 40,
+    "statusBonus": {
+      "HP": 20,
+      "攻撃": 15,
+      "速度": 30,
+      "命中": 30
+    },
+    "specialConditions": [
+      "条件系統:暗殺",
+      "影隠れ",
+      "回避"
+    ],
+    "transformationImages": {
+      "検証・竜変身": "死神_竜化.webp"
+    }
+  },
+  {
+    "name": "黒角侯ヴァルグ",
+    "requiredClasses": [
+      "ナイト"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 1
+  },
+  {
+    "name": "蒼雷牙ジルヴァ",
+    "requiredClasses": [
+      "フェンサー"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 2
+  },
+  {
+    "name": "炎角将ラグモル",
+    "requiredClasses": [
+      "ファイター"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 3
+  },
+  {
+    "name": "氷冠のセレド",
+    "requiredClasses": [
+      "ウィザード"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 4
+  },
+  {
+    "name": "棘鎧グロム",
+    "requiredClasses": [
+      "モンク"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 5
+  },
+  {
+    "name": "雷雲のヴォルネ",
+    "requiredClasses": [
+      "レンジャー"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 6
+  },
+  {
+    "name": "血冠のオルフェ",
+    "requiredClasses": [
+      "クレリック"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 7
+  },
+  {
+    "name": "影糸のリシェル",
+    "requiredClasses": [
+      "シーフ"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 8
+  },
+  {
+    "name": "紫眼のバルゼク",
+    "requiredClasses": [
+      "アルケミスト"
+    ],
+    "requiredRace": "悪魔",
+    "minimumLevel": 30,
+    "imageFormat": "single",
+    "imageFile": "悪魔_ネームド.webp",
+    "imageNumber": 9
+  }
+]

@@ -24,9 +24,10 @@ const food=new Node('detailCarriedFood','DETAILS','携帯食料・補給'),soul=
 for(const action of [wait,soul]){
   action.parts={':scope > .technique-summary':{querySelector:selector=>selector==='.technique-name'?action:null}};
 }
-const iconMarkup='<span class="technique-icon"><span class="technique-icon-glyph">➜</span></span>';
+const moveIconClass='technique-icon technique-icon-system-move';
+const iconMarkup=`<span class="${moveIconClass}"><span class="technique-icon-glyph">➜</span></span>`;
 const moveSummary={querySelector:selector=>selector==='.technique-name'?move:
-  selector.startsWith('.technique-icon')?{outerHTML:iconMarkup}:null};
+  selector.startsWith('.technique-icon')?{outerHTML:iconMarkup,className:moveIconClass}:null};
 move.parts={':scope > .technique-summary':moveSummary};
 const boarding=new Node('v39-golem-boarding-actions'),boardingDetail=new Node('','SECTION','搭乗検証パイロット');
 boarding.attributes['data-basic-action-group']='';
@@ -44,6 +45,10 @@ const nav=createV39BasicActionNavigation({panel,list,options,heading,renderIcon:
 assert(heading.hidden&&list.hidden&&!options.hidden);
 for(const label of ['移動','待機','携帯食料・補給','手持ち物資','降車'])assert(options.innerHTML.includes(`<b>${label}</b>`));
 assert(options.innerHTML.includes(`${iconMarkup}</span><b>移動</b>`),'the list keeps the existing action icon');
+move.attributes['data-basic-action-icon']='';
+screenIcons.set('移動','➢');
+nav.sync();
+assert(options.innerHTML.includes(`class="${moveIconClass}">➢</span>`),'assigned action icons keep their background class');
 assert(options.innerHTML.includes('🍞</span></span><b>携帯食料・補給</b>'));
 assert(options.innerHTML.includes('🧺</span></span><b>手持ち物資</b>'));
 assert(!options.innerHTML.includes('搭乗検証パイロット'));assert(!options.innerHTML.includes('積載 0/117.6'));

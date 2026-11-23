@@ -9,7 +9,8 @@ import { getV39EffectCategories, getV39EffectCategory } from "../../lib/v39-effe
 import { getV39EffectAttributes } from "../../lib/v39-effect-attribute-settings.js";
 import { resolveV39CombatEffect } from "../../lib/v39-combat-effect-rules.js";
 import { resolveV39EffectAreaGeometry } from "../../lib/v39-effect-area-geometry.js";
-import {resolveAttackPower,isV39SupportSkill} from '../../lib/v39-combat-engine.js';
+import {resolveAttackPower,isV39SupportSkill,isV39WeaponAttackMethod} from '../../lib/v39-combat-engine.js';
+import {beginV39NamedUnitPose,resolveV39NamedUnitSpecialPose,V39_NAMED_UNIT_POSE} from '../../lib/v39-named-unit-artwork.js';
 import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abilities.js';
 import {isV39CastingMagic} from '../../lib/v39-casting-rules.js';
 import {resolveV39PowerEffectScale,isV39PowerEffectSkillEnabled} from '../../lib/v39-effect-power-scale.js';
@@ -240,6 +241,32 @@ export async function playV39MapEffect(request = {}) {
   if(presentationKey)window.dispatchEvent(new CustomEvent('v39:attack-effect-queued',{detail:{key:presentationKey}}));
   let impactTimer;
   let shakeTimer;
+  let portrait;
+  let minimumAttackMotion;
+  const magic = isV39CastingMagic(request.skillRow);
+  const startPortrait = () => {
+    if (portrait || !request.attacker?.namedUnit || !request.skillRow) return;
+    const special = resolveV39NamedUnitSpecialPose(request.attacker.namedUnit.name,{row:request.skillRow});
+    const weaponAttack = (request.skillRow.装備攻撃 || isV39WeaponAttackMethod(request.skillRow.攻撃手段))
+      && !isV39SupportSkill(request.skillRow,request.attacker);
+    const slot = special ?? (magic ? V39_NAMED_UNIT_POSE.magic : weaponAttack ? V39_NAMED_UNIT_POSE.attack1 : null);
+    portrait = beginV39NamedUnitPose(request.attacker.id,slot);
+    if (portrait && slot === V39_NAMED_UNIT_POSE.attack1) {
+      const attackPortrait = portrait;
+      const firstPoseMs = Math.min(180,Math.round(effectDurationMs/2));
+      minimumAttackMotion = new Promise(resolve => setTimeout(() => {
+        attackPortrait.set(V39_NAMED_UNIT_POSE.attack2);
+        setTimeout(resolve,100);
+      },firstPoseMs));
+    }
+  };
+  const finishPortrait = () => {
+    const active = portrait;
+    portrait = null;
+    if (!active) return;
+    if (minimumAttackMotion) void minimumAttackMotion.then(() => active.finish());
+    else active.finish();
+  };
   let impactLate=false;
   const markImpactLate=()=>{
     if(impactLate)return;
@@ -249,7 +276,7 @@ export async function playV39MapEffect(request = {}) {
   };
   const endRender = activeScene()?.game?.v39BeginEffectRender?.();
   try {
-    if(request.attackerTile&&isV39CastingMagic(request.skillRow)){
+    if(request.attackerTile&&magic){
       const scene=activeScene(),circle=resolveV39FieldEffectDescriptor('magic_cast','魔法陣');
       if(scene&&circle){
         const caster=tileCenter(request.attackerTile.x,request.attackerTile.y);
@@ -262,7 +289,7 @@ export async function playV39MapEffect(request = {}) {
         void castPlayer.play({...circle,x:castTransform.x,y:castTransform.y,
           scalePercent:V39_EFFECT_BASE_SCALE_PERCENT*circle.scaleMultiplierPercent/100,showPreviousFrameGhost:false,
           totalDurationMs:castDurationMs,displayName:'v39-magic-cast-effect',
-          onFrame:()=>{if(!firstFrame){firstFrame=true;markStarted(true);}}})
+          onFrame:()=>{if(!firstFrame){firstFrame=true;startPortrait();markStarted(true);}}})
           .then(()=>markStarted(false),()=>markStarted(false)).finally(()=>castPlayer.destroy());
         await started;
         await new Promise(resolve=>setTimeout(resolve,castDurationMs/2));
@@ -306,6 +333,7 @@ export async function playV39MapEffect(request = {}) {
       onFrame:frame=>{
         if(!impactStarted){
           impactStarted=true;
+          startPortrait();
           if(presentationKey){
             window.dispatchEvent(new CustomEvent('v39:attack-effect-started',{detail:{key:presentationKey}}));
             impactTimer=setTimeout(markImpactLate,Math.round(effectDurationMs*number(playbackSettings.damageMomentPercent,75)/100));
@@ -327,6 +355,7 @@ export async function playV39MapEffect(request = {}) {
     });
     const generation=targetPlayer.requestId;
     const played=await playback;
+    finishPortrait();
     const hitTiles=resolveV39HitTargets(request.hitEntries).filter(tile=>request.allowInFog===true || window.isV39TileInCurrentVision?.(tile.x,tile.y)!==false);
     if(played && generation===targetPlayer.requestId && hitTiles.length && activeScene()===playerScene && playbackSettings.hitEffectMode!=='none'){
       const descriptor=playbackSettings.hitEffectMode==='common'
@@ -344,6 +373,7 @@ export async function playV39MapEffect(request = {}) {
     }
     return played;
   } finally {
+    finishPortrait();
     if(impactTimer)clearTimeout(impactTimer);
     if(shakeTimer)clearTimeout(shakeTimer);
     if(presentationKey){

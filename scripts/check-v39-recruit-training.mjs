@@ -13,19 +13,19 @@ try {
       populationByRace:{只人:100},cityLevels:{軍事Lv:4},foodStockByType:{穀物:10000,野菜:10000,肉:10000,魚:10000},
       materialStockByType:{木材:10000,石材:10000,鉄:10000},territoryResidentialCenterMap:{"6,6":"5,6"},tileFacilityMap:{"6,6":["兵舎"]}};
     const unit={id:"trained",race:"只人",className:"ファイター",level:10};
-    const instructor={id:"teacher",name:"教官",race:"只人",className:"ファイター",level:20,hp:100,maxHp:100,x:6,y:6};
-    const assigned={recruitInstructorByTile:{"6,6":{unitId:"teacher",className:"ファイター",settlementId:"town"}}};
-    const bare=inspectV39RecruitTraining({units:[]},village,unit);
-    const taught=inspectV39RecruitTraining({...assigned,units:[instructor]},village,unit);
-    const away=inspectV39RecruitTraining({...assigned,units:[{...instructor,x:9}]},village,unit);
-    const dead=inspectV39RecruitTraining({...assigned,units:[{...instructor,hp:0}]},village,unit);
-    const cave=inspectV39RecruitTraining({...assigned,units:[{...instructor,worldId:"cave"}]},village,unit);
-    const wrong=inspectV39RecruitTraining({...assigned,units:[{...instructor,className:"ウィザード"}]},village,unit);
-    const prerequisite=inspectV39RecruitTraining({...assigned,units:[instructor]},village,
-      {...unit,className:"ウォーリアー",prerequisiteClassLevels:{ファイター:10}});
-    const historyOnly=inspectV39RecruitTraining({...assigned,units:[{...instructor,className:"ウォーリアー",prerequisiteClassLevels:{ファイター:10}}]},village,unit);
+    const instructor={id:"teacher",name:"教官",race:"只人",className:"ファイター",level:20,hp:100,maxHp:100,x:6,y:6,waitTurnNumber:1,productionWaitTurn:1};
+    const waitingState={timeline:{turnNumber:1},territoryOwnerByTile:{"6,6":"p1"},territoryStateByTile:{"6,6":{settlementId:"town"}}};
+    const bare=inspectV39RecruitTraining({units:[]},village,unit,waitingState);
+    const taught=inspectV39RecruitTraining({units:[instructor]},village,unit,waitingState);
+    const away=inspectV39RecruitTraining({units:[{...instructor,x:9}]},village,unit,waitingState);
+    const dead=inspectV39RecruitTraining({units:[{...instructor,hp:0}]},village,unit,waitingState);
+    const cave=inspectV39RecruitTraining({units:[{...instructor,worldId:"cave"}]},village,unit,waitingState);
+    const wrong=inspectV39RecruitTraining({units:[{...instructor,className:"ウィザード"}]},village,unit,waitingState);
+    const prerequisite=inspectV39RecruitTraining({units:[instructor]},village,
+      {...unit,className:"ウォーリアー",prerequisiteClassLevels:{ファイター:10}},waitingState);
+    const historyOnly=inspectV39RecruitTraining({units:[{...instructor,className:"ウォーリアー",prerequisiteClassLevels:{ファイター:10}}]},village,unit,waitingState);
     const queue={id:unit.id,unit,settlementId:"town",requiredExp:taught.requiredExp,progressExp:0,lastProcessedTurn:1};
-    const state={players:[{id:"p1",race:"只人",factionState:{...assigned,units:[instructor],settlements:[village],unitTrainingQueue:[queue]}},
+    const state={...waitingState,players:[{id:"p1",race:"只人",factionState:{units:[instructor],settlements:[village],unitTrainingQueue:[queue]}},
       {id:"p2",factionState:{units:[],settlements:[],unitTrainingQueue:[]}}]};
     const first=advanceV39RecruitTraining(state,2);
     const multiple=advanceV39RecruitTraining({...state,players:state.players.map(p=>p.id!=="p1"?p:{...p,
@@ -45,7 +45,7 @@ try {
       factionState:{...p.factionState,unitTrainingQueue:[{...queue,progressExp:queue.requiredExp-1}]}})},2);
     const repeated=advanceV39RecruitTraining(first.state,2);
     const restored=JSON.parse(JSON.stringify(first.state));
-    const resumed=advanceV39RecruitTraining(restored,3);
+    const resumed=advanceV39RecruitTraining({...restored,timeline:{turnNumber:2}},3);
     const abandoned=advanceV39RecruitTraining({...state,players:state.players.map(p=>p.id!=="p1"?p:{...p,
       factionState:{...p.factionState,settlements:[{...village,ownerPlayerId:"other"}]}})},2);
     let finished=state;
@@ -78,14 +78,14 @@ try {
   assert.equal(two[1].progressExp,result.bare.expPerTurn);
   assert.notEqual(two[0].trainingSlotId,two[1].trainingSlotId);
   assert.deepEqual(result.basic.players[0].factionState.unitTrainingQueue.map(row=>row.progressExp),
-    [result.bare.expPerTurn,result.bare.expPerTurn,result.bare.expPerTurn,0]);
+    [result.taught.expPerTurn,result.taught.expPerTurn,result.taught.expPerTurn,0]);
   assert.equal(result.damaged.players[0].factionState.unitTrainingQueue[0].progressExp,0);
   assert.equal(result.finishAndWait.players[0].factionState.unitTrainingQueue[0].progressExp,0);
   assert.deepEqual(result.finishAndWait,result.duplicateFinish);
   assert.ok(result.nextAfterFinish.players[0].factionState.unitTrainingQueue[0].progressExp>0);
   assert.deepEqual(result.first,result.repeated);
   assert.equal(result.first.players[0].factionState.unitTrainingQueue[0].progressExp,result.taught.expPerTurn);
-  assert.equal(result.resumed.players[0].factionState.unitTrainingQueue[0].progressExp,result.taught.expPerTurn*2);
+  assert.equal(result.resumed.players[0].factionState.unitTrainingQueue[0].progressExp,result.taught.expPerTurn+result.bare.expPerTurn);
   assert.equal(result.abandoned.players[0].factionState.unitTrainingQueue[0].progressExp,0);
   assert.deepEqual(result.finished.players[1],result.first.players[1]);
   assert.equal(result.finished.players[0].factionState.units.at(-1).level,10);

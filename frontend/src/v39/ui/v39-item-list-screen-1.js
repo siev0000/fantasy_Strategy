@@ -1,4 +1,5 @@
 import "./v39-item-list-screen-1.css";
+import {renderV39ScreenHelpContent} from "./v39-screen-help.js";
 import "../unit/v39-enchantment-options.css";
 import {resolveV39ResourceIcon} from "../../lib/resource-icon-glyphs.js";
 import {renderV39UnitCard} from "../unit/v39-unit-card.js";
@@ -190,8 +191,7 @@ export function renderV39ItemListScreen1({
   const buttons = enhancement ? [...actions,{id:"enhance",label:"付与へ進む",...enhancement}] : actions;
   return `<section class="modal v39-item-list-screen-1" role="dialog" aria-modal="true" aria-labelledby="${headingId}">
     <header class="modal-header"><h3 id="${headingId}">${escapeHtml(title)}</h3>${navigation}
-    <div class="v39-item-list-header-actions">${help.length ? `<details class="v39-item-list-help"><summary aria-label="画面の説明">？</summary>
-      <div class="v39-item-list-help-content">${renderLines(help)}</div></details>` : ""}<button type="button"${actionData({id:"close",attribute:closeAttribute})} class="v39-item-list-close v39-summon-action" aria-label="閉じる">×</button></div></header>
+    <div class="v39-item-list-header-actions">${help.length ? renderV39ScreenHelpContent(title,renderLines(help)) : ""}<button type="button"${actionData({id:"close",attribute:closeAttribute})} class="v39-item-list-close v39-summon-action" aria-label="閉じる">×</button></div></header>
     ${bodyMarkup !== undefined ? bodyMarkup : detail.kind === "enhancement" ? renderV39EnhancementScreen({groups, ...detail, summary:footerNotes, costs, status, actions:buttons}) :
     `<div class="modal-body character-layout"><div class="list-pane">${left}</div>
     <div class="summon-detail squad-detail-pane">${renderControls(detail.controls)}${main}

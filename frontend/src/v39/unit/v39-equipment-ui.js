@@ -1,6 +1,6 @@
-import {openV39EnchantmentColorSettings,renderV39EnchantmentMark} from "./v39-enchantment-color-settings.js";
-import {getV39EnchantmentMarkColor} from "../../lib/v39-enchantment-color-state.js";
-import {getV39EquipmentDisplayStats,renderV39EquipmentDisplayRow,renderV39EquipmentRarityBadge,renderV39EquipmentIcon} from "../ui/v39-equipment-display.js";
+import {openV39EnchantmentColorSettings} from "./v39-enchantment-color-settings.js";
+import {getV39EquipmentDisplayStats,renderV39EquipmentDisplayRow,renderV39EquipmentTile,renderV39EquipmentIcon} from "../ui/v39-equipment-display.js";
+import {V39_EQUIPMENT_CATEGORIES, V39_EQUIPMENT_SORT_OPTIONS, filterV39EquipmentList, getV39EquipmentListTypes, getV39EquipmentSortStat, sortV39EquipmentList} from "../ui/v39-equipment-list-options.js";
 import {
   V39_EQUIPMENT_RARITIES,
   applyV39EquipmentEnchantment,
@@ -10,6 +10,7 @@ import {
   createV39EquipmentEntry,
   previewV39EquipmentEnchantment,
   getV39EquipmentCatalog,
+  getV39EquipmentCategory,
   inspectV39EquipmentCraftPlan,
   getV39CraftEnchantmentOptions,
   getV39EquipmentInventoryView,
@@ -24,7 +25,7 @@ import {
 } from "../../lib/v39-equipment-rules.js";
 import {V39_WEAPON_PHYSICAL_TYPES} from "../../lib/v39-weapon-physical-power.js";
 import {getSelectedSettlement} from "../../lib/settlement-state.js";
-import {forecastV39ProductionWork,newV39ProductionOrder} from "../../lib/v39-production-work.js";
+import {forecastV39ProductionWork,formatV39ProductionJobProgress,newV39ProductionOrder} from "../../lib/v39-production-work.js";
 import { EQUIPMENT_SLOT_KEYS } from "../../constants/unitCommon.js";
 import { isMobUnit } from "../../composables/unitCoreUtils.js";
 import {installV39EquipmentHold} from "./v39-equipment-hold.js";
@@ -37,6 +38,7 @@ import {updateV39RetainedMarkup} from "../ui/v39-retained-markup.js";
 
 let activeTab = "inventory";
 let selectedInventoryKey = "";
+const inventoryFilters = {category:"", type:"", sort:"type"};
 let selectedUnitId = "";
 let selectedEnchantmentName = null;
 let selectedEnchantmentFamily = "";
@@ -93,24 +95,34 @@ function findInventorySelection(current, rows, key) {
 }
 
 function inventoryPanel(current) {
-  const rows = getV39EquipmentInventoryView(current);
+  const inventory = getV39EquipmentInventoryView(current);
+  const types = getV39EquipmentListTypes(inventory, inventoryFilters.category);
+  if (inventoryFilters.type && !types.includes(inventoryFilters.type)) inventoryFilters.type = "";
+  const rows = sortV39EquipmentList(filterV39EquipmentList(inventory, inventoryFilters), inventoryFilters.sort);
   const selected = findInventorySelection(current, rows, selectedInventoryKey) ?? rows[0];
   selectedInventoryKey = selected?.key || "";
-  return `<div class="v39-equip-inventory"><div class="v39-equip-list"><div class="v39-equip-grid">${rows.map(row => {
-    const {name,used,applied}=getV39EquipmentEnhancementDisplay(row.item);
-    const label = `${name}${used?" +"+used:""} ${row.qualityLabel} 在庫${row.remainingCount}${row.equippedCount ? ` 装備中${row.equippedCount}` : ""}`;
-    return `<button type="button" class="v39-equip-tile" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-pressed="${row.key === selectedInventoryKey}" data-v39-equip-item="${escapeHtml(row.key)}">
-      <span class="v39-equip-tile-badges" aria-hidden="true">
-        <span class="v39-equip-rank">${renderV39EquipmentRarityBadge(row.quality)}</span>
-        ${applied.length?`<span class="v39-equip-enchantment-badges">
-          ${used?`<span class="v39-equipment-enhancement-level">+${escapeHtml(used)}</span>`:""}
-          <span class="v39-equip-enchantment-colors">${applied.map(({name})=>renderV39EnchantmentMark(name,getV39EnchantmentMarkColor(name))).join("")}</span>
-        </span>`:""}
-      </span>
-      <span class="v39-equip-icon" aria-hidden="true">${renderV39EquipmentIcon(row.item, row.name)}</span>
-      <span class="v39-equip-count" aria-hidden="true">${row.equippedCount ? "残" : ""}${row.remainingCount}</span>
-    </button>`;
-  }).join("") || '<p class="v39-equip-empty">装備はありません</p>'}</div></div><div class="v39-equip-detail v39-equip-inventory-detail">
+  return `<div class="v39-equip-inventory"><div class="v39-equip-inventory-stock">
+    <div class="v39-equip-inventory-controls">
+      <div role="group" aria-label="装備の大分類">${["", ...V39_EQUIPMENT_CATEGORIES].map(category =>
+        `<button type="button" data-v39-inventory-category="${category}" aria-pressed="${category === inventoryFilters.category}">${category || "すべて"}</button>`
+      ).join("")}</div>
+      <select id="v39-equip-inventory-sort" aria-label="装備一覧の並び替え">${V39_EQUIPMENT_SORT_OPTIONS.map(([value,label]) =>
+        `<option value="${value}"${inventoryFilters.sort === value ? " selected" : ""}>${label}</option>`
+      ).join("")}</select>
+    </div>
+    <div class="v39-equip-inventory-types" role="group" aria-label="装備種">${["", ...types].map(type => {
+      const label = escapeHtml(type || "すべて");
+      const icon = type ? renderV39EquipmentIcon(createV39EquipmentEntry(type), type)
+        : '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" focusable="false"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg>';
+      return `<button type="button" data-v39-inventory-type="${escapeHtml(type)}" aria-pressed="${type === inventoryFilters.type}" aria-label="${label}" title="${label}"><span aria-hidden="true">${icon}</span></button>`;
+    }).join("")}</div>
+    <div class="v39-equip-list">${rows.length ? `<div class="v39-equip-grid">${rows.map(row =>
+      renderV39EquipmentTile(row,{
+        selected:row.key === selectedInventoryKey, keyAttribute:"data-v39-equip-item",
+        sortStat:getV39EquipmentSortStat(row.item, inventoryFilters.sort)
+      })
+    ).join("")}</div>` : '<p class="v39-equip-empty">装備はありません</p>'}</div>
+  </div><div class="v39-equip-detail v39-equip-inventory-detail">
     ${selected ? `<div class="v39-equip-inventory-header">
       ${itemHeading(selected.item)}
       <button type="button" data-v39-enchant-open${selected.remainingCount > 0 ? "" : " disabled"}>この装備に付与</button>
@@ -150,12 +162,6 @@ function unitPanel(current) {
     </div>${mob ? `<div class="v39-equip-reroll"><label>レア度<select id="v39-equip-reroll-rarity">${V39_EQUIPMENT_RARITIES.map(row => `<option value="${row.key}">${row.label}</option>`).join("")}</select></label><button type="button" id="v39-equip-reroll">レア度一新</button></div>` : ""}</div>`;
 }
 
-function craftItemCategory(row) {
-  if (row.武器分類 === "盾") return "防具";
-  if (row.装備箇所 === "武器") return "武器";
-  return row.装備箇所 === "装飾" ? "装飾" : "防具";
-}
-
 function openCraftItemPicker() {
   if (document.getElementById("v39-craft-item-picker")) return;
   const tabs = ["武器", "防具", "装飾"].map(name => ({id:name, label:name}));
@@ -164,7 +170,7 @@ function openCraftItemPicker() {
     if (!item) return [];
     const metrics = [["威",item.power],["守",item.guard],["AP",item.attackAp]]
       .filter(([, value]) => number(value) !== 0).map(([label,value]) => `${label}${value}`);
-    return [{id:name, label:name, item, category:craftItemCategory(row), icon:renderV39EquipmentIcon(item), metrics}];
+    return [{id:name, label:name, item, category:getV39EquipmentCategory(row), icon:renderV39EquipmentIcon(item), metrics}];
   });
   let selected = catalog.find(row => row.id === craftRequest.name);
   let category = selected?.category ?? tabs[0].id;
@@ -234,7 +240,11 @@ function craftPanel() {
       <label>レア度<select id="v39-equip-craft-rarity">${V39_EQUIPMENT_RARITIES.map(row => `<option value="${row.key}"${row.key === craftRequest.rarity ? " selected" : ""}>${escapeHtml(row.label)}</option>`).join("")}</select></label>
       <label>個数<input id="v39-equip-craft-count" type="number" min="1" max="99" value="${escapeHtml(craftRequest.count)}"></label>
     </div>
-    <output id="v39-equip-craft-cost"></output></div>
+    <output id="v39-equip-craft-cost"></output>
+    <section class="v39-equip-craft-queue" aria-labelledby="v39-equip-craft-queue-title">
+      <h4 id="v39-equip-craft-queue-title">予約済み</h4>
+      <div id="v39-equip-craft-queue"></div>
+    </section></div>
     <div class="v39-equip-actions">
       <button type="button" id="v39-equip-craft">生成を予約</button>
     </div>
@@ -358,7 +368,7 @@ function enchantPanel(current) {
     emptyText:"この装備に付与できる候補はありません",
     target:selected ? {
       heading:`${getV39EquipmentEnhancementDisplay(selected.item).name}${capacity?.used?" +"+capacity.used:""} [${selected.qualityLabel}]`,
-      icon:renderV39EquipmentIcon(selected.item),
+      icon:renderV39EquipmentIcon(preview?.item ?? selected.item),
       lines:[crafting ? `生成予定 ${check.count ?? craftRequest.count}個` : `在庫 ${selected.remainingCount}`]
     } : {lines:["付与できる在庫がありません"]},
     choice:family ? {
@@ -386,7 +396,26 @@ function enchantPanel(current) {
   });
 }
 
-function updateCraftCost() {
+function updateCraftQueue(current,state) {
+  const queue = document.getElementById("v39-equip-craft-queue");
+  if (!queue) return;
+  const village = getSelectedSettlement(current?.factionState);
+  const jobs = [...(village?.equipmentProductionQueue ?? [])].sort((a,b)=>number(a.workOrder)-number(b.workOrder));
+  if (!jobs.length) {
+    queue.innerHTML = "<p>予約済みの装備はありません</p>";
+    return;
+  }
+  const dates = state ? forecastV39ProductionWork(current,village,state) : new Map();
+  queue.innerHTML = `<ul class="v39-production-list">${jobs.map(job => {
+    const {name} = getV39EquipmentEnhancementDisplay(job.item);
+    const quality = job.item?.qualityLabel;
+    const label = `${name}${quality ? ` [${quality}]` : ""} ×${job.count}`;
+    const progress = formatV39ProductionJobProgress(job,dates.get(job.id));
+    return `<li><strong>${escapeHtml(label)}</strong><small>${escapeHtml(progress)}</small></li>`;
+  }).join("")}</ul>`;
+}
+
+function updateCraftCost(refreshQueue = false) {
   const output = document.getElementById("v39-equip-craft-cost");
   if (!output) return;
   craftRequest = {
@@ -396,6 +425,7 @@ function updateCraftCost() {
   };
   const state=window.getV39GameState?.({includeWorlds:false});
   const current=player();
+  if (refreshQueue) updateCraftQueue(current,state);
   const check = inspectV39EquipmentCraftPlan(current, {...craftRequest,enchantmentNames:[...craftEnchantments.values()]}, state?.timeline?.turnNumber,{reserve:true});
   const preview = document.getElementById("v39-equip-craft-preview");
   const item = check.item ?? createV39EquipmentEntry(craftRequest.name, craftRequest.rarity);
@@ -418,7 +448,7 @@ function updateCraftCost() {
   document.getElementById("v39-equip-craft").disabled = !check.ok;
 }
 
-function render() {
+function render({resetInventoryList = false, resetInventoryTypes = false} = {}) {
   const modal = document.getElementById("equipmentModal");
   const body = modal?.querySelector(".modal-body");
   const current = player();
@@ -429,14 +459,21 @@ function render() {
   }
   const tabs = [["inventory", "一覧"], ["unit", "キャラ装備"], ["craft", "生成"]];
   const scrollTop = body.querySelector(".v39-equipment-content")?.scrollTop || 0;
-  const listScrollTop = body.querySelector(".v39-equip-list")?.scrollTop || 0;
+  const listScrollTop = resetInventoryList ? 0 : body.querySelector(".v39-equip-list")?.scrollTop || 0;
+  const typesScrollTop = resetInventoryTypes ? 0 : body.querySelector(".v39-equip-inventory-types")?.scrollTop || 0;
+  const craftScrollTop = body.querySelector(".v39-equip-craft-controls")?.scrollTop || 0;
   const markup = `<nav class="v39-equipment-tabs" aria-label="装備メニュー">${tabs.map(([key, label]) => `<button type="button" aria-pressed="${key === activeTab}" data-v39-equipment-tab="${key}">${label}</button>`).join("")}</nav><div class="v39-equipment-content">${activeTab === "inventory" ? inventoryPanel(current) : activeTab === "unit" ? unitPanel(current) : activeTab === "craft" ? craftPanel() : enchantPanel(current)}</div>${activeTab === "enchant" ? "" : `<output class="v39-equip-status" aria-live="polite">${escapeHtml(statusText)}</output>`}`;
   if (activeTab === "enchant") updateV39RetainedMarkup(body, markup);
   else body.innerHTML = markup;
   body.querySelector(".v39-equipment-content").scrollTop = scrollTop;
   const list = body.querySelector(".v39-equip-list");
   if (list) list.scrollTop = listScrollTop;
-  if (activeTab === "craft") updateCraftCost();
+  const types = body.querySelector(".v39-equip-inventory-types");
+  if (types) types.scrollTop = typesScrollTop;
+  if (activeTab === "craft") {
+    updateCraftCost(true);
+    body.querySelector(".v39-equip-craft-controls").scrollTop = craftScrollTop;
+  }
 }
 
 function commit(result, success) {
@@ -491,6 +528,22 @@ function install() {
     }
     const tab = element?.closest("[data-v39-equipment-tab]");
     if (tab) { activeTab = tab.dataset.v39EquipmentTab; statusText = ""; element.closest(".v39-equipment-body").querySelector(".v39-equipment-content").scrollTop = 0; render(); return; }
+    const category = element?.closest("[data-v39-inventory-category]");
+    const type = element?.closest("[data-v39-inventory-type]");
+    if (category || type) {
+      const modal = event.currentTarget;
+      if (category) {
+        if (inventoryFilters.category === category.dataset.v39InventoryCategory) return;
+        inventoryFilters.category = category.dataset.v39InventoryCategory;
+        inventoryFilters.type = "";
+      } else {
+        inventoryFilters.type = type.dataset.v39InventoryType;
+      }
+      render({resetInventoryList:true, resetInventoryTypes:!!category});
+      const filter = category ? "category" : "type";
+      modal.querySelector(`[data-v39-inventory-${filter}][aria-pressed="true"]`)?.focus({preventScroll:true});
+      return;
+    }
     const crafting = element?.closest("#v39-equip-craft-enchant");
     if (crafting || element?.closest("[data-v39-enchant-open]")) {
       openEnchantment(crafting ? "" : selectedInventoryKey, crafting ? "craft" : "inventory");
@@ -576,6 +629,12 @@ function install() {
   });
   document.getElementById("equipmentModal")?.addEventListener("change", event => {
     const element = event.target instanceof Element ? event.target : null;
+    if (element?.id === "v39-equip-inventory-sort") {
+      inventoryFilters.sort = element.value;
+      render({resetInventoryList:true});
+      document.getElementById(element.id)?.focus({preventScroll:true});
+      return;
+    }
     if (element?.id === "v39-equip-unit") { selectedUnitId = element.value; render(); return; }
     if (element?.closest(".v39-equip-craft")) updateCraftCost();
   });

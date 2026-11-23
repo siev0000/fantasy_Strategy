@@ -81,7 +81,6 @@ try {
       if(next.players[1].factionState.exploration.discoveredSpecialtiesByTile["8,8"])throw new Error("research shared with another player");
       return Object.keys(e2.discoveredSpecialtiesByTile);
     });
-    if(width<=760)await page.locator('[data-research-back]').click();
     await page.locator('[data-research-item="地下探索Lv:1:地下探索Ⅰ"]').click();
     assert.equal(await page.locator('[data-research-discovery-targets]').count(),0,'cave discovery is not research gated');
     await page.evaluate(()=>{

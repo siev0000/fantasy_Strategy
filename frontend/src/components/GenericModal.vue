@@ -107,6 +107,7 @@ function fieldLabel(field) {
       </div>
 
       <div class="generic-actions">
+        <slot name="actions" />
         <button type="button" class="secondary" @click="emit('close')">{{ props.closeText }}</button>
       </div>
     </div>

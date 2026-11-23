@@ -15,6 +15,7 @@ import {renderV39SquadCoordination} from './v39-squad-coordination-ui.js';
 import {renderV39AnimalArmyControls,openV39AnimalArmyEditor} from './v39-animal-army-ui.js';
 import {renderV39UnitHeading} from './v39-unit-heading.js';
 import {mountV39UnitCreatePanel} from './v39-unit-create-ui.js';
+import {isV39TerritoryUnitGuideActive,renderV39TerritoryUnitListGuide} from '../world/v39-operation-plan-ui.js';
 
 let activeTab = "character";
 let selectedId = "";
@@ -245,13 +246,17 @@ function render({preserveDrafts=true} = {}) {
   const selected = rows.find((row, index) => idFor(row, index) === selectedId) || null;
   const tabs = [["character", "キャラクター"], ["squad", "部隊"], ['create','作成・訓練'],["corpse", "死体回収"], ["dead", "死亡者一覧"]];
   if (!body.querySelector('[data-v39-character-detail-host]')) {
-    body.innerHTML = `<div class="modal-tabs">${tabs.map(([key,label]) => `<button data-v39-character-tab="${key}">${label}</button>`).join('')}</div><div class="v39-char-squad-toolbar" hidden></div>
+    body.innerHTML = `<div class="v39-char-modal-nav"><div class="v39-territory-guide-caption" data-v39-unit-list-guide hidden></div><div class="modal-tabs">${tabs.map(([key,label]) => `<button data-v39-character-tab="${key}">${label}</button>`).join('')}</div></div><div class="v39-char-squad-toolbar" hidden></div>
       <div class="character-layout"><div class="list-pane"></div><div data-v39-character-detail-host style="display:contents"></div></div><div id="v39-character-create-host" hidden></div>`;
     renderedMarkup.delete(body);
   }
   for (const button of body.querySelectorAll('[data-v39-character-tab]')) button.classList.toggle('active',button.dataset.v39CharacterTab === activeTab);
   const toolbar=body.querySelector('.v39-char-squad-toolbar');
   const creation=activeTab==='create';
+  const guide=body.querySelector('[data-v39-unit-list-guide]');
+  const guideMarkup=creation?'':renderV39TerritoryUnitListGuide();
+  updateMarkup(guide,guideMarkup);
+  guide.hidden=!guideMarkup;
   body.querySelector('.character-layout').hidden=creation;
   body.querySelector('#v39-character-create-host').hidden=!creation;
   mountV39UnitCreatePanel(body.querySelector('#v39-character-create-host'),creation);
@@ -343,16 +348,14 @@ function installStyles() {
     #v39-character-create-host{min-width:0;min-height:0;height:100%;overflow:hidden}
     #v39-character-create-host>.v39-unit-create-panel{height:100%;box-sizing:border-box;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;padding:0;gap:6px}
     #v39-character-create-host .v39-unit-create-pane{overflow:auto;min-height:0;padding:2px 3px}
+    #v39-character-create-host #v39-create-pane{overflow:hidden;grid-template-rows:auto minmax(0,1fr);align-content:stretch}
     #v39-character-create-host .v39-unit-create-head{padding:2px 3px;gap:4px}
-    #v39-character-create-host .v39-create-base-label{display:flex;align-items:center;gap:7px;width:100%;min-width:0;font-size:var(--font-body)}
-    #v39-character-create-host .v39-create-base-label select{flex:1;min-width:0;border:1px solid #425860;border-radius:5px;background:#101c21;color:#edf5f3;padding:5px;font:inherit}
+    #v39-create-settlement-host{margin-inline-start:auto;min-width:0;max-width:52%}
+    #v39-create-settlement-host[hidden]{display:none!important}
+    #v39-create-settlement-host:not([hidden])+.close{margin-inline-start:0}
+    #v39-create-settlement-host select{width:100%;min-height:30px;min-width:0;border:1px solid #425860;border-radius:5px;background:#101c21;color:#edf5f3;padding:4px;font-size:var(--font-body)}
     #v39-character-create-host .v39-unit-create-tabs{gap:4px}
     #v39-character-create-host .v39-unit-create-panel footer{padding:4px 3px}
-    @media(min-width:701px){
-      #v39-character-create-host #v39-create-pane{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
-      #v39-character-create-host .v39-unit-create-grid{grid-row:1/3}
-      #v39-character-create-host .v39-unit-create-overview,#v39-character-create-host .v39-unit-training{grid-column:2}
-    }
     #characterModal .modal-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;min-width:0;gap:4px}
     #characterModal .modal-tabs button{flex:0 0 auto;white-space:nowrap}
     #characterModal .modal-body:has(.v39-char-squad-toolbar[hidden]){grid-template-rows:auto minmax(0,1fr)}
@@ -519,7 +522,8 @@ function install() {
       hideResistancePopover();
     }
     if (element?.closest('[data-open="character"]')) {
-      window.setTimeout(openCharacterModal, 0);
+      const guided=element.closest('#v39-squad-main')&&isV39TerritoryUnitGuideActive();
+      window.setTimeout(() => openCharacterModal(guided ? {tab:'character'} : {}), 0);
       return;
     }
     const squadEdit = element?.closest("[data-v39-character-squad-edit]");

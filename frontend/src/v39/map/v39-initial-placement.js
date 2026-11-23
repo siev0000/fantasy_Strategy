@@ -1,4 +1,4 @@
-import { createInitialV39Village, normalizeV39Village } from "../../lib/v39-economy-rules.js";
+import { createInitialV39Village, hasV39InitialFoodFacilitySite, normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import { getHexOffsetNeighbors, getHexNeighborCoords, getHexDistance } from "../../lib/hex-grid.js";
 import { isSovereignUnit } from "../../composables/unitCoreUtils.js";
 import { getFactionSettlements, getSelectedSettlement, replaceFactionSettlement } from "../../lib/settlement-state.js";
@@ -172,6 +172,23 @@ function initialPlacementIssue(tile) {
     ? "" : `候補マス・周囲${V39_START_AREA_BALANCE.placementRadius}マス・広い適正低地から選択してください`);
 }
 
+let fixedBaseDraft = null;
+function cancelFixedMapBasePlacement() {
+  if (!fixedBaseDraft) return;
+  fixedBaseDraft = null;
+  pendingPlacement = null;
+  document.getElementById("v39-placement-preview")?.remove();
+}
+
+function beginFixedMapBasePlacement(neutral) {
+  const draft = window.v39FixedMapPlacement?.getBaseDraft(neutral);
+  if (!draft) return;
+  fixedBaseDraft = draft;
+  pendingPlacement = null;
+  window.activateV39FooterTab?.("placement");
+  ensurePlacementPanel();
+}
+
 function ensurePlacementPanel() {
   if (!fieldMapData()?.grid) {
     const panel = document.getElementById("v39-placement-preview");
@@ -197,6 +214,20 @@ function ensurePlacementPanel() {
     });
     host.appendChild(panel);
   }
+  if (fixedBaseDraft) {
+    if (!panel.querySelector("[data-fixed-base-name]")) {
+      const details = panel.querySelector("[data-placement-details]");
+      details.children[1].textContent = "地図で配置するマスを選んでください。";
+      details.insertAdjacentHTML("beforeend",`<label>拠点名 <input data-fixed-base-name maxlength="80"></label>
+        <label>人口 <input data-fixed-base-population type="number" min="1" max="100000"></label>
+        <button type="button" data-fixed-base-cancel>戻る</button>`);
+      details.querySelector("[data-fixed-base-name]").value = fixedBaseDraft.name;
+      details.querySelector("[data-fixed-base-population]").value = fixedBaseDraft.population;
+      details.querySelector("[data-fixed-base-cancel]").onclick = () => window.activateV39FooterTab?.("settlement");
+    }
+    panel.hidden = false;
+    return panel;
+  }
   const context = currentCandidateContext();
   if (panel.placementContext !== context) {
     panel.placementContext = context;
@@ -220,6 +251,14 @@ function showPlacementPreview(tile) {
   const panel = ensurePlacementPanel();
   if (!panel) return;
   window.activateV39FooterTab?.("placement");
+  if (fixedBaseDraft) {
+    const result = window.v39FixedMapPlacement.inspect(tile,{kind:"base"});
+    pendingPlacement = {tile:{...tile},playerId:getGameState()?.activePlayerId};
+    panel.querySelector("[data-placement-location]").textContent = `(${tile.x},${tile.y}) ${tile.terrain || ""}`;
+    panel.querySelector("[data-placement-level]").textContent = result.reason || "";
+    panel.querySelector("[data-placement-confirm]").disabled = !result.ok;
+    return;
+  }
   const preview = window.inspectV39InitialPlacementArea?.(tile);
   const issue = initialPlacementIssue(tile);
   pendingPlacement = { tile:{ ...tile }, playerId:getGameState()?.activePlayerId };
@@ -318,6 +357,7 @@ function basePlacementIssue(tile, state = getGameState(),spacing=null) {
   if (!data?.grid || !Number.isFinite(x) || !Number.isFinite(y)) return "";
   const territoryTiles = buildInitialTerritoryTiles(x, y);
   if (territoryTiles.length !== 7) return "周囲1マスを含む7マスすべてが陸地の場所を選んでください";
+  if (!hasV39InitialFoodFacilitySite({x,y},territoryTiles,data)) return "周囲に食料施設を建てられる土地が必要です";
   const keys = new Set(territoryTiles.map(row => row.key));
   const activeId = state?.activePlayerId;
   if ([...keys].some(key => {
@@ -770,12 +810,25 @@ function autoPlaceInitialBases(playerId) {
 }
 
 function handleTileSelected(event) {
+  if (fixedBaseDraft) {
+    showPlacementPreview(event.detail);
+    return;
+  }
   const faction = getActiveFaction();
   if (!faction?.villagePlacementMode) return;
   showPlacementPreview(event.detail);
 }
 
 function confirmPlacement(tile) {
+  if (fixedBaseDraft) {
+    const panel = document.getElementById("v39-placement-preview");
+    const name = panel.querySelector("[data-fixed-base-name]").value.trim();
+    const population = Number(panel.querySelector("[data-fixed-base-population]").value);
+    const result = window.v39FixedMapPlacement.place(tile,{kind:"base",base:{...fixedBaseDraft,name,population}});
+    if (result.ok) window.activateV39FooterTab?.("settlement");
+    else panel.querySelector("[data-placement-level]").textContent = result.reason;
+    return;
+  }
   if (!getActiveFaction()?.villagePlacementMode) return;
   if (window.isV39MultiplayerSetup?.() === true) {
     const player = getActivePlayer();
@@ -805,6 +858,7 @@ function confirmPlacement(tile) {
 }
 
 function syncPlacementMode() {
+  if (window.isV39FixedMapEditing?.()) return;
   const faction = getActiveFaction();
   if (!faction) return;
   if (!faction.villagePlacementMode || pendingPlacement?.playerId !== getGameState()?.activePlayerId) {
@@ -826,11 +880,15 @@ function syncPlacementMode() {
   }
 }
 
-function handleFieldGenerated() {
+function handleFieldGenerated(event) {
   pendingPlacement = null;
   candidateContext = null;
   const preview = document.getElementById("v39-placement-preview");
   if (preview) preview.remove();
+  if (event?.detail?.mapData?.fixedMapEditing) {
+    hideBanner();
+    return;
+  }
   const state = getGameState();
   const player = getActivePlayer(state);
   const faction = player?.factionState;
@@ -864,6 +922,13 @@ function install() {
   }
 
   window.addEventListener("v39:tile-selected", handleTileSelected);
+  window.addEventListener("v39:footer-tab-changed", event => {
+    if (event.detail?.tab !== "placement") cancelFixedMapBasePlacement();
+  });
+  document.addEventListener("click",event => {
+    const button = event.target.closest?.("[data-fixed-map-base]");
+    if (button) beginFixedMapBasePlacement(button.dataset.fixedMapBase === "neutral");
+  });
   window.addEventListener('v39:initial-player-placement-complete',placePendingNpcBases);
   window.addEventListener("v39:game-state-changed", syncPlacementMode);
   window.addEventListener("v39:field-generated", handleFieldGenerated);
@@ -873,6 +938,7 @@ function install() {
   window.placeV39InitialBase = placeInitialBase;
   window.autoPlaceV39InitialBases = autoPlaceInitialBases;
   window.canPlaceV39InitialBase = canPlaceBaseOnTile;
+  window.cancelV39FixedMapBasePlacement = cancelFixedMapBasePlacement;
 
   if (window.__v39FieldRuntime?.mapData) {
     handleFieldGenerated();

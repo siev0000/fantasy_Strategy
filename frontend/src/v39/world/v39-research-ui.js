@@ -1,6 +1,8 @@
 import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import { V39_RESEARCH_EFFECT_FIELDS, V39_PENDING_RESEARCH_EFFECT_FIELDS } from "../../lib/v39-research-effects.js";
 import {resolveV39CityUnitModifiers} from '../../lib/v39-city-specialization-rules.js';
+import {collectV39WaitingSupportUnits} from '../../lib/v39-production-unit-support.js';
+import {getFactionSettlementById} from '../../lib/settlement-state.js';
 import {
   RESEARCH_CATEGORY_ORDER,
   getResearchCategoryMeta,
@@ -14,9 +16,10 @@ import {
   inspectResearchUnlock,
   normalizeResearchState,
   researchExperiencePerTurn,
-  researchLevelEfficiency,
+  RESEARCH_EXP_PER_TURN,
   requiredResearchExp,
   resolveCompletedResearchLevel,
+  resolveV39ResearchSettlement,
   selectResearch
 } from "../../lib/research-progress.js";
 import { grantV39ActionExperience, resolveV39ResearchExpReward } from "../../lib/v39-unit-experience.js";
@@ -31,7 +34,6 @@ let inspectedItemId = "";
 let renderedCategory = "";
 let researchView = "list";
 let renderedView = "";
-let mobileDetail = false;
 const boardScrollPositions = new Map();
 let renderedItemId = "";
 const compactResearch = () => window.matchMedia("(max-width:760px)").matches;
@@ -58,37 +60,17 @@ function unitName(unit) {
   return String(unit?.name ?? unit?.名前 ?? unit?.label ?? "名称未設定");
 }
 
-function formatExp(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "0";
-  return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
-}
-
-function researchUnitExpPerTurn(unit, categoryKey, item) {
-  if (!unit || !item) return 0;
-  const level = Math.max(1, Math.floor(Number(item?.level) || 1));
-  const required = requiredResearchExp(level);
-  const researchPerTurn = Math.max(0, Number(researchExperiencePerTurn(unit, categoryKey, researchTreeData, item,resolveV39CityUnitModifiers(window.getV39ActivePlayer?.(),unit))) || 0);
-  const remaining = Math.max(0, required - (Number(currentResearch().progress.targetExpMap[item.id]) || 0));
-  const progressRate = required > 0 ? Math.min(researchPerTurn, remaining) / required : 0;
-  return resolveV39ResearchExpReward({
-    researchLevel:level,
-    requiredResearchExp:required,
-    progressRate
-  }).rawExp;
-}
-
-function aliveUnits() {
-  return (activeFaction()?.units || []).filter(unit => Number(unit?.hp ?? unit?.HP ?? 1) > 0 && unitId(unit));
-}
-
-function defaultAssignee(categoryKey, research = currentResearch()) {
-  const assignedId = String(research.assignedUnitIdByCategory?.[categoryKey] || "");
-  const units = aliveUnits();
-  return units.find(unit => unitId(unit) === assignedId)
-    || units.find(unit => unitId(unit) === String(activeFaction()?.selectedUnitId || ""))
-    || units.slice().sort((a, b) => Number(b?.level ?? b?.Lv ?? 0) - Number(a?.level ?? a?.Lv ?? 0))[0]
-    || null;
+function researchSupport(player, waitingUnits, category, item) {
+  let unit = null;
+  let experience = RESEARCH_EXP_PER_TURN;
+  for (const candidate of waitingUnits || []) {
+    const amount = researchExperiencePerTurn(candidate,category,researchTreeData,item,resolveV39CityUnitModifiers(player,candidate));
+    if (amount > experience) {
+      experience = amount;
+      unit = candidate;
+    }
+  }
+  return {unit,experience,bonus:experience-RESEARCH_EXP_PER_TURN};
 }
 
 function categoryRows(categoryKey) {
@@ -112,7 +94,8 @@ function updateFactionResearch(nextResearch, reason) {
 function selectResearchForActivePlayer(categoryKey, itemId) {
   const category = normalizeResearchCategoryName(categoryKey);
   const research = currentResearch();
-  const result = selectResearch(research, category, itemId, defaultAssignee(category, research));
+  const base = resolveV39ResearchSettlement(activeFaction());
+  const result = selectResearch(research, category, itemId, null, researchTreeData, base?.settlementId);
   if (result.changed) {
     inspectedItemId = String(itemId || "");
     updateFactionResearch(result.state, "research-selection");
@@ -120,17 +103,6 @@ function selectResearchForActivePlayer(categoryKey, itemId) {
   }
   renderAll();
   return result;
-}
-
-function assignResearchUnit(categoryKey, assignedUnitId) {
-  const category = normalizeResearchCategoryName(categoryKey);
-  const unit = aliveUnits().find(row => unitId(row) === String(assignedUnitId || ""));
-  if (!unit) return false;
-  const research = currentResearch();
-  research.assignedUnitIdByCategory[category] = unitId(unit);
-  updateFactionResearch(research, "research-assignee");
-  renderAll();
-  return true;
 }
 
 function addExperienceForActivePlayer(categoryKey, amount) {
@@ -184,6 +156,12 @@ function itemDetails(item) {
   return discovery + construction + (details ? `<ul class="v39-research-details">${details}</ul>` : "");
 }
 
+function researchCardStatus(done, picked, unlocked) {
+  if (done) return {state:"completed", label:"完了"};
+  if (picked) return {state:"running", label:"研究中"};
+  return unlocked ? {state:"available", label:"研究可能"} : {state:"locked", label:"未解禁"};
+}
+
 function renderLevelList(research, selectedId) {
   return categoryRows(activeCategory).map(levelRow => {
     const cards = (levelRow.items || []).map(item => {
@@ -193,8 +171,8 @@ function renderLevelList(research, selectedId) {
       const active = item.id === inspectedItemId;
       const exp = Math.max(0, Number(research.progress.targetExpMap[item.id]) || 0);
       const required = requiredResearchExp(item.level);
-      const status = done ? "完了" : picked ? "研究中" : check.unlocked ? "研究可能" : "未解禁";
-      return `<button class="v39-research-item${active ? " active" : ""}${picked ? " picked" : ""}${done ? " completed" : ""}" data-research-item="${escapeHtml(item.id)}" data-research-locked="${!check.unlocked}" aria-pressed="${active}"><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${Math.min(100, exp / required * 100)}%"></i></span><small>${status} / ${exp}/${required}</small></button>`;
+      const status = researchCardStatus(done,picked,check.unlocked);
+      return `<button class="v39-research-item${active ? " active" : ""}${picked ? " picked" : ""}${done ? " completed" : ""}" data-research-status="${status.state}" data-research-item="${escapeHtml(item.id)}" data-research-locked="${!check.unlocked}" aria-pressed="${active}"><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${Math.min(100, exp / required * 100)}%"></i></span><small>${status.label} / ${exp}/${required}</small></button>`;
     }).join("");
     return `<section class="v39-research-level"><header><b>Lv${levelRow.level}</b><small>必要研究Lv ${Math.min(...levelRow.items.map(item => item.requiredResearchLevel))}</small></header><div>${cards}</div></section>`;
   }).join("");
@@ -214,8 +192,8 @@ function renderFlow(research, selectedId) {
     const item=node.item, check=inspectResearchUnlock(research,item.id);
     const done=isResearchCompleted(research,activeCategory,item.level,item.id), picked=item.id===selectedId;
     const exp=Number(research.progress.targetExpMap[item.id])||0, required=requiredResearchExp(item.level);
-    const status=done?"完了":picked?"研究中":check.unlocked?"研究可能":"未解禁";
-    return `<button class="v39-research-item v39-research-node${done?" completed":""}${picked?" picked":""}${item.id===inspectedItemId?" active":""}${check.unlocked?"":" locked"}" data-research-item="${escapeHtml(item.id)}" data-research-locked="${!check.unlocked}" aria-pressed="${item.id===inspectedItemId}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px" title="${escapeHtml(check.reasons.join(" / ") || status)}"><small class="v39-research-node-status">Lv${item.level} <b>${status}</b></small><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${Math.min(100,exp/required*100)}%"></i></span><small>${exp} / ${required} EXP</small></button>`;
+    const status=researchCardStatus(done,picked,check.unlocked);
+    return `<button class="v39-research-item v39-research-node${done?" completed":""}${picked?" picked":""}${item.id===inspectedItemId?" active":""}" data-research-status="${status.state}" data-research-item="${escapeHtml(item.id)}" data-research-locked="${!check.unlocked}" aria-pressed="${item.id===inspectedItemId}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px" title="${escapeHtml(check.reasons.join(" / ") || status.label)}"><small class="v39-research-node-status">Lv${item.level} <b>${status.label}</b></small><strong>${escapeHtml(item.name)}</strong><span class="v39-research-item-progress"><i style="width:${Math.min(100,exp/required*100)}%"></i></span><small>${exp} / ${required} EXP</small></button>`;
   }).join("");
   const edges=flow.edges.map(({from,to})=>{
     const x1=from.x+from.width/2,y1=from.y+from.height,x2=to.x+to.width/2,y2=to.y;
@@ -257,27 +235,20 @@ function renderModal() {
   }
   viewSelect.value = researchView;
   body.dataset.researchLayoutMode = researchView;
-  body.dataset.researchPanel = mobileDetail ? "detail" : "tree";
 
   const research = currentResearch();
   if (!researchTreeData.categories[activeCategory]) activeCategory = RESEARCH_CATEGORY_ORDER.find(key => researchTreeData.categories[key]) || "";
   if (!inspectedItemId || !categoryRows(activeCategory).some(row => (row.items || []).some(item => item.id === inspectedItemId))) {
     inspectedItemId = firstInspectableId(activeCategory, research);
   }
-  const assignee = defaultAssignee(activeCategory, research);
   const inspected = categoryRows(activeCategory).flatMap(row => row.items || []).find(item => item.id === inspectedItemId) || null;
   const selectedId = String(research.selection?.[activeCategory] || "");
-  const selectedResearchItem = categoryRows(activeCategory)
-    .flatMap(row => row.items || [])
-    .find(item => item.id === selectedId) || null;
-  const expPreviewItem = selectedResearchItem || inspected;
   const selected = inspected?.id === selectedId;
   const completed = inspected ? isResearchCompleted(research, activeCategory, inspected.level, inspected.id) : false;
   const unlockCheck=inspectResearchUnlock(research,inspected?.id);
   const unlocked=unlockCheck.unlocked;
   const currentExp = inspected ? Math.max(0, Number(research.progress.targetExpMap?.[inspected.id]) || 0) : 0;
   const requiredExp = requiredResearchExp(inspected?.level || 1);
-  const progressRatio = Math.min(100, Math.round((currentExp / Math.max(1, requiredExp)) * 100));
 
   const categoryButtons = RESEARCH_CATEGORY_ORDER.filter(key => researchTreeData.categories[key]).map(key => {
     const meta = getResearchCategoryMeta(key);
@@ -289,15 +260,15 @@ function renderModal() {
   const levels = researchView === "flow" ? renderFlow(research, selectedId) : renderLevelList(research, selectedId);
 
   const actionLabel = completed ? "研究完了" : (selected ? "研究中" : "研究として選択");
-  const assigneeOptions = aliveUnits().map(unit => {
-    const unitLevel = Number(unit?.level ?? unit?.Lv ?? 0);
-    return `<option value="${escapeHtml(unitId(unit))}" ${unitId(unit) === unitId(assignee) ? "selected" : ""}>${escapeHtml(unitName(unit))} Lv${unitLevel}</option>`;
-  }).join("");
-  const perTurn = assignee ? researchExperiencePerTurn(assignee, activeCategory, researchTreeData, expPreviewItem,resolveV39CityUnitModifiers(window.getV39ActivePlayer?.(),assignee)) : 0;
-  const assigneeUnitExpPerTurn = assignee ? researchUnitExpPerTurn(assignee, activeCategory, expPreviewItem) : 0;
-  const status = completed ? '完了' : selected ? '研究中' : unlocked ? '研究可能' : '未解禁';
+  const state = window.getV39GameState?.();
+  const player = window.getV39ActivePlayer?.();
+  const selectedBase = resolveV39ResearchSettlement(player?.factionState);
+  const baseId = (selected && research.settlementIdByCategory[activeCategory]) || selectedBase?.settlementId;
+  const base = baseId && getFactionSettlementById(player?.factionState,baseId);
+  const waiting = state && baseId ? collectV39WaitingSupportUnits(player,state,Number(state.timeline?.turnNumber)).get(baseId) : [];
+  const support = researchSupport(player,waiting,activeCategory,inspected);
   const conditions = inspected ? `<section class="v39-research-requirement"><b>解禁条件</b><div class="${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? 'met' : 'unmet'}">${unlockCheck.currentLevel >= unlockCheck.requiredLevel ? '✓' : '×'} 研究Lv ${unlockCheck.requiredLevel} が必要（現在Lv${unlockCheck.currentLevel}）</div>${unlockCheck.prerequisites.map(row=>`<div class="${row.completed ? 'met' : 'unmet'}">${row.completed ? '✓' : '×'} ${escapeHtml(row.name)} <b>${row.completed ? '完了' : '未完了'}</b></div>`).join('')}${unlockCheck.prerequisites.length ? '' : '<div class="met">✓ 前提研究なし</div>'}${(inspected.prerequisiteErrors || []).map(error=>`<div class="unmet">${escapeHtml(error)}</div>`).join('')}</section>` : '';
-  updateV39RetainedMarkup(body, `<div class="v39-research-overview"><nav class="v39-research-categories">${categoryButtons}</nav><p class="v39-research-guide">${researchView === 'flow' ? '上から下へ研究が進みます。矢印は前提研究です。' : 'Lv別の研究一覧です。'} 項目を選ぶと効果と条件を確認できます。</p></div><div class="v39-research-layout"><div class="v39-research-board">${levels || '研究データがありません。'}</div><aside class="v39-research-detail"><div class="v39-research-detail-content"><button class="v39-research-back" data-research-back>← 研究一覧へ戻る</button>${inspected ? `<div class="v39-research-detail-head"><div><small>${getResearchCategoryMeta(activeCategory).label} ・ Lv${inspected.level} ・ ${status}</small><b>${escapeHtml(inspected.name)}</b></div><strong>${completed ? '100%' : `${progressRatio}%`}</strong></div><p>${escapeHtml(inspected.desc || '説明なし')}</p><div class="v39-research-large-progress"><i style="width:${progressRatio}%"></i><span>${currentExp} / ${requiredExp} EXP</span></div>${conditions}${itemDetails(inspected)}` : '研究項目を選択してください。'}<label class="v39-research-assignee"><span>研究担当</span><select data-research-assignee>${assigneeOptions || '<option value="">担当可能ユニットなし</option>'}</select><small>研究EXP +${perTurn}/ターン</small></label><details class="v39-research-efficiency"><summary>研究速度の内訳</summary><p>推奨ユニットLv ${inspected?.recommendedUnitLevel || '-'}（解禁条件ではありません）<br>担当Lv効率 ${Math.round(researchLevelEfficiency(assignee, inspected) * 100)}%<br>短縮技能 ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || '-')}<br>担当ユニットEXP +${formatExp(assigneeUnitExpPerTurn)}/ターン</p></details></div><footer class="v39-research-detail-footer"><button class="v39-research-select" data-select-research ${(!unlocked || !assignee || completed || selected) ? 'disabled' : ''}>${!unlocked && !completed && !selected ? '条件未達成' : actionLabel}</button></footer></aside></div>`, {preserveInput:true,preserveDetails:()=>preserveScroll && renderedItemId === inspectedItemId});
+  updateV39RetainedMarkup(body, `<div class="v39-research-overview"><nav class="v39-research-categories">${categoryButtons}</nav><p class="v39-research-guide">${researchView === 'flow' ? '上から下へ研究が進みます。矢印は前提研究です。' : 'Lv別の研究一覧です。'} 項目を選ぶと効果と条件を確認できます。</p></div><div class="v39-research-layout"><div class="v39-research-board">${levels || '研究データがありません。'}</div><aside class="v39-research-detail"><div class="v39-research-detail-content">${inspected ? `<div class="v39-research-detail-head"><div class="v39-research-title-line"><b>${escapeHtml(inspected.name)}</b><strong>${completed ? requiredExp : currentExp}/${requiredExp} EXP</strong></div></div><p>${escapeHtml(inspected.desc || '説明なし')}</p>${conditions}${itemDetails(inspected)}` : '研究項目を選択してください。'}<div class="v39-research-support"><span>${escapeHtml(base?.name || (baseId ? "研究拠点" : "拠点未配置"))}</span><small>基本 +${RESEARCH_EXP_PER_TURN} / 待機支援 +${support.bonus} EXP/T</small></div><details class="v39-research-efficiency"><summary>研究速度の内訳</summary><p>短縮技能 ${escapeHtml(researchTreeData.timeReductionSkills?.[activeCategory] || '-')}<br>支援ユニット ${support.unit ? escapeHtml(unitName(support.unit)) : "なし"}</p></details></div><footer class="v39-research-detail-footer"><button class="v39-research-select" data-select-research ${(!unlocked || completed || selected) ? 'disabled' : ''}>${!unlocked && !completed && !selected ? '条件未達成' : actionLabel}</button></footer></aside></div>`, {preserveInput:true,preserveDetails:()=>preserveScroll && renderedItemId === inspectedItemId});
   const board = body.querySelector(".v39-research-board");
   const detail = body.querySelector(".v39-research-detail-content");
   if (board) { board.scrollLeft = scrollLeft; board.scrollTop = scrollTop; }
@@ -318,7 +289,6 @@ function openCategory(categoryKey) {
     : Object.keys(researchTreeData.categories).find(key=>categoryRows(key).some(row=>row.items.some(item=>item.id.startsWith(`${normalized}:`))));
   if (!researchTreeData.categories[category]) return;
   activeCategory = category;
-  mobileDetail = false;
   inspectedItemId = firstInspectableId(category);
   renderAll();
   document.getElementById("researchModal")?.classList.add("open");
@@ -326,11 +296,6 @@ function openCategory(categoryKey) {
 
 function installEvents() {
   document.addEventListener("click", event => {
-    if (event.target.closest?.("[data-research-back]")) {
-      mobileDetail = false;
-      renderModal();
-      return;
-    }
     const railButton = event.target.closest?.("[data-v39-research-category]");
     if (railButton) {
       event.preventDefault();
@@ -340,7 +305,6 @@ function installEvents() {
     const categoryButton = event.target.closest?.("[data-research-category]");
     if (categoryButton) {
       activeCategory = normalizeResearchCategoryName(categoryButton.dataset.researchCategory);
-      mobileDetail = false;
       inspectedItemId = firstInspectableId(activeCategory);
       renderModal();
       return;
@@ -348,7 +312,6 @@ function installEvents() {
     const itemButton = event.target.closest?.("[data-research-item]");
     if (itemButton) {
       inspectedItemId = String(itemButton.dataset.researchItem || "");
-      mobileDetail = compactResearch();
       renderModal();
       return;
     }
@@ -357,11 +320,9 @@ function installEvents() {
   document.addEventListener("change", event => {
     if (event.target.matches?.("[data-research-view]")) {
       researchView = event.target.value === "flow" ? "flow" : "list";
-      mobileDetail = false;
       renderModal();
       return;
     }
-    if (event.target.matches?.("[data-research-assignee]")) assignResearchUnit(activeCategory, event.target.value);
   });
   window.addEventListener("v39:game-state-changed", renderAll);
   window.addEventListener("resize", renderModal);
@@ -379,20 +340,23 @@ function advanceAllPlayerResearch() {
     let research = normalizeResearchState(player?.factionState?.research);
     if (research.lastProcessedTurn >= turnNumber) return player;
     let units = player?.factionState?.units || [];
+    const waiting = collectV39WaitingSupportUnits(player,state,turnNumber);
+    const selectedBase = resolveV39ResearchSettlement(player.factionState);
     const activityLog = [...(player.factionState.activityLog || [])];
     for (const category of Object.keys(research.selection)) {
-      const assignedId = String(research.assignedUnitIdByCategory?.[category] || "");
-      const unit = units.find(row => unitId(row) === assignedId && Number(row?.hp ?? row?.HP ?? 1) > 0 && (row.state || row.statusName) !== "死亡");
-      if (!unit) continue;
+      const baseId = research.settlementIdByCategory[category] || selectedBase?.settlementId;
+      if (baseId) research.settlementIdByCategory[category] = baseId;
       const itemId = research.selection[category];
       const found = findResearchItem(itemId);
       const beforeExp = Number(research.progress.targetExpMap[itemId]) || 0;
-      const result = addResearchExperience(research, category, researchExperiencePerTurn(unit, category, researchTreeData, found?.item,resolveV39CityUnitModifiers(player,unit)));
+      const {unit,experience} = researchSupport(player,waiting.get(baseId),category,found?.item);
+      const result = addResearchExperience(research, category, experience);
       research = result.state;
-      if (result.changed && found) {
+      if (result.changed && found && unit) {
+        const assignedId = unitId(unit);
         const progress = (research.progress.targetExpMap[itemId] - beforeExp) / requiredResearchExp(found.level);
         const reward = resolveV39ResearchExpReward({ researchLevel:found.level, requiredResearchExp:requiredResearchExp(found.level), progressRate:progress });
-        const award = grantV39ActionExperience(unit, "research", reward.rawExp);
+        const award = grantV39ActionExperience(units.find(row => unitId(row) === assignedId) || unit, "research", reward.rawExp);
         units = units.map(row => unitId(row) === assignedId ? award.unit : row);
         activityLog.push({ type:"research-experience", turn:turnNumber, unitId:assignedId,
           message:`研究: ${found.item.name || itemId} / ${unitName(unit)} EXP +${award.amount}${award.leveledUp ? ` / Lv${award.toLevel}` : ""}` });
@@ -434,7 +398,6 @@ function installStyles() {
 .v39-research-connections>path{fill:none;stroke:#80a6ae;stroke-width:2}
 .v39-research-connections>path.complete{stroke:#73cf9a;stroke-width:3}
 .v39-research-node{position:absolute;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column}
-.v39-research-node.locked{border-style:dashed;background:#162127}
 .v39-research-node-status{display:flex!important;justify-content:space-between;gap:5px}
 .v39-research-node-status b{padding:2px 5px;border-radius:4px;background:#293b42;color:#dce4e4;font-size:var(--font-secondary)}
 .v39-research-node strong{margin-top:3px;overflow-wrap:anywhere}
@@ -448,32 +411,30 @@ function installStyles() {
 .v39-research-item small{display:block;margin-top:4px;font-size:var(--font-secondary);color:#b9c5c8;line-height:1.4}
 .v39-research-item-progress{display:block;height:4px;margin-top:5px;background:#091114;border:1px solid #435158;border-radius:8px;overflow:hidden}
 .v39-research-item-progress i{display:block;height:100%;background:#d1aa61}
-.v39-research-item.active{border:2px solid #f1d080;padding:5px;background:#2b2a20}
-.v39-research-item.picked{box-shadow:inset 0 0 0 2px #78c894}
-.v39-research-item.completed{background:#173a2a;border-color:#63c184;color:#e7fff0}
-.v39-research-item.completed .v39-research-item-progress i{background:#62d18d}
+.v39-research-item[data-research-status="locked"]{background:#20272a;border-color:#59636a;color:#d2d8db}
+.v39-research-item[data-research-status="available"]{background:#163447;border-color:#4b8cab;color:#e5f5ff}
+.v39-research-item[data-research-status="available"] small{color:#b8e0f4}
+.v39-research-item[data-research-status="running"]{background:#3c3019;border-color:#c7a856;color:#fff1be}
+.v39-research-item[data-research-status="running"] small{color:#f4d486}
+.v39-research-item[data-research-status="completed"]{background:#1c2c28;border-color:#546f66;color:#d5e5df}
+.v39-research-item[data-research-status="completed"] .v39-research-item-progress i{background:#719d8e}
+.v39-research-item.active{outline:2px solid #eaf6fb;outline-offset:-2px}
 .v39-research-detail{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0;min-width:0;overflow:hidden;border:1px solid #44555b;border-radius:9px;background:#142126;color:#dce4e4}
 .v39-research-detail-content{min-height:0;overflow:auto;padding:14px;overscroll-behavior:contain}
-.v39-research-detail-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.v39-research-title-line{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .v39-research-detail-head b{display:block;font-size:var(--font-heading);color:#fff;line-height:1.5;overflow-wrap:anywhere}
-.v39-research-detail-head small{display:block;margin-bottom:6px;font-size:var(--font-secondary);color:#aebabc}
-.v39-research-detail-head>strong{font-size:var(--font-heading);color:#e6c66e}
+.v39-research-title-line>strong{flex-shrink:0;white-space:nowrap;font-size:var(--font-secondary);color:#e6c66e}
 .v39-research-detail p{font-size:var(--font-body);line-height:1.7;overflow-wrap:anywhere}
-.v39-research-large-progress{position:relative;height:24px;margin:12px 0;background:#091216;border:1px solid #53656a;border-radius:7px;overflow:hidden}
-.v39-research-large-progress i{display:block;height:100%;background:#9d7839}
-.v39-research-large-progress span{position:absolute;inset:0;display:grid;place-items:center;font-size:var(--font-secondary);font-weight:900;color:#fff;text-shadow:0 1px 2px #000}
 .v39-research-requirement{display:grid;gap:8px;padding:12px;margin:14px 0;border:1px solid #405057;border-radius:7px;font-size:var(--font-body);line-height:1.6}
 .v39-research-requirement .met{color:#91d5b0}
 .v39-research-requirement .unmet{color:#f0c58b}
-.v39-research-assignee{display:grid;gap:7px;margin-top:18px;padding-top:12px;border-top:1px solid #405057;font-size:var(--font-body);font-weight:800}
-.v39-research-assignee select{width:100%;min-width:0;min-height:40px;background:#0c171b;border:1px solid #52646a;border-radius:5px;color:#e5eded;padding:5px;font-size:var(--font-body)}
-.v39-research-assignee small{font-size:var(--font-body);color:#77ce96}
+.v39-research-support{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px;margin-top:12px;padding-top:8px;border-top:1px solid #405057;font-size:var(--font-body);font-weight:800}
+.v39-research-support small{font-size:var(--font-secondary);color:#77ce96}
 .v39-research-efficiency{margin-top:12px;font-size:var(--font-secondary);color:#aebabc}
 .v39-research-efficiency summary{cursor:pointer;padding:8px 0}
 .v39-research-detail-footer{padding:10px 14px;background:#142126;border-top:1px solid #405057}
 .v39-research-select{width:100%;min-height:44px;border:1px solid #c7a856;border-radius:7px;background:#3b321d;color:#fff1be;font-size:var(--font-body);font-weight:900}
 .v39-research-select:disabled{color:#bfc8c9;background:#263034;border-color:#53646a}
-.v39-research-back{display:none}
 .v39-research-discovery-targets{padding:10px;border:1px solid #405057;border-radius:7px;background:#152226;margin:10px 0;font-size:var(--font-body)}
 .v39-research-discovery-targets p{margin:6px 0;color:#a8dec4}
 .v39-research-discovery-targets small{font-size:var(--font-secondary);line-height:1.6;color:#aebabc;display:block}
@@ -516,13 +477,9 @@ function installStyles() {
 .v39-research-categories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 .v39-research-category{min-height:34px;gap:4px;font-size:var(--font-body)}
 .v39-research-category small{display:none}
-.v39-research-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
-.v39-research-detail{display:none}
-#researchModal [data-research-panel="detail"]{grid-template-rows:minmax(0,1fr)}
-#researchModal [data-research-panel="detail"] .v39-research-overview{display:none}
-#researchModal [data-research-panel="detail"] .v39-research-board{display:none}
-#researchModal [data-research-panel="detail"] .v39-research-detail{display:grid}
-.v39-research-back{display:block;min-height:40px;margin-bottom:16px;padding:7px 12px;background:#20333a;border:1px solid #607c85;border-radius:6px;color:#dfedef;font-size:var(--font-body)}
+.v39-research-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.v39-research-detail-content{padding:10px}
+.v39-research-detail-footer{padding:6px 10px}
 #researchModal [data-research-layout-mode="list"] .v39-research-board{display:block}
 .v39-research-level{margin-bottom:12px}
 }
@@ -538,6 +495,5 @@ window.openV39Research = openCategory;
 window.getV39ResearchState = currentResearch;
 window.selectV39Research = selectResearchForActivePlayer;
 window.addV39ResearchExperience = addExperienceForActivePlayer;
-window.assignV39ResearchUnit = assignResearchUnit;
 
 export { addExperienceForActivePlayer, openCategory, selectResearchForActivePlayer };

@@ -24,10 +24,18 @@ try{
       window.activateV39FooterTab('tile');window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x:6,y:6}}));
       const current=window.getV39GameState();return {first:first.settlementId,before:JSON.stringify(current.players),playerId:p.id};
     });
-    await page.locator('#footTile [data-land-construction-open]').click();
+    const openCatalog=async()=>{
+      await page.locator('#v39-land-tab-facilities').click();
+      await page.locator('#footTile [data-land-construction-open]').click();
+    };
+    const selectTile=(x,y)=>page.evaluate(({x,y})=>window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x,y}})),{x,y});
+    await openCatalog();
     const panel=page.locator('#v39-land-construction');assert(await panel.isVisible());
     assert.equal(await page.locator('#buildModal').evaluate(el=>el.classList.contains('open')),false);
     const farm=panel.locator('[data-land-build-facility="農場"]');await farm.click();
+    assert.equal(await panel.locator('[data-land-construction-start]').isDisabled(),true,'choose the facility before choosing a site');
+    assert.equal(await page.evaluate(()=>window.getV39LandConstructionPreview()),null);
+    await selectTile(6,6);
     await page.waitForFunction(()=>window.getV39LandConstructionPreview()?.facilityName==='農場');
     assert.match(await panel.locator('.v39-land-build-detail').innerText(),/建築先拠点/);
     assert.match(await panel.locator('.v39-land-build-detail').innerText(),/維持費/);
@@ -50,7 +58,7 @@ try{
     await panel.locator('[data-land-construction-back]').click();
     assert.equal(await panel.count(),0);assert.equal(await page.evaluate(()=>window.getV39LandConstructionPreview()),null);
     assert.deepEqual(await page.evaluate(()=>{const d=window.getV39SelectedLandDetail();return [d.x,d.y];}),[6,6]);
-    await page.locator('#footTile [data-land-construction-open]').click();await farm.click();
+    await openCatalog();await farm.click();await selectTile(6,6);
     await panel.locator('[data-land-construction-start]').click();
     assert.equal(await panel.count(),0);
     const result=await page.evaluate(()=>{
@@ -61,7 +69,7 @@ try{
     assert.equal(result.selected,setup.first,'building must not change the selected settlement');
     assert.equal(result.queue.length,1);assert.equal(result.queue[0].tileKey,'6,6');assert.equal(result.queue[0].facilityName,'農場');
     assert(result.wood<10000);assert.equal(result.firstQueue.length,0);
-    await page.locator('#footTile [data-land-construction-open]').click();await farm.click();
+    await openCatalog();await farm.click();await selectTile(6,6);
     assert.equal(await panel.locator('[data-land-construction-start]').isDisabled(),true,'second facility on same tile rejected');
     await page.evaluate(()=>window.activateV39FooterTab('squad'));
     assert.equal(await page.evaluate(()=>window.getV39LandConstructionPreview()),null);
@@ -70,7 +78,8 @@ try{
     assert.equal(await page.locator('#buildModal #v39-development').count(),1);
     await page.keyboard.press('Escape');
     await page.evaluate(()=>{window.activateV39FooterTab('tile');window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x:0,y:0}}));});
-    await page.locator('#footTile [data-land-construction-open]').click();assert.equal(await panel.count(),0,'foreign/empty tile does not open builder');
+    await openCatalog();await farm.click();await selectTile(0,0);
+    assert(await panel.locator('[data-land-construction-start]').isDisabled(),'foreign/empty tile cannot start construction');
     await page.evaluate(async()=>{
       window.startV39CallTest();window.setV39RitualTestStage(1);await window.waitForV39MapRenderSettled();
       const s=window.getV39GameState(),p=s.players.find(row=>row.id===s.activePlayerId),f=p.factionState;
@@ -78,7 +87,7 @@ try{
       window.setV39GameState({players:s.players.map(row=>row.id!==p.id?row:{...row,factionState:{...f,settlements:f.settlements.map(row=>row.settlementId!==base.settlementId?row:{...row,cityLevels:{...row.cityLevels,魔法Lv:10}})}})});
       const [x,y]=tileKey.split(',').map(Number);window.activateV39FooterTab('tile');window.dispatchEvent(new CustomEvent('v39:tile-selected',{detail:{x,y}}));
     });
-    await page.locator('#footTile [data-land-construction-open]').click();
+    await page.evaluate(()=>window.openV39LandConstruction());
     assert.equal(await panel.locator('[data-land-build-facility="火の儀式場II"]').count(),1,'occupied facility exposes its direct upgrade');
     assert.equal(await panel.locator('[data-land-build-facility="農場"]').count(),0,'occupied facility does not offer unrelated replacements');
     await panel.locator('[data-land-build-facility="火の儀式場II"]').click();

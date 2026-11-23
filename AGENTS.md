@@ -6,17 +6,23 @@ Before changing game behavior, read `docs/README.md` and follow its documentatio
 
 When changing game behavior or UI presentation, agree on the exact specification and examples with the user before editing. Start implementation after the user confirms the specification.
 
+The user verifies screen appearance and on-screen interactions. Skip browser UI checks, screenshot capture or review, and device-width checks unless the user explicitly requests them. Use relevant builds, lint checks, and non-UI tests for implementation verification.
+
 For new combat-effect test skills, add the test actions to the existing スキル動作確認 units through `config/v39-skill-trigger-test.json` by default.
 
 Before adding, reorganizing, or archiving documentation, read `docs/DOCUMENTATION_RULES.md`. Update an existing subsystem document instead of creating parallel current-spec memos. Regenerate `docs/INDEX.md` with `npm run docs:index` and validate with `npm run check:docs` after moving documents.
+
+Record Codex implementation, investigation, and verification tasks in `docs/ALL_TASKS_UNIFIED.md` or the linked issue. ChatGPT proposals and requests awaiting handoff belong in `docs/tasks/CHATGPT_TASKS.md`. See `docs/CHATGPT_GUIDE.md` for how to hand off an approved request and find its specification.
 
 When changing spreadsheet-managed game data, read `docs/SPREADSHEET_DATA_WORKFLOW.md` before editing generated JSON. For these datasets, `@game_data` is the editing source and `data/source/export/json` is generated runtime data. Do not preserve legacy JSON-only fields that no longer exist in the spreadsheet.
 
 The user authors and balances skills, affixes, equipment, classes, and races in `@game_data`. Follow the input guide in `docs/SPREADSHEET_DATA_WORKFLOW.md` when checking notation or importing data on request. Edit the source sheet only when the user explicitly requests specific edits.
 
-Before planning, creating, or editing enchantments/affixes (`付与`), read the `付与データ・命名・効果運用ルール` section of `docs/SPREADSHEET_DATA_WORKFLOW.md`. Re-read the live `@game_data` tabs `付与` and `用語辞書` (columns A:B) and check actual effect semantics before assigning any `初期効果`. Do not invent `効果:...` tokens, substitute similar-but-different effects, or restore rows/values the user deleted. The sheet is the editing source, and changes to the sheet are not proof of converter/runtime implementation.
+Use the latest XLSX export and the existing local converter for spreadsheet-managed data by default. Limit conversion to the requested sheets when possible, and inspect the converter report and generated JSON diff. Read live cells only when the task requires live-only information or a fresh XLSX export is unavailable. Limit those reads to the needed range.
 
-When creating a new class or intentionally redesigning a class skill layout in `CS` / `クラス`, read `docs/CLASS_SKILL_RULES.md` before writing to the spreadsheet. Confirm the fixed A/P count and level placement before editing. The default layout is `Lv1 A / Lv3 P / Lv5 A / Lv7 P / Lv9 A / Lv10 P` (A3 / P3). Do not infer a different layout from legacy class rows alone. Exceptions require an explicit current user instruction, a current subsystem rule, or a confirmed implementation-compatibility reason. After editing, read back the `CS` rows and `クラス` Skill1-Skill10 values before reporting completion.
+Before planning, creating, or editing enchantments/affixes (`付与`), read the `付与データ・命名・効果運用ルール` section of `docs/SPREADSHEET_DATA_WORKFLOW.md`. Check the latest export of the `付与` and `用語辞書` tabs (columns A:B) and confirm actual effect semantics before assigning any `初期効果`. Do not invent `効果:...` tokens, substitute similar-but-different effects, or restore rows/values the user deleted. The sheet is the editing source, and changes to the sheet are not proof of converter/runtime implementation.
+
+When creating a new class or intentionally redesigning a class skill layout in `CS` / `クラス`, read `docs/CLASS_SKILL_RULES.md` before writing to the spreadsheet. Check which class levels unlock skills for each unit type and how the selected active and passive skills support the class role. After editing, read back the `CS` rows and `クラス` Skill1-Skill10 values before reporting completion.
 
 When unit portrait / unit image generation or editing, read `docs/UNIT_PORTRAIT_GENERATION_RULES.md` before generating any image. Do not substitute older side-scroller pixel-art rules unless the user explicitly asks for side-scroller or pixel-art output.
 

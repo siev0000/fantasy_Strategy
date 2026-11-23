@@ -60,19 +60,18 @@ try {
     assert.equal(await page.locator('#v39-unit-training-level').inputValue(),"3");
     await page.locator('#v39-unit-mode').selectOption('army');
     assert.doesNotMatch(await page.locator('#v39-unit-mode').textContent(), /必要軍事Lv/);
-    await page.locator('#v39-unit-class').selectOption(entry.className);
+    await page.locator('#v39-unit-class-picker').click();
+    await page.locator(`[data-v39-class-option="${entry.className}"]`).click();
+    await page.getByRole('button',{name:'このクラスで決定',exact:true}).click();
     const ogre=await page.evaluate(()=>window.getV39ActiveFactionState().units.find(u=>u.name==="被験者"));
     assert.equal(ogre.className,"ウォーリアー");
     assert.notEqual(ogre.isMob,true);
-    assert.equal(await page.locator(`[data-v39-instructor-id="${ogre.id}"]`).count(),1);
-    const mismatchedIds=await page.evaluate(()=>window.getV39ActiveFactionState().units.filter(u=>u.className!=="ウォーリアー").map(u=>u.id));
-    for(const id of mismatchedIds) assert.equal(await page.locator(`[data-v39-instructor-id="${id}"]`).count(),0);
+    assert.equal(await page.locator('[data-v39-instructor-id]').count(),0);
     assert.equal(await page.locator('#v39-unit-training-level').inputValue(),"11");
     assert.equal(await page.locator('#v39-unit-training-level').getAttribute('min'),"11");
     await page.locator('#v39-unit-training-level').fill("12");
     await page.locator('#v39-unit-training-level').dispatchEvent('change');
     assert.match(await page.locator('.v39-unit-create-overview').textContent(),/総合Lv12/);
-    assert.match(await page.locator('.v39-unit-create-growth').textContent(),/ウォーリアーLv2/);
     await page.locator('#v39-unit-training-level').fill("11");
     await page.locator('#v39-unit-training-level').dispatchEvent('change');
     assert.match(await page.locator('.v39-unit-create-summary').textContent(), /軍事研究必要Lv4 \/ 現在Lv4/);
@@ -81,34 +80,23 @@ try {
     const expectedLimit=await page.locator('.v39-unit-create-summary').evaluate(el=>el.textContent.match(/既存・訓練中 (\d+) \/ 上限 (\d+)/).slice(1).map(Number));
     assert.equal(await page.locator('#v39-create-tab .v39-unit-count-limit').textContent(),`${expectedLimit[0]}/${expectedLimit[1]}`);
     assert.equal(await page.locator('#v39-unit-count-remaining').count(),0);
-    const labels=await page.evaluate(()=>({
-      race:document.querySelector('#v39-unit-race').closest('label').querySelector('b').textContent,
-      job:document.querySelector('#v39-unit-class').closest('label').querySelector('b').textContent,
-      raceCount:document.querySelector('#v39-unit-race').options.length,
-      upperCount:[...document.querySelector('#v39-unit-class').options].filter(o=>o.textContent.includes('[兵舎]')).length,
-      jobCount:document.querySelector('#v39-unit-class').options.length
-    }));
-    assert.equal(labels.race,`${labels.raceCount}種`);
-    assert.equal(labels.job,`基${labels.jobCount-labels.upperCount} 上${labels.upperCount}`);
-    assert.match(await page.locator('.v39-unit-create-overview').textContent(), /今回の消費 1ユニット分/);
-    assert.equal(await page.locator('.v39-unit-create-extra[open]').count(),0);
-    assert.deepEqual(await page.locator('.v39-unit-create-growth > div').allTextContents(),
-      ["種族 只人Lv0", "クラス1 ファイターLv10", "クラス2 ウォーリアーLv1"]);
+    assert.equal(await page.locator('#v39-unit-race-picker').textContent(),'只人');
+    assert.equal(await page.locator('#v39-unit-class-picker').textContent(),entry.className);
+    const consumption = page.locator('.v39-unit-create-consumption');
+    assert.match(await consumption.textContent(), /今回の消費 1ユニット分/);
+    assert.ok(await consumption.locator('.v39-unit-create-cost [role="img"][aria-label] .v39-resource-item-sprite').count());
+    assert.equal(await page.locator('.v39-unit-training .v39-screen-help[open]').count(),0);
+    assert.equal(await page.locator('.v39-unit-create-growth').count(),0);
     const controls=await page.evaluate(()=>{
-      const race=document.querySelector('#v39-unit-race').getBoundingClientRect();
-      const job=document.querySelector('#v39-unit-class').getBoundingClientRect();
-      return {aligned:Math.abs(race.left-job.left)<1,vertical:job.top>race.bottom};
+      const race=document.querySelector('#v39-unit-race-picker').getBoundingClientRect();
+      const job=document.querySelector('#v39-unit-class-picker').getBoundingClientRect();
+      const preview=document.querySelector('.v39-unit-create-overview').getBoundingClientRect();
+      const requirements=document.querySelector('.v39-unit-create-requirements').getBoundingClientRect();
+      return {aligned:Math.abs(race.left-job.left)<1,vertical:job.top>race.bottom,
+        columns:preview.left>race.right,requirementsAbove:requirements.bottom<=preview.top};
     });
-    assert.deepEqual(controls,{aligned:true,vertical:true});
-    assert.equal(await page.locator('.v39-unit-create-grid .v39-instructor-picker').count(),1);
-    assert.equal(await page.locator('.v39-unit-training .v39-instructor-picker').count(),0);
-    const instructorPlacement=await page.evaluate(()=>{
-      const picker=document.querySelector('.v39-instructor-picker').getBoundingClientRect();
-      const count=document.querySelector('#v39-unit-count').getBoundingClientRect();
-      const overview=document.querySelector('.v39-unit-create-overview').getBoundingClientRect();
-      return picker.top>=count.bottom && (picker.bottom<=overview.top||picker.right<=overview.left);
-    });
-    assert.equal(instructorPlacement,true);
+    assert.deepEqual(controls,{aligned:true,vertical:true,columns:true,requirementsAbove:true});
+    assert.equal(await page.locator('.v39-instructor-picker').count(),0);
     assert.equal(await page.locator('#v39-unit-create-confirm').isEnabled(),true);
     await page.locator('#v39-unit-count').fill("2");
     await page.locator('#v39-unit-count').dispatchEvent("change");
@@ -119,28 +107,24 @@ try {
     const estimatedTurns=await page.locator('.v39-unit-training').evaluate(el=>el.textContent.match(/訓練時間 ⌛(\d+)/)[1]);
     assert.equal(await page.locator('#v39-unit-create-confirm').textContent(),`訓練開始⌛${estimatedTurns}`);
     await page.screenshot({path:`output/web-game/facility-recruitment/${width}-create.png`});
-    await page.locator('.v39-unit-create-overview .v39-unit-create-extra summary').click();
-    assert.match(await page.locator('.v39-unit-create-overview .v39-unit-create-extra').textContent(),/HPは単体の.*倍 \/ 攻撃は.*回/);
-    await page.locator('.v39-unit-create-overview .v39-unit-create-extra summary').click();
-    await page.locator('.v39-unit-training .v39-unit-create-extra summary').click();
-    assert.match(await page.locator('.v39-unit-training .v39-unit-create-extra').textContent(),/毎ターン .* EXP \/ 必要 .* EXP/);
+    assert.match(await page.locator('.v39-unit-creation-preview + .v39-unit-create-army').textContent(),/\d+人編成・攻撃\d+回・HP×[\d.]+/);
+    await page.locator('.v39-unit-training .v39-screen-help summary').click();
+    assert.match(await page.locator('.v39-unit-training .v39-screen-help').textContent(),/毎ターン .* EXP \/ 必要 .* EXP/);
     await page.screenshot({path:`output/web-game/facility-recruitment/${width}-training-details.png`});
-    await page.locator('.v39-unit-training .v39-unit-create-extra summary').click();
-    const instructorTarget = await page.evaluate(async () => {
+    await page.locator('.v39-unit-training .v39-screen-help summary').click();
+    const instructorStart = await page.evaluate(async () => {
       const {buildV39UnitEntity}=await import("/src/lib/v39-unit-creation-rules.js");
       const state=window.getV39GameState(),player=window.getV39ActivePlayer(),v=player.factionState.settlements[0];
       const facilityKey=Object.keys(v.tileFacilityMap).find(key=>v.tileFacilityMap[key].includes("兵舎"));
       const units=[buildV39UnitEntity({id:"instructor-inside",name:"教官試験",race:player.race,className:"ウォーリアー",level:20,x:v.x,y:v.y}),
         buildV39UnitEntity({id:"instructor-outside",name:"領土外試験",race:player.race,className:"ウォーリアー",level:20,x:0,y:0})];
       window.setV39GameState({players:state.players.map(p=>p.id!==player.id?p:{...p,factionState:{...p.factionState,
-        units:[...p.factionState.units.filter(u=>`${u.x},${u.y}`!==facilityKey),...units]}})});
+        units:[...p.factionState.units.filter(u=>`${u.x},${u.y}`!==facilityKey),...units.map(unit=>({...unit,waitTurnNumber:state.timeline.turnNumber,productionWaitTurn:state.timeline.turnNumber}))]}})});
       window.openV39UnitCreate();
-      return Object.keys(v.tileFacilityMap).find(key=>v.tileFacilityMap[key].includes("兵舎"));
+      return [v.x,v.y,units[0].ap];
     });
-    await page.locator('.v39-instructor-picker summary').click();
-    assert.equal(await page.locator('[data-v39-instructor-id="instructor-outside"]').isDisabled(),true);
-    assert.equal(await page.locator('[data-v39-instructor-id="instructor-inside"]').isEnabled(),true);
-    await page.locator('[data-v39-instructor-id="instructor-outside"]').scrollIntoViewIfNeeded();
+    await page.locator('.v39-unit-training .v39-screen-help summary').click();
+    assert.match(await page.locator('.v39-unit-training .v39-screen-help').textContent(),/待機支援 教官試験/);
     const fixedHeader=await page.evaluate(()=>{
       const panel=document.querySelector('#v39-unit-create-panel');
       const pane=panel.querySelector('#v39-create-pane');pane.scrollTop=pane.scrollHeight;
@@ -152,11 +136,8 @@ try {
     assert.equal(fixedHeader.visible,true);
     if(width===390) assert.ok(fixedHeader.scroll>0);
     await page.screenshot({path:`output/web-game/facility-recruitment/${width}-instructors.png`});
-    await page.locator('[data-v39-instructor-id="instructor-inside"]').click();
-    const instructorMoved=await page.evaluate(()=>window.getV39ActiveFactionState().units.find(u=>u.id==="instructor-inside"));
-    assert.equal(`${instructorMoved.x},${instructorMoved.y}`,instructorTarget,await page.locator("#v39-unit-create-status").textContent());
-    assert.ok(instructorMoved.ap<100);
-    assert.match(await page.locator('.v39-unit-training').textContent(),/教官: 教官試験/);
+    const instructor=await page.evaluate(()=>window.getV39ActiveFactionState().units.find(u=>u.id==="instructor-inside"));
+    assert.deepEqual([instructor.x,instructor.y,instructor.ap],instructorStart);
     const savedForSlots=await page.evaluate(async()=>{
       const {createV39Units}=await import("/src/lib/v39-unit-creation-rules.js");
       const saved=window.getV39GameState(),player=window.getV39ActivePlayer();
@@ -265,7 +246,6 @@ try {
         window.setV39GameState({players:saved.players.map(p=>p.id===player.id?{...p,race,factionState:{...p.factionState,settlements}}:p)});
         window.openV39UnitCreate();
         const displayed=`Lv${document.querySelector('#v39-unit-training-level').value}`;
-        const growthRows=[...document.querySelectorAll('.v39-unit-create-growth > div')].map(row=>row.textContent);
         const result=window.createV39Units({race,className:entry.className,mode:"army",count:1});
         if(!result.ok) throw new Error(result.reason);
         const unit=result.queuedUnits[0];
@@ -281,7 +261,7 @@ try {
         const capped=window.grantV39UnitExperience(restored,10000000).unit;
         const middle=window.applyV39DerivedCharacterData({...restored,level:restored.level+5});
         const again=window.grantV39UnitExperience(capped,1000);
-        outputs.push({race,displayed,growthRows,level:restored.level,raceLevel:restored.derivedCharacter.raceLevels,classLevel:restored.derivedCharacter.classLevels,
+        outputs.push({race,displayed,level:restored.level,raceLevel:restored.derivedCharacter.raceLevels,classLevel:restored.derivedCharacter.classLevels,
           prior:restored.prerequisiteClassLevels,growthStart:restored.classGrowthStart,
           grownRace:grown.derivedCharacter.raceLevels,grownClass:grown.derivedCharacter.classLevels,
           cap:{level:capped.level,race:capped.derivedCharacter.raceLevels,class:capped.derivedCharacter.classLevels,extra:again.amount},
@@ -292,7 +272,6 @@ try {
     for (const [index,raceLevel] of [3,5].entries()) {
       const item=raceCases[index];assert.equal(item.level,11+raceLevel);assert.equal(item.raceLevel,raceLevel);assert.equal(item.classLevel,1);
       assert.match(item.displayed,new RegExp(`Lv${item.level}`));
-      assert.deepEqual(item.growthRows,[`種族 ${item.race}Lv${raceLevel}`,"クラス1 ファイターLv10","クラス2 ウォーリアーLv1"]);
       assert.deepEqual(item.prior,{ファイター:10});assert.deepEqual(item.growthStart,{level:11+raceLevel,raceLevels:raceLevel,classLevels:1});
       assert.equal(item.grownRace,raceLevel+1);assert.equal(item.grownClass,2);
       assert.deepEqual(item.cap,index===0?{level:22,race:5,class:7,extra:0}:{level:22,race:7,class:5,extra:0});

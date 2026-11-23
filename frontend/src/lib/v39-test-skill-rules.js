@@ -21,6 +21,14 @@ export function isV39TestSkillModeEnabled() {
   return storedTestModeEnabled();
 }
 
+export function getV39NamedUnitTestRewards(unit) {
+  const {unit: fixtureUnit, rewards} = triggerFixture.namedUnitTest;
+  if (unit.testOnly === true && unit.id === fixtureUnit.id && unit.namedUnit?.name === rewards.namedUnitName) {
+    return rewards;
+  }
+  return null;
+}
+
 const powerFields=new Set([...DAMAGE_TYPE_FIELDS,...SKILL_STATE_KEYS,...TIMED_EFFECT_FIELDS,
   '力場','精神攻撃','呪い','燃焼','回復','ガード','全威力','体幹','ノックバック']);
 export function describeV39TestSkillData(row){
@@ -31,7 +39,8 @@ export function describeV39TestSkillData(row){
 }
 
 export function getV39TestSkillRows() {
-  return [...getGameDataRows("テストスキル"), ...triggerFixture.actions.map(row=>({...row,テスト専用:true})), ...triggerFixture.passives.map(row=>({...row,テスト専用:true}))].filter(row => row?.テスト専用 === true && text(row?.名前)).map(row=>{
+  const fixtureRows = [...triggerFixture.actions, ...triggerFixture.passives, ...triggerFixture.namedUnitTest.actions];
+  return [...getGameDataRows("テストスキル"), ...fixtureRows.map(row=>({...row,テスト専用:true}))].filter(row => row?.テスト専用 === true && text(row?.名前)).map(row=>{
     if(!row.参照スキル)return row;
     const source=getGameDataRows('スキル一覧').find(skill=>skill.名前===row.参照スキル);
     return source?{...source,...row}:null;

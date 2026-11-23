@@ -1,4 +1,26 @@
 const heldHp = new Map();
+let refreshDeferrals = 0;
+let refreshPending = false;
+
+function notifyHpReleased() {
+  if (refreshDeferrals > 0) {
+    refreshPending = true;
+    return;
+  }
+  refreshPending = false;
+  window.dispatchEvent(new CustomEvent('v39:combat-visual-hp-released'));
+}
+
+export function deferV39CombatVisualHpRefresh() {
+  refreshDeferrals += 1;
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    refreshDeferrals -= 1;
+    if (refreshDeferrals === 0 && refreshPending) notifyHpReleased();
+  };
+}
 
 export function holdV39CombatVisualHp(entries = []) {
   for (const entry of entries) {
@@ -18,7 +40,7 @@ export function releaseV39CombatVisualHp(entries = []) {
     if(remaining.length)heldHp.set(id,remaining);
     else heldHp.delete(id);
   }
-  window.dispatchEvent(new CustomEvent('v39:combat-visual-hp-released'));
+  notifyHpReleased();
 }
 
 export function visualV39CombatUnit(unit) {

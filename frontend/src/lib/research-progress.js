@@ -1,8 +1,14 @@
 import { normalizeResearchCategoryName, researchTreeData } from "./research-tree-config.js";
 import { V39_RESEARCH_BALANCE } from "./v39-gameplay-balance.js";
+import {getFactionSettlements,getSelectedSettlement} from "./settlement-state.js";
 
 export const RESEARCH_EXP_BASE = V39_RESEARCH_BALANCE.baseRequiredExp;
 export const RESEARCH_EXP_PER_TURN = V39_RESEARCH_BALANCE.baseExpPerTurn;
+
+export function resolveV39ResearchSettlement(faction) {
+  const selected = getSelectedSettlement(faction);
+  return selected?.placed ? selected : getFactionSettlements(faction).find(base => base.placed);
+}
 
 const asText = value => String(value ?? "").trim();
 const asCount = value => Math.max(0, Math.floor(Number(value) || 0));
@@ -46,12 +52,14 @@ export function normalizeResearchState(source = {}) {
       ? "調査Lv" : normalizeResearchCategoryName(key);
     if (category) carryByCategory[category]=(carryByCategory[category] || 0)+asCount(value);
   }
-  const selection = {}, assignedUnitIdByCategory = {};
+  const selection = {}, assignedUnitIdByCategory = {}, settlementIdByCategory = {};
   for (const [key,value] of Object.entries(source?.selection || {})) {
     const id=asText(value?.itemId || value?.id || value), target=findResearchItem(id)?.categoryKey || normalizeResearchCategoryName(key);
     if (target && id && !selection[target]) {
       selection[target]=id;
       assignedUnitIdByCategory[target]=asText(source?.assignedUnitIdByCategory?.[key]);
+      const settlementId=asText(source?.settlementIdByCategory?.[key] || source?.settlementIdByCategory?.[target]);
+      if (settlementId) settlementIdByCategory[target]=settlementId;
     }
   }
   for (const [key,value] of Object.entries(source?.assignedUnitIdByCategory || {})) {
@@ -62,6 +70,7 @@ export function normalizeResearchState(source = {}) {
     progress:{ targetExpMap, completedByCategoryLevel, carryByCategory },
     selection,
     assignedUnitIdByCategory,
+    settlementIdByCategory,
     lastProcessedTurn:asCount(source?.lastProcessedTurn)
   };
 }
@@ -128,16 +137,18 @@ export function inspectResearchUnlock(state, itemId, tree = researchTreeData) {
   return {unlocked:reasons.length===0,reasons,currentLevel,requiredLevel,prerequisites};
 }
 
-export function selectResearch(state, categoryKey, itemId, assignedUnit = null, tree = researchTreeData) {
+export function selectResearch(state, categoryKey, itemId, assignedUnit = null, tree = researchTreeData, settlementId = "") {
   const current = normalizeResearchState(state);
   const category = normalizeResearchCategoryName(categoryKey);
   const found = findResearchItem(itemId, tree);
   if (!found || found.categoryKey !== category) return { state:current, changed:false, reason:"not-found" };
-  if (!assignedUnit || !inspectResearchUnlock(current,itemId,tree).unlocked) return { state:current, changed:false, reason:"locked" };
+  if (!inspectResearchUnlock(current,itemId,tree).unlocked) return { state:current, changed:false, reason:"locked" };
   if (isResearchCompleted(current, category, found.level, found.item.id)) return { state:current, changed:false, reason:"completed" };
   const next = normalizeResearchState(current);
   next.selection[category] = found.item.id;
   next.assignedUnitIdByCategory[category] = asText(assignedUnit?.id ?? assignedUnit?.unitId);
+  if (settlementId) next.settlementIdByCategory[category] = asText(settlementId);
+  else delete next.settlementIdByCategory[category];
   const carry = asCount(next.progress.carryByCategory[category]);
   next.progress.carryByCategory[category] = 0;
   return carry > 0 ? addResearchExperience(next, category, carry, tree) : { state:next, changed:true, reason:"selected" };
@@ -166,6 +177,7 @@ export function addResearchExperience(state, categoryKey, amount, tree = researc
     current.progress.completedByCategoryLevel[category] = levelMap;
     current.progress.carryByCategory[category] = asCount(current.progress.carryByCategory[category]) + Math.max(0, rawNext - required);
     delete current.selection[category];
+    delete current.settlementIdByCategory[category];
     completed = true;
   }
   return { state:current, changed:nextExp !== oldExp || completed, reason:completed ? "completed" : "progress", completed };

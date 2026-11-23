@@ -3,7 +3,7 @@ import { renderV39SpecialtyHeader } from "./v39-specialty-ui.js";
 import { renderV39ResourceItemSprite } from "./v39-resource-item-icon.js";
 import {renderV39ScreenIcon} from "./v39-screen-icons.js";
 import {getSelectedSettlement} from "../../lib/settlement-state.js";
-import {forecastV39ProductionWork,v39EnchantmentPoints,v39FacilityProductionProgress,v39ProductionPoints} from "../../lib/v39-production-work.js";
+import {forecastV39ProductionWork,formatV39ProductionJobProgress,v39EnchantmentPoints,v39FacilityProductionProgress,v39ProductionPoints} from "../../lib/v39-production-work.js";
 import {getV39ProductionUnitBonus} from "../../lib/v39-production-unit-support.js";
 import {getV39EquipmentEnhancementDisplay} from "../../lib/v39-equipment-rules.js";
 
@@ -112,12 +112,7 @@ function productionDetails(body,{player,state,village}){
     const name=document.createElement("strong");
     name.textContent=job.label;
     const progress=document.createElement("small");
-    progress.textContent=[
-      `製作 ${job.workProgress||0}/${job.workRequired}`,
-      job.magicRequired&&`魔術 ${job.magicProgress||0}/${job.magicRequired}`,
-      job.faithRequired&&`信仰 ${job.faithProgress||0}/${job.faithRequired}`,
-      dates.has(job.id)&&`完成予定 T${dates.get(job.id)}`
-    ].filter(Boolean).join("　");
+    progress.textContent=formatV39ProductionJobProgress(job,dates.get(job.id));
     row.append(name,progress);
     list.append(row);
   }

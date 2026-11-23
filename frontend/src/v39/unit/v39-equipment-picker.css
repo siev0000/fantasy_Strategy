@@ -12,16 +12,15 @@
 #v39-equipment-picker .v39-picker-comparison{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px}
 #v39-equipment-picker .v39-picker-comparison-tabs{display:flex;gap:6px}
 #v39-equipment-picker .v39-picker-comparison-tabs button{min-width:0}
-#v39-equipment-picker .v39-picker-option-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,155px),1fr));gap:5px;align-items:start}
-#v39-equipment-picker .v39-picker-candidates button{display:grid;gap:4px;text-align:left;width:100%;min-width:0;overflow-wrap:anywhere}
-#v39-equipment-picker .v39-picker-candidates .v39-picker-item{
-  grid-template-columns:36px minmax(0,1fr) auto;align-items:center;border-color:var(--v39-rarity-color);
-}
-#v39-equipment-picker .v39-picker-item[aria-pressed=true]{box-shadow:inset 3px 0 #69d0df}
-#v39-equipment-picker .v39-picker-item > .v39-equipment-display-icon{
-  grid-column:1;grid-row:1 / span 2;place-self:center;font-size:24px;
-}
-#v39-equipment-picker .v39-picker-item small{grid-column:2 / -1}
+#v39-equipment-picker .v39-picker-candidate-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+#v39-equipment-picker .v39-picker-candidate-tools h3{margin:0 auto 0 0}
+#v39-equipment-picker .v39-picker-candidate-tools select{min-height:30px;max-width:100%;padding:3px 6px;border:1px solid #41565d;border-radius:6px;background:#17282f;color:#e6efed;font:inherit}
+#v39-equipment-picker [data-equipment-picker-key="remove"]{min-height:30px;padding:3px 6px;font-size:var(--font-secondary)}
+#v39-equipment-picker .v39-picker-option-grid.v39-equip-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,85px),1fr))}
+#v39-equipment-picker .v39-picker-option-grid > .v39-picker-note{grid-column:1 / -1}
+#v39-equipment-picker .v39-picker-option-grid .v39-equip-tile{grid-template-rows:auto minmax(28px,1fr) auto auto;min-width:0;border-color:var(--v39-rarity-color,#b8b8b8)}
+#v39-equipment-picker .v39-equip-tile[aria-pressed=true]{box-shadow:inset 0 0 0 1px #69d0df}
+#v39-equipment-picker .v39-equip-tile-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:var(--font-secondary)}
 #v39-equipment-picker .v39-picker-comparison .v39-equipment-display-summary{grid-template-columns:20px minmax(0,1fr) auto}
 #v39-equipment-picker .v39-picker-comparison .v39-equipment-display-slot{display:none}
 #v39-equipment-picker small,#v39-equipment-picker .v39-picker-note{font-size:var(--font-secondary);color:#aabdc1}

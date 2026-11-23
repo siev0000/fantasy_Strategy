@@ -257,6 +257,49 @@ console.log('PASS: casting pays AP once, invalid target retains cast, release co
 }
 
 {
+ const row={名前:'炎連鎖試験',行動:'A',対象:'相手',攻撃手段:'テスト',切断:100,炎:100,雷:100,出血:100,効果:'必中/連鎖_2_炎',AP消費:10,射程:100};
+ const random=Math.random;
+ Math.random=()=>0.5;
+ try{
+  const spear={name:'槍',slot:'武器1',quality:'legendary',power:90,attackAp:10,enchantAttackFields:{雷:100},namedWeapon:{name:'戦槍・爆激'}};
+  const sword={name:'剣',slot:'武器2',power:90,attackAp:10};
+  const attack=(skill,equipment=[])=>{
+   const attacker={...unit('elemental-chain-actor',7,8),equipment};
+   const enemies=Array.from({length:4},(_,index)=>unit('elemental-chain-'+index,8+index,8));
+   live={...world,timeline:{turnNumber:60},players:[{id:'p',factionState:{units:[attacker],squads:[],combatRuntime:{},selectedUnitId:attacker.id}}],
+    enemies,neutralVillages:[],enemyNests:[],settlements:[],groundLootByTile:{}};
+   const offset=signals.length;
+   assert.equal(m.performAttack({x:8,y:8},{playerId:'p',unitId:attacker.id,skillName:skill.名前,skillRow:skill}),true);
+   const log=signals.slice(offset).find(event=>event.type==='v39:combat-log'&&event.detail.attackerId===attacker.id);
+   return {entries:log.detail.entries,victims:live.enemies};
+  };
+  const flame=attack(row);
+  const baseline=attack({...row,効果:'必中'});
+  assert.equal(flame.entries[0].hitResults[0].damage,baseline.entries[0].hitResults[0].damage);
+  assert(flame.victims[0].bleeding?.value>0);
+  assert.equal(flame.victims[0].bleeding.value,baseline.victims[0].bleeding.value);
+  assert(!flame.victims[1].bleeding && !flame.victims[2].bleeding);
+  assert.deepEqual(flame.entries.flatMap(entry=>entry.hitResults).filter(hit=>hit.chainStage).map(hit=>[hit.chainStage,hit.chainDamageType,hit.damage]),
+   [[1,'炎',34],[1,'炎',34],[2,'炎',28]]);
+  const absent=attack({...row,炎:0});
+  assert.equal(absent.entries.length,1);
+  const weaponAttack=(item,fields)=>({...row,名前:item.name,攻撃手段:'武器',装備攻撃:true,装備スロット:item.slot,装備元:item,
+    切断:90,炎:150,雷:0,出血:0,効果:'必中',...fields});
+  const lightning=attack(weaponAttack(spear,{雷:100}),[spear,sword]);
+  assert.deepEqual(lightning.entries.flatMap(entry=>entry.hitResults).filter(hit=>hit.chainStage).map(hit=>[hit.chainStage,hit.chainDamageType,hit.damage]),
+   [[1,'雷',34],[1,'雷',34],[2,'雷',28]]);
+  assert.equal(attack(weaponAttack(sword),[spear,sword]).entries.length,1);
+  const weaponSkill={...row,名前:'武器スキル試験',攻撃手段:'武器',雷:0,出血:0,効果:'必中'};
+  assert.equal(attack(weaponSkill,[spear,sword]).entries.length,3);
+  assert.equal(attack({...weaponSkill,装備元:spear},[sword,spear]).entries.length,3);
+  assert.equal(attack({...weaponSkill,装備元:sword},[spear,sword]).entries.length,1);
+  assert.equal(attack({...weaponSkill,攻撃手段:'魔法',雷:100},[spear,sword]).entries.length,1);
+  assert.equal(attack({...weaponSkill,攻撃手段:'槍',雷:100},[spear,sword]).entries.length,1);
+ }finally{Math.random=random;}
+ console.log('PASS: elemental chains keep the initial hit, propagate only one element and activate for the weapon in use.');
+}
+
+{
  const row={名前:'呪い即死試験',行動:'A',対象:'相手',攻撃手段:'テスト',効果:'必中/即死',攻撃回数:2,AP消費:10,射程:60};
  for(const side of ['player','enemy','village']){
   for(const [curse,spirit,expectedHp] of [[300,0,1000],[301,0,0],[600,100,1000],[602,100,0]]){

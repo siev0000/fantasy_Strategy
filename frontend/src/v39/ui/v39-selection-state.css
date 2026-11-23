@@ -1,0 +1,39 @@
+/* Selection is distinct from keyboard focus and from rarity or availability. */
+:where(.v39-item-list-screen-1, #v39-summon-modal, #v39-golem-workshop)
+  :is(.v39-summon-action[aria-pressed="false"], button.squad-card:not(.selected)),
+.v39-item-list-screen-2 :is(.class-item[aria-pressed="false"], .class-category-tabs [aria-selected="false"]),
+.v39-item-list-screen-3 button.squad-card:not(.selected) {
+  border-color: #455c65 !important;
+  background-color: #142329 !important;
+}
+
+button[role="tab"][aria-selected="false"],
+:is(.squad-detail-tabs, .v39-equipment-tabs, .v39-build-tabs, .settlement-pages, .v39-equip-inventory-controls, .v39-equip-inventory-types) button[aria-pressed="false"] {
+  border-color: #455c65 !important;
+  background-color: #142329 !important;
+}
+
+/* Keep existing rarity and status colors on unselected cards. */
+:where(.v39-item-list-screen-1, #v39-summon-modal, #v39-golem-workshop)
+  .v39-summon-action[aria-pressed="true"],
+:where(.v39-item-list-screen-2) .class-item[aria-pressed="true"],
+button.squad-card.selected,
+button[role="tab"][aria-selected="true"],
+:is(.squad-detail-tabs, .v39-equipment-tabs, .v39-build-tabs, .settlement-pages, .v39-equip-inventory-controls, .v39-equip-inventory-types) button[aria-pressed="true"],
+#v39-equipment-picker button[aria-pressed="true"],
+button.v39-equip-tile[aria-pressed="true"],
+button[data-land-build-facility][aria-pressed="true"],
+button.v39-research-item[aria-pressed="true"],
+.v39-territory-guide-steps button[aria-current="step"] {
+  border-color: var(--v39-selection-accent, #9ce8f1) !important;
+  box-shadow: inset 3px 0 var(--v39-selection-accent, #9ce8f1),
+              inset 0 0 0 1px var(--v39-selection-accent, #9ce8f1) !important;
+}
+
+:where(.v39-item-list-screen-1, #v39-summon-modal, #v39-golem-workshop) .v39-summon-action[aria-pressed="true"],
+.v39-item-list-screen-2 .class-item[aria-pressed="true"],
+button[role="tab"][aria-selected="true"] {
+  background-color: #245360 !important;
+}
+
+.v39-territory-guide-steps { --v39-selection-accent: #efd17b; }

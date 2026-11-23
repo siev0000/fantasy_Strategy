@@ -1,3 +1,7 @@
+import defaultIconRows from "../../../config/v39-icon-settings.json";
+
+export { defaultIconRows };
+
 const route = "/api/local/icon-settings";
 const nameKeys = new Map([["装備", "装備名"], ["資源・資材", "データ分類"], ["道具", "名前"], ["画面用アイコン", "名前"]]);
 const rowKey = (type, name) => JSON.stringify([type, String(name ?? "").trim()]);
@@ -6,8 +10,10 @@ function indexRows(rows) {
   return new Map(rows.filter(row=>row && nameKeys.has(row.種別)).map(row=>[rowKey(row.種別,row[nameKeys.get(row.種別)]),row]));
 }
 function browserRows(){
-  try { return indexRows(JSON.parse(globalThis.localStorage?.getItem(iconStorageKey) || "[]")); }
-  catch { return new Map(); }
+  try {
+    const saved = globalThis.localStorage?.getItem(iconStorageKey);
+    return saved === null || saved === undefined ? indexRows(defaultIconRows) : indexRows(JSON.parse(saved));
+  } catch { return indexRows(defaultIconRows); }
 }
 let sharedRows = browserRows();
 export function saveBrowserIconSettings(rows){

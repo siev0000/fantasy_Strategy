@@ -15,6 +15,7 @@ import FieldBattleResultModal from "./FieldBattleResultModal.vue";
 import FieldFooterTabsOverlay from "./FieldFooterTabsOverlay.vue";
 import SkillAcquiredTable from "./SkillAcquiredTable.vue";
 import { getGameAudioController } from "../lib/audio-player.js";
+import { openV39AudioSettings } from "../v39/ui/v39-audio-settings.js";
 import { DEFAULT_ICON_NAME, getIconSrcByName, hasIconName, resolveIconName } from "../lib/icon-library.js";
 import { renderV39ResourceIcon } from "../v39/ui/v39-resource-item-icon.js";
 import { resolveV39ResourceIcon } from "../lib/resource-icon-glyphs.js";
@@ -528,10 +529,6 @@ const lastEconomySummary = ref("経済: -");
 const nationLogsBySovereign = ref({});
 const activeNationLogKey = ref("");
 const audio = getGameAudioController();
-const initialAudioVolumes = audio.getVolumeSettings();
-const masterVolumePercent = ref(Math.round((initialAudioVolumes.masterVolume ?? 0.5) * 100));
-const bgmVolumePercent = ref(Math.round((initialAudioVolumes.bgmVolume ?? 0.5) * 100));
-const seVolumePercent = ref(Math.round((initialAudioVolumes.seVolume ?? 0.5) * 100));
 const QUICK_SETTINGS_ICON_SRC = getIconSrcByName("設定", DEFAULT_ICON_NAME);
 const UNIT_CREATE_ICON_SRC = getIconSrcByName("兵士", DEFAULT_ICON_NAME);
 const EQUIPMENT_INVENTORY_ICON_SRC = getIconSrcByName("装備", DEFAULT_ICON_NAME);
@@ -2433,41 +2430,6 @@ const displaySettingsFields = computed(() => ([
     min: 260,
     max: 560,
     step: 10
-  },
-  {
-    key: "section_audio",
-    kind: "header",
-    label: "音声設定"
-  },
-  {
-    key: "masterVolumePercent",
-    kind: "range",
-    label: "全体音量",
-    suffix: "%",
-    value: masterVolumePercent.value,
-    min: 0,
-    max: 100,
-    step: 1
-  },
-  {
-    key: "bgmVolumePercent",
-    kind: "range",
-    label: "BGM音量",
-    suffix: "%",
-    value: bgmVolumePercent.value,
-    min: 0,
-    max: 100,
-    step: 1
-  },
-  {
-    key: "seVolumePercent",
-    kind: "range",
-    label: "SE音量",
-    suffix: "%",
-    value: seVolumePercent.value,
-    min: 0,
-    max: 100,
-    step: 1
   }
 ]));
 
@@ -2475,8 +2437,7 @@ const displaySettingsNotes = [
   "描画解像度は 1440x720 で固定です（文字つぶれ防止）。",
   "隠し特殊地形は通常時は見えず、クリック時のみ判明します。常時表示をONで最初から見えます。",
   "省電力モードON時は描画更新を抑えて消費電力を下げます。",
-  "クリック時の視点移動は初期OFFです。必要時のみONにしてください。",
-  "音量は 全体 x BGM/SE の乗算で適用されます。"
+  "クリック時の視点移動は初期OFFです。必要時のみONにしてください。"
 ];
 
 const EQUIPMENT_SLOT_LABELS = {
@@ -13789,12 +13750,6 @@ function runEnemyEncounterCheck(options = {}) {
   return { context, entries, notes };
 }
 
-function normalizeVolumePercent(value, fallback = 100) {
-  const raw = Number.isFinite(value) ? value : Number(value);
-  const safe = Number.isFinite(raw) ? Math.round(raw) : fallback;
-  return Math.max(0, Math.min(100, safe));
-}
-
 function normalizeIntRange(minValue, maxValue, hardMin, hardMax, fallbackMin, fallbackMax) {
   const rawMin = Number.isFinite(minValue) ? minValue : Number(minValue);
   const rawMax = Number.isFinite(maxValue) ? maxValue : Number(maxValue);
@@ -13852,7 +13807,7 @@ function nudgeCustomIslandInt(key, delta) {
 function applyDisplaySettingChange(payload) {
   if (!payload || !payload.key) return;
   const { key, value } = payload;
-  if (key === "section_display" || key === "section_audio") return;
+  if (key === "section_display") return;
   if (key === "gameViewPreset") {
     // 解像度は固定運用。既存データ互換のため入力は受けるが反映しない。
     return;
@@ -13885,18 +13840,6 @@ function applyDisplaySettingChange(payload) {
   } else if (key === "tileDetailPanelHeight") {
     const raw = Number(value);
     tileDetailPanelHeight.value = Number.isFinite(raw) ? Math.max(260, Math.min(560, Math.round(raw))) : 360;
-  } else if (key === "masterVolumePercent") {
-    const pct = normalizeVolumePercent(value, masterVolumePercent.value);
-    masterVolumePercent.value = pct;
-    audio.setMasterVolume(pct / 100);
-  } else if (key === "bgmVolumePercent") {
-    const pct = normalizeVolumePercent(value, bgmVolumePercent.value);
-    bgmVolumePercent.value = pct;
-    audio.setBgmVolume(pct / 100);
-  } else if (key === "seVolumePercent") {
-    const pct = normalizeVolumePercent(value, seVolumePercent.value);
-    seVolumePercent.value = pct;
-    audio.setSeVolume(pct / 100);
   }
 }
 
@@ -24079,12 +24022,15 @@ watch(() => props.characterCommand, command => {
       :notes="displaySettingsNotes"
       @close="closeSettingsModal"
       @field-change="applyDisplaySettingChange"
-    />
+    >
+      <template #actions><button type="button" class="secondary" data-audio-se="open" @click="openV39AudioSettings">音設定</button></template>
+    </generic-modal>
     <div v-if="showQuickSettingsModal" class="settings-backdrop" @click.self="closeQuickSettingsModalFromMap">
       <div class="settings-modal quick-settings-modal">
         <h3>設定メニュー</h3>
         <div class="quick-settings-grid">
-          <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">音量/表示設定</button>
+          <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">表示設定</button>
+          <button type="button" class="secondary" data-audio-se="open" @click="openV39AudioSettings">音設定</button>
           <label class="setting-row quick-settings-checkbox-row">
             <input
               type="checkbox"

@@ -68,9 +68,13 @@ export function formatV39SkillTriggerLog(log){
   if(log.kind==='collision')return log.skill+'：衝突 '+log.damage+'ダメージ';
   if(log.kind==='dispel')return '強化解除：−'+log.amount+'T';
   if(log.kind==='stagger')return '怯み：AP -'+log.amount;
-  if(log.kind==='periodic-damage')return log.status+'：'+log.damage+'ダメージ';
+  if(log.kind==='periodic-damage'||log.kind==='bleeding-damage'){
+    const entries=log.entries||[];
+    const breakdown=entries.length>1||entries.some(entry=>entry.damage!==log.damage)
+      ? `（${entries.map(entry=>entry.kind+Number(entry.damage.toFixed(4))).join('＋')}）`:'';
+    return `${log.status||'出血'}：${log.damage}ダメージ${breakdown}`;
+  }
   if(log.kind==='periodic-state')return log.status+'：+'+log.amount;
-  if(log.kind==='bleeding-damage')return '出血：'+log.damage+'ダメージ';
   if(log.kind==='ability-damage')return (log.poison?'毒':log.curse?'呪い':'能力ダメージ')+'：'+log.ability+' -'+log.amount;
   if(log.kind==='bleeding')return '出血：+'+log.amount;
   if(log.damage!==undefined)return log.skill+'：反撃威力'+log.power+' / '+log.damage+'ダメージ（'+log.event+'）';
@@ -285,9 +289,14 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
     if(!hit){event('回避成功',id,attacker.id);continue;}
     event('攻撃命中',attacker.id,id);event('被弾',id,attacker.id);
     const lost=Math.max(0,Number(entry.beforeHp)-Math.max(0,Number(entry.afterHp)));
-    if(id!==attacker.id)drainDamage+=lost;
     if(lost){event('被ダメージ',id,attacker.id,lost);event('ダメージ付与',attacker.id,id,lost);}
+    const chainDamageType=entry.hitResults?.[0]?.chainDamageType;
+    if(!chainDamageType && id!==attacker.id)drainDamage+=lost;
     if(Number(entry.afterHp)<=0){event('撃破',attacker.id,id);continue;}
+    if(chainDamageType){
+      if(chainDamageType==="炎" && target.controlStatuses?.凍結)storeTarget(thaw(target));
+      continue;
+    }
     for(const [status,base] of entry.forcedMovementCollision?[]:numericPowers){
       const receiver=resolveV39CurrentUnitAbilities(target,{state:after});
       const stat=key=>Number(receiver.skillLevels?.[key]??receiver.status?.[key])||0;
@@ -396,7 +405,7 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
       ['毒',effects.includes('毒')||(!ability&&!effects.includes('麻痺'))?Number(row.毒)||0:0],
       ['燃焼',Number(row.燃焼)||(effects.includes('燃焼')?Number(row.炎)||0:0)]
     ]){
-      const amount=resolveV39HarmfulEffectPower(attacker,target,row,base,status);
+      const amount=resolveV39HarmfulEffectPower(attacker,target,row,base,status,{unrounded:true});
       if(amount>0){
         target=addV39PeriodicStatus(target,status,amount,duration,ctx.turn);
         storeTarget(target);
@@ -460,9 +469,15 @@ export function advanceV39SkillTriggerTurn(state,turn,{random=Math.random,map}={
     next=tickV39Restraint(next,turn,resolveV39CurrentUnitAbilities(unit,{state}).status);
     next=advanceV39ControlStatuses(next,turn);
     const tick=tickV39Bleeding(next,turn);next=tick.unit;
-    if(tick.damage){const damage=Math.min(hp(next),tick.damage);next=ctx.setHp(next,hp(next)-damage,'出血');ctx.logs.push({kind:'bleeding-damage',targetId:id,damage,value:next.bleeding?.value||0});}
     const periodic=tickV39PeriodicStatus(next,turn);next=periodic.unit;
-    for(const entry of periodic.entries){if(!alive(next))break;const damage=Math.min(hp(next),entry.damage);next=ctx.setHp(next,hp(next)-damage,entry.kind);if(damage)ctx.logs.push({kind:'periodic-damage',status:entry.kind,targetId:id,damage});}
+    const entries=[{kind:'出血',damage:tick.damage},...periodic.entries].filter(entry=>entry.damage>0);
+    const beforeHp=hp(next), damage=Math.min(beforeHp,Math.round(entries.reduce((sum,entry)=>sum+entry.damage,0)));
+    if(damage>0){
+      const status=[...new Set(entries.map(entry=>entry.kind))].join('・');
+      next=ctx.setHp(next,beforeHp-damage,status);
+      ctx.logs.push({kind:status==='出血'?'bleeding-damage':'periodic-damage',status,targetId:id,
+        damage:beforeHp-hp(next),beforeHp,afterHp:hp(next),entries,...(status==='出血'?{value:next.bleeding?.value||0}:{})});
+    }
     ctx.units.set(id,next);
     events.push({name:'ターン開始',ownerId:id,sourceId:id,cause:'ターン'});
   }

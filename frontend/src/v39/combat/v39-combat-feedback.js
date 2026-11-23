@@ -2,6 +2,7 @@ import {V39_COMBAT_POPUPS,resolveV39CombatPopup} from '../../lib/v39-combat-popu
 import { HEX_TILE_CONFIG } from "../../lib/phaser-map-panel-config.js";
 import { addV39FieldSymbol } from "../map/v39-field-symbols.js";
 import {holdV39CombatVisualHp,releaseV39CombatVisualHp} from '../../lib/v39-combat-visual-state.js';
+import {beginV39NamedUnitPose,resolveV39NamedUnitSpecialPose,V39_NAMED_UNIT_POSE} from '../../lib/v39-named-unit-artwork.js';
 
 const POPUP_DEPTH = 1000010;
 const BAR_DEPTH = 1000005;
@@ -79,10 +80,47 @@ function lungeMarker(attackerId, target) {
   }, 30);
 }
 
-function showOutcomePopup(scene, center, message) {
+function playFeedbackTween(scene, config, cleanup, waitUntil, tailMs = 0) {
+  let resolve;
+  let tail;
+  let finished = false;
+  if (waitUntil) waitUntil(new Promise(done => { resolve = done; }));
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    scene.events?.off('sleep', finish);
+    scene.events?.off('shutdown', finish);
+    tail?.remove();
+    try {
+      cleanup();
+    } finally {
+      resolve?.();
+    }
+  };
+  if (waitUntil) {
+    scene.events?.once('sleep', finish);
+    scene.events?.once('shutdown', finish);
+  }
+  try {
+    scene.tweens.add({
+      ...config,
+      onStop:finish,
+      onComplete:() => {
+        if (tailMs) tail = scene.time.delayedCall(tailMs, finish);
+        else finish();
+      }
+    });
+  } catch (error) {
+    finish();
+    throw error;
+  }
+}
+
+function showOutcomePopup(scene, center, message, waitUntil) {
   const label = addV39FieldSymbol(scene,null,message==='Miss'?'miss':'blocked',center.x,center.y-24,22,
     {color:0xbde8ff,name:'v39-combat-outcome-icon',label:message}).setDepth(POPUP_DEPTH);
-  scene.tweens.add({ targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400, onComplete:() => label.destroy() });
+  playFeedbackTween(scene, { targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400 },
+    () => label.destroy(), waitUntil);
 }
 
 const popupLanes=new Map();
@@ -93,7 +131,7 @@ function popupOffset(targetId){
   if(popupLanes.size>256)for(const [id,row]of popupLanes)if(now-row.time>style.groupWindowMs)popupLanes.delete(id);
   return lane*style.lineSpacing;
 }
-function showTypedPopup(scene,entry,center){
+function showTypedPopup(scene,entry,center,waitUntil){
   const display=resolveV39CombatPopup(entry.popupType,entry.amount,entry.popupLabel);
   if(!display||number(entry.amount)<=0)return;
   const offset=popupOffset(entry.targetId);
@@ -103,12 +141,23 @@ function showTypedPopup(scene,entry,center){
     stroke:display.stroke,strokeThickness:display.strokeThickness
   }).setOrigin(.5).setDepth(POPUP_DEPTH).setName('v39-effect-popup').setData('targetId',entry.targetId).setData('type',entry.popupType);
   if(delay)label.setAlpha(0);
-  scene.tweens.add({targets:label,y:center.y-46-offset,alpha:{from:1,to:0},delay,duration:1500,onStart:()=>label.setAlpha(1),onComplete:()=>label.destroy()});
+  playFeedbackTween(scene, {targets:label,y:center.y-46-offset,alpha:{from:1,to:0},delay,duration:1500,
+    onStart:()=>label.setAlpha(1)}, () => label.destroy(), waitUntil);
 }
 
-function showDamagePopups(scene, entry, center) {
+function showNamedUnitReaction(entry, {dodged = false, guarded = false, damage = 0} = {}) {
+  const unit = window.getV39MapEntityMarker?.(entry.targetId)?.getData("namedUnit");
+  if (unit?.id !== entry.targetId || !unit?.namedUnit) return;
+  const slot = dodged ? resolveV39NamedUnitSpecialPose(unit.namedUnit.name,{dodged:true})
+    : guarded ? V39_NAMED_UNIT_POSE.guard : damage > 0 ? V39_NAMED_UNIT_POSE.hit : null;
+  const pose = beginV39NamedUnitPose(entry.targetId,slot);
+  if (pose) window.setTimeout(() => pose.finish(), dodged || guarded ? 1000 : 260);
+}
+
+function showDamagePopups(scene, entry, center, waitUntil) {
   if (number(entry?.missCount) > 0 && number(entry?.missCount) >= (Array.isArray(entry?.hits) ? entry.hits.length : 1)) {
-    showOutcomePopup(scene, center, "Miss");
+    showNamedUnitReaction(entry,{dodged:true});
+    showOutcomePopup(scene, center, "Miss", waitUntil);
     return;
   }
   const hits = (Array.isArray(entry?.hits) ? entry.hits : []).map((value) => Math.max(0, Math.floor(number(value))));
@@ -116,6 +165,8 @@ function showDamagePopups(scene, entry, center) {
   if(number(entry?.detail?.power)===0&&hits.every(hit=>hit===0))return;
   const offset=popupOffset(entry.targetId);
   let cumulative = 0,critical=false;
+  const guardedIndex = number(entry.guardAbsorbed) > 0
+    ? hits.findIndex((_,index) => entry.hitResults?.[index]?.hit !== false) : -1;
   hits.forEach((hit, index) => {
     cumulative += hit;
     critical ||= entry.hitResults?.[index]?.critical===true;
@@ -129,7 +180,7 @@ function showDamagePopups(scene, entry, center) {
       strokeThickness:display.strokeThickness
     }).setOrigin(0.5).setDepth(POPUP_DEPTH).setAlpha(0)
       .setName('v39-damage-popup').setData('targetId',entry.targetId).setData('damage',cumulative);
-    scene.tweens.add({
+    playFeedbackTween(scene, {
       targets:label,
       alpha:{ from:0, to:1 },
       y:center.y - 42-offset,
@@ -137,12 +188,12 @@ function showDamagePopups(scene, entry, center) {
       duration:220,
       hold:1250,
       yoyo:true,
-      onComplete:() => label.destroy()
-    });
+      onStart:() => showNamedUnitReaction(entry,{dodged:entry.hitResults?.[index]?.hit === false,guarded:index === guardedIndex,damage:hit})
+    }, () => label.destroy(), waitUntil);
   });
 }
 
-function showDelayedHpBar(scene, entry, center) {
+function showDelayedHpBar(scene, entry, center, waitUntil) {
   if (number(entry?.total) <= 0) return;
   const maxHp = Math.max(1, number(entry?.maxHp, 1));
   const beforeRate = Math.max(0, Math.min(1, number(entry?.beforeHp) / maxHp));
@@ -159,40 +210,33 @@ function showDelayedHpBar(scene, entry, center) {
   const lost = scene.add.rectangle(left + BAR_WIDTH * afterRate, y, lostWidth, BAR_HEIGHT, 0xe4473b)
     .setOrigin(0, 0.5).setDepth(BAR_DEPTH + 2);
   objects.push(background, remaining, lost);
-  scene.tweens.add({
+  playFeedbackTween(scene, {
     targets:lost,
     scaleX:0,
     delay:1000,
     duration:650,
-    ease:"Cubic.In",
-    onComplete:() => scene.time.delayedCall(350, () => objects.forEach((object) => object.destroy()))
-  });
+    ease:"Cubic.In"
+  }, () => objects.forEach(object => object.destroy()), waitUntil, 350);
 }
 
 function showEntry(entry) {
-  const scene = activeScene();
-  if (!scene || !Number.isFinite(Number(entry?.x)) || !Number.isFinite(Number(entry?.y))) return;
-  const center = tileCenter(entry.x, entry.y);
-  flashMarker(entry.targetId);
-  if(entry.popupType)showTypedPopup(scene,entry,center);
-  else showDamagePopups(scene, entry, center);
-  for(const popup of entry.statusPopups||[])showTypedPopup(scene,{...popup,targetId:entry.targetId},center);
-  showDelayedHpBar(scene, entry, center);
+  showEntryDamage(entry);
+  showEntryHp(entry);
 }
 
-function showEntryDamage(entry){
+function showEntryDamage(entry,waitUntil){
   const scene=activeScene();
   if(!scene||!Number.isFinite(Number(entry?.x))||!Number.isFinite(Number(entry?.y)))return;
   const center=tileCenter(entry.x,entry.y);
   flashMarker(entry.targetId);
-  if(entry.popupType)showTypedPopup(scene,entry,center);
-  else showDamagePopups(scene,entry,center);
-  for(const popup of entry.statusPopups||[])showTypedPopup(scene,{...popup,targetId:entry.targetId},center);
+  if(entry.popupType)showTypedPopup(scene,entry,center,waitUntil);
+  else showDamagePopups(scene,entry,center,waitUntil);
+  for(const popup of entry.statusPopups||[])showTypedPopup(scene,{...popup,targetId:entry.targetId},center,waitUntil);
 }
 
-function showEntryHp(entry){
+function showEntryHp(entry,waitUntil){
   const scene=activeScene();
-  if(scene&&Number.isFinite(Number(entry?.x))&&Number.isFinite(Number(entry?.y)))showDelayedHpBar(scene,entry,tileCenter(entry.x,entry.y));
+  if(scene&&Number.isFinite(Number(entry?.x))&&Number.isFinite(Number(entry?.y)))showDelayedHpBar(scene,entry,tileCenter(entry.x,entry.y),waitUntil);
 }
 
 function showCombatFeedback(detail) {
@@ -248,9 +292,9 @@ window.addEventListener('v39:combat-presentation',event=>{
   if(phase==='start'){
     if(detail?.entries?.length)lungeMarker(detail.attackerId,detail.target);
   }else if(phase==='late'){
-    for(const entry of detail?.entries||[])showEntryDamage(entry);
+    for(const entry of detail?.entries||[])showEntryDamage(entry,detail.waitUntil);
   }else if(phase==='end'){
-    for(const entry of detail?.entries||[])showEntryHp(entry);
+    for(const entry of detail?.entries||[])showEntryHp(entry,detail.waitUntil);
   }else showCombatFeedback(detail);
 });
 window.addEventListener("v39:cast-started", (event) => {if(!window.__v39BackgroundWorldTurn&&!event?.detail?.aimAfterCast)startCastBlink(event?.detail?.unitId);});

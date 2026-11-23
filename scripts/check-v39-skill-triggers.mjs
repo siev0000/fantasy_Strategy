@@ -234,8 +234,8 @@ const inflictor={status:{攻撃:0}},defender={level:1,status:{防御:50}};
 assert.equal(m.resolveV39StateInfliction(inflictor,defender,{出血:100},'出血'),66);
 assert.ok(m.resolveV39StateInfliction(inflictor,{...defender,status:{防御:200}},{出血:100},'出血')<66);
 assert.equal(m.resolveV39StateInfliction(inflictor,{...defender,resistances:{物理耐性:100}},{出血:100},'出血'),60);
-assert.equal(m.describeV39Bleeding({bleeding:{value:66,remainingTurns:10}}).damage,6);
-assert.match(m.renderV39UnitConditions({bleeding:{value:66,remainingTurns:10}}),/次回 6ダメージ/);
+assert.equal(m.describeV39Bleeding({bleeding:{value:66,remainingTurns:10}}).damage,6.6);
+assert.match(m.renderV39UnitConditions({bleeding:{value:66,remainingTurns:10}}),/次回の内訳 6\.6/);
 assert.match(m.renderV39UnitConditions({}),/なし/);
 
 const reaction=bleed.logs.find(row=>row.kind==='trigger');
@@ -523,6 +523,32 @@ console.log('PASS: ability/skill/resistance/movement displays use the same curre
  step=m.tickV39PeriodicStatus(step.unit,3);assert.equal(step.entries.reduce((sum,e)=>sum+e.damage,0),20,'each dose expires independently');
  assert.equal(m.recoverV39PeriodicPoison(step.unit,20).periodicDamage.length,0);
  console.log('PASS: blood-value absorption, poison/burn full-value ticks, duration, idempotence, independent doses and detox.');
+}
+
+{
+ const source=createState();
+ const [first,second]=source.players[0].factionState.units;
+ const hp=100, before={...first,hp,currentHp:hp,techniques:[],shield:{remaining:20},barrier:{remaining:30}};
+ const combined=m.addV39PeriodicStatus(m.addV39Bleeding(before,24,1),'毒',2.4,2,1);
+ const burn=m.addV39PeriodicStatus({...second,hp,currentHp:hp,techniques:[]},'燃焼',0.4,2,1);
+ source.players[0].factionState.units=[combined,burn];
+ const tick=m.advanceV39SkillTriggerTurn(source,2,{random});
+ const [after,other]=tick.state.players[0].factionState.units;
+ assert.equal(after.hp,95,'round the sum of 2.4 + 2.4 only once');
+ assert.equal(other.hp,100,'never combine damage across units');
+ assert.equal(after.shield.remaining,20);
+ assert.equal(after.barrier.remaining,30);
+ assert.deepEqual(tick.logs.find(log=>log.targetId===first.id).entries,[{kind:'出血',damage:2.4},{kind:'毒',damage:2.4}]);
+ assert.match(m.formatV39SkillTriggerLog(tick.logs.find(log=>log.targetId===first.id)),/5ダメージ.*出血2\.4＋毒2\.4/);
+ const reloaded=JSON.parse(JSON.stringify(tick.state));
+ assert.equal(m.advanceV39SkillTriggerTurn(reloaded,2,{random}).changed,false,'a saved turn does not tick twice');
+ assert.equal(m.advanceV39SkillTriggerTurn(reloaded,3,{random}).state.players[0].factionState.units[1].hp,100,'no fraction carryover between turns');
+ source.players[0].factionState.units[0]={...combined,hp:3,currentHp:3};
+ const lethal=m.advanceV39SkillTriggerTurn(source,2,{random});
+ assert.equal(lethal.state.players[0].factionState.units[0].state,'死亡');
+ assert.equal(lethal.logs.find(log=>log.targetId===first.id).damage,3,'log is capped by actual HP lost');
+ const fraction=act(createState(),0,{名前:'燃焼端数試験',行動:'A',燃焼:4,効果:'燃焼',効果時間:2},{random}).state;
+ assert.ok(Math.abs(fraction.players[0].factionState.units[1].periodicDamage[0].value-4/1.5)<1e-9,'keep post-defense fractions when applying burn');
 }
 
 {

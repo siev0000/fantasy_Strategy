@@ -491,6 +491,13 @@ function renderLandFacility(tileKey){
   if(!host)return;
   const state=gameState(),playerId=state.activePlayerId;
   const facility=tileKey?getV39LandFacility(state,playerId,tileKey):null;
+  const editor=window.v39FixedMapPlacement;
+  if(editor){
+    const actions=editor.removable(selectedCoord).filter(kind => kind === 'facility' || kind === 'wall');
+    host.hidden=!actions.length;
+    host.innerHTML=actions.map(kind => `<button type="button" class="settlement-chip" data-fixed-map-remove="${kind}">${kind==='wall'?'このマスの壁':'施設'}を外す</button>`).join('');
+    return;
+  }
   host.hidden=!facility;
   host.innerHTML=facility?renderV39FacilityOperations(state,playerId,facility):'';
   if(facility){const heading=document.createElement('strong');heading.textContent=facility.name;host.prepend(heading);}
@@ -498,7 +505,14 @@ function renderLandFacility(tileKey){
 
 function renderSettlementConversionAction() {
   const expansion=document.getElementById('v39-land-expansion-entry');
-  if(expansion){const state=gameState();expansion.innerHTML=renderV39LandExpansionEntry(state,activePlayer(state),selectedCoord,window.__v39FieldRuntime?.mapData);expansion.hidden=!expansion.innerHTML;}
+  if(expansion){
+    const state=gameState();
+    const removalLabels={base:'拠点・村',territory:'領土',unit:'ユニット'};
+    const removals=(window.v39FixedMapPlacement?.removable(selectedCoord) ?? []).filter(kind=>removalLabels[kind])
+      .map(kind=>`<button type="button" class="settlement-chip" data-fixed-map-remove="${kind}">${removalLabels[kind]}を外す</button>`).join('');
+    expansion.innerHTML=renderV39LandExpansionEntry(state,activePlayer(state),selectedCoord,window.__v39FieldRuntime?.mapData)+removals;
+    expansion.hidden=!expansion.innerHTML;
+  }
   const button = document.getElementById("v39-land-settlement-convert");
   const status = document.getElementById("v39-land-settlement-convert-status");
   if (!(button instanceof HTMLButtonElement)) return;
@@ -567,6 +581,12 @@ function install() {
   resetLandPanel();
   selectV39LandTab(panel,panel.dataset.landTab);
   panel.addEventListener('click',event=>{
+    const removal=event.target.closest('[data-fixed-map-remove]');
+    if(removal&&window.v39FixedMapPlacement){
+      const result=window.v39FixedMapPlacement.remove(selectedCoord,removal.dataset.fixedMapRemove);
+      if(!result.ok)window.showV39TurnBanner?.(result.reason);
+      return;
+    }
     const button=event.target.closest('[data-land-tab]');
     if(!button)return;
     selectV39LandTab(panel,button.dataset.landTab);

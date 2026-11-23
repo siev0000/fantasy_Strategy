@@ -1,7 +1,7 @@
-.v39-named-weapon-reveal {
+.v39-named-reveal {
   position: fixed;
   z-index: 12000;
-  top: 42%;
+  top: 50%;
   left: 50%;
   display: grid;
   justify-items: center;
@@ -17,15 +17,42 @@
   font-size: var(--font-heading, 18px);
   pointer-events: none;
   transform: translate(-50%, -50%);
-  animation: v39-named-reveal 1.8s ease both;
+  animation: v39-named-reveal var(--v39-named-reveal-time, 2s) ease both;
 }
 
-.v39-named-weapon-reveal-icon { display: grid; place-items: center; min-block-size: 108px; font-size: 70px; line-height: 1; }
+.v39-named-reveal-stage {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  inline-size: 144px;
+  block-size: 128px;
+}
+
+.v39-named-reveal-light {
+  position: absolute;
+  z-index: -1;
+  inline-size: 164px;
+  block-size: 164px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 12deg, #ffedb4bb 0deg, #ffe2a433 20deg, transparent 54deg, #ffedb4bb 72deg);
+  mask-image: radial-gradient(circle, transparent 16%, #0009 31%, #000 48%, transparent 70%);
+  animation: v39-named-reveal-rotate 4s linear infinite;
+}
+
+.v39-named-reveal-icon { display: grid; place-items: center; font-size: 70px; line-height: 1; }
+.v39-named-reveal-portrait {
+  inline-size: 128px;
+  block-size: 128px;
+  background: center / contain no-repeat;
+}
+
+@keyframes v39-named-reveal-rotate { to { transform: rotate(1turn); } }
 @keyframes v39-named-reveal {
   0% { opacity: 0; transform: translate(-50%, -46%) scale(.93); }
   20%, 78% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .v39-named-weapon-reveal { animation: none; }
+  .v39-named-reveal, .v39-named-reveal-light { animation: none; }
 }

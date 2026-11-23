@@ -14,8 +14,9 @@ function readAction(node,renderIcon){
   if(!label)return null;
   const meta=(labeled?.dataset.basicActionMeta||summary?.querySelector('.technique-ap:not([hidden])')?.textContent||'').trim();
   const assigned=node.hasAttribute('data-basic-action-icon')?renderIcon(label):'';
-  const icon=assigned?`<span class="technique-icon">${assigned}</span>`
-    : summary?.querySelector('.technique-icon, .v39-expedition-tool-icon:not(:empty)')?.outerHTML||'';
+  const existingIcon=summary?.querySelector('.technique-icon, .v39-expedition-tool-icon:not(:empty)');
+  const icon=assigned?`<span class="${escape(existingIcon?.className||'technique-icon')}">${assigned}</span>`
+    : existingIcon?.outerHTML||'';
   return {node,section,label,meta,icon,key:keyOf(node)};
 }
 

@@ -8,7 +8,7 @@ export function tickV39PeriodicStatus(unit,turn){
   for(const effect of unit.periodicDamage||[]){
     if(effect.lastTickTurn>=turn){remaining.push(effect);continue;}
     if(effect.remainingTurns<=0)continue;
-    entries.push({kind:effect.kind,damage:Math.floor(n(effect.value))});
+    entries.push({kind:effect.kind,damage:n(effect.value)});
     if(effect.remainingTurns>1)remaining.push({...effect,remainingTurns:effect.remainingTurns-1,lastTickTurn:turn});
   }
   return {unit:{...unit,periodicDamage:remaining},entries};

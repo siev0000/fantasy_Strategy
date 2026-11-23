@@ -248,7 +248,7 @@ window.logV39CaveRecovery=reports=>{
 };
 
 // View an owned unit's world; recover a missing cave before switching layers.
-window.viewV39OwnedUnitWorld=(unitId,{surface=false}={})=>{
+window.viewV39OwnedUnitWorld=(unitId,{surface=false,selectOnSwitch=false}={})=>{
   if(window.isV39MapInputLocked?.())return false;
   let state=window.getV39GameState();
   const missing=state.players.some(p=>p.factionState.units.some(u=>Number(u.hp??u.currentHp)>0&&String(u.worldId).startsWith('cave:')
@@ -264,7 +264,8 @@ window.viewV39OwnedUnitWorld=(unitId,{surface=false}={})=>{
   const id=surface?'surface':unit.worldId||'surface';
   const selected=(unit.worldId||'surface')===id?unit:faction.units.find(u=>(u.worldId||'surface')===id&&Number(u.hp??u.currentHp)>0);
   const players=state.players.map(p=>p.id===state.activePlayerId?{...p,factionState:{...p.factionState,selectedUnitId:selected?.id||p.factionState.selectedUnitId}}:p);
-  if(id!==state.activeWorldId){
+  const changedWorld=id!==state.activeWorldId;
+  if(changedWorld){
     const worlds=rememberWorld(state);
     if(!worlds[id]?.map){
       window.showV39TurnBanner?.(`${unit.name||'ユニット'}の移動先マップがセーブにありません。洞窟データを含むバックアップからの復旧が必要です。`,true);
@@ -272,7 +273,7 @@ window.viewV39OwnedUnitWorld=(unitId,{surface=false}={})=>{
     }
     activateWorld(state,worlds,id,players);
   }else if(selected?.id!==faction.selectedUnitId)window.setV39GameState({players},{reason:'logistics-unit-viewed'});
-  if(selected)focusV39MapTile(selected,{worldId:id});
+  if(selected)focusV39MapTile(selected,{worldId:id,select:changedWorld&&selectOnSwitch,notify:false});
   return true;
 };
 
@@ -725,9 +726,9 @@ window.addEventListener("v39:unit-selected",installActions);
 window.addEventListener("v39:squad-detail-rendered",installActions);
 window.addEventListener("v39:map-input-lock-changed",installActions);
 window.addEventListener("v39:unit-selected",event=>{
-  if(switching||window.isV39MapInputLocked?.())return;
+  if(switching||event.detail?.mapFocusHandled||window.isV39MapInputLocked?.())return;
   const id=event.detail?.unitId||event.detail?.unit?.id;
-  if(id)window.viewV39OwnedUnitWorld(id);
+  if(id)window.viewV39OwnedUnitWorld(id,{selectOnSwitch:true});
 });
 window.addEventListener("v39:field-layer-changed",()=>{setTimeout(()=>{installActions();renderSites();},100);});
 window.addEventListener("v39:visibility-rendered",renderSites);

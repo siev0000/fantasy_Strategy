@@ -114,10 +114,26 @@
 #v39-land-expansion-entry{grid-column:1/-1;display:grid;gap:4px;min-width:0;padding:4px 0;color:#c9dce0}
 #v39-land-expansion-entry[hidden]{display:none}
 #v39-land-expansion-entry button:disabled{background:#19262a;color:#93a5a9;border-color:#40565c;cursor:default;opacity:1}
-.v39-expansion-page{display:grid;gap:6px;padding:4px 3px;color:#dfedef;min-width:0}
+.v39-expansion-page{display:grid;gap:5px;padding:4px 3px;color:#dfedef;min-width:0}
+.v39-expansion-heading{display:flex;align-items:center;justify-content:space-between;gap:4px}
+.v39-expansion-heading [data-settlement-development]{min-height:30px;padding:3px 6px;white-space:nowrap}
+.v39-expansion-heading [data-settlement-development]:disabled{opacity:.55}
+.v39-expansion-purpose,.v39-expansion-page>p{margin:0}
+.v39-expansion-development-status{color:#d9be8f}
 .v39-expansion-page label{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
 .v39-expansion-page select{max-width:100%;min-width:0;background:#142b33;color:#e7f2f5;border:1px solid #547783;padding:3px;font:inherit}.v39-operation-plan{display:grid;gap:4px;border:1px solid #405b65;border-radius:5px;padding:4px 3px;margin:5px 0;background:#12252d;color:#dfedef}
 .v39-operation-plan>div,.v39-operation-plan label{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.v39-operation-plan>header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:5px;align-items:center}
+.v39-operation-plan>header b{overflow-wrap:anywhere}
+.v39-operation-plan [data-plan-drag]{touch-action:none;cursor:grab;min-width:30px}
+.v39-operation-plan[data-plan-dragging]{opacity:.65}
+.v39-operation-plan[data-plan-drop="before"]{box-shadow:0 -2px #efd17b}
+.v39-operation-plan[data-plan-drop="after"]{box-shadow:0 2px #efd17b}
+.v39-plan-material-totals{display:grid;gap:4px;padding:6px;margin-top:6px;border:1px solid #405b65;border-radius:5px}
+.v39-plan-material-totals small{color:#b6c9cc}
+.v39-plan-material-totals ul{list-style:none;margin:2px 0;padding:0}
+.v39-plan-material-totals li{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.v39-plan-material-totals li>b{color:#ffad9c}
 .v39-operation-plan input{width:5em;max-width:100%;padding:2px 3px;background:#0e1c22;color:#e4f0f3;border:1px solid #527482;font:inherit}
 .v39-operation-plan button{padding:3px 6px;border:1px solid #527482;border-radius:4px;background:#1b3540;color:#e4f0f3;font:inherit;min-height:30px}.v39-territory-management{display:grid;gap:4px;padding:4px 3px;border:1px solid #60737b;border-radius:5px;background:#152a32;color:#dcecf1}
 .v39-territory-management>div{display:flex;gap:5px;align-items:center;justify-content:space-between;flex-wrap:wrap}
@@ -138,11 +154,41 @@
 .v39-phase-review-warning{color:#efd17b}
 .v39-build-plan-order{border-top:1px solid #587582;padding-top:6px;margin-top:6px}#footSettlement .settlement-detail-pane{display:flex;flex-direction:column;overflow:hidden}
 #footSettlement .settlement-detail-pane>.settlement-heading,#footSettlement .settlement-detail-pane>.settlement-pages,#footSettlement .settlement-detail-pane>.v39-territory-management{flex-shrink:0}
-#footSettlement .settlement-fold-list{flex:1;min-height:0;overflow:auto}.v39-territory-guide{display:grid;gap:4px;min-width:0;width:100%;box-sizing:border-box;color:#e4eff1}
-.v39-territory-guide>strong{color:#efd17b}
-.v39-territory-guide>small{white-space:normal;line-height:1.35}
-.v39-territory-guide>div{display:flex;gap:4px;flex-wrap:wrap}
-.v39-territory-guide button{font:inherit;min-height:32px;padding:4px 6px;border:1px solid #63818b;border-radius:4px;background:#213f49;color:#e4eff1;white-space:normal}
-.v39-territory-guide button.primary{background:#493b1a;border-color:#d9b965;color:#ffe4a1;font-weight:700}
+#footSettlement .settlement-fold-list{flex:1;min-height:0;overflow:auto}
+.v39-territory-guide{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;align-items:center;text-align:center}
+.v39-territory-guide button{pointer-events:auto;font:inherit;min-height:36px;padding:4px 6px;border:1px solid #63818b;border-radius:4px;background:#213f49;color:#e4eff1;white-space:nowrap}
+.v39-territory-guide button:focus-visible{outline:2px solid #8be1ef;outline-offset:2px}
+.v39-territory-guide-steps{grid-column:1/-1;grid-row:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px}
+.v39-territory-guide:has(>[data-territory-guide="review"]) .v39-territory-guide-steps{grid-column:1}
+.v39-territory-guide>[data-territory-guide="review"]{grid-column:2;grid-row:1;justify-self:end}
+.v39-territory-guide-hint{grid-column:1/-1;grid-row:2;margin:0;overflow-wrap:anywhere}
+@media(max-width:520px){
+  .v39-territory-guide:has(>[data-territory-guide="review"]) .v39-territory-guide-steps{grid-column:1/-1}
+  .v39-territory-guide>[data-territory-guide="review"]{grid-row:2}
+  .v39-territory-guide:has(>[data-territory-guide="review"]) .v39-territory-guide-hint{grid-column:1;text-align:left}
+}
+.v39-territory-guide-steps button{min-width:0;white-space:normal;padding:3px;overflow-wrap:anywhere}
+.v39-territory-guide-steps [aria-current="step"]{border-color:#efd17b;background:#493b1a;color:#ffe4a1;font-weight:700}
 #v39-land-construction>header{flex-wrap:wrap}
-#v39-land-construction>header>.v39-territory-guide,.v39-unit-create-head>.v39-territory-guide{flex:1 0 100%;border-bottom:1px solid #4a6570;padding-bottom:4px}
+.v39-territory-guide-caption{padding:5px 8px;border:1px solid #d9b965;border-radius:5px;background:#162328f5;color:#e4eff1;font-size:var(--font-body);line-height:1.35;pointer-events:none}
+#v39-territory-guide-caption{position:absolute;top:5px;left:50%;transform:translateX(-50%);width:min(620px,calc(100% - 76px));box-sizing:border-box;z-index:36}
+.playfield:has(#v39-territory-guide-caption:not([hidden])) #v39-operation-phase-banner[data-operation-phase="territory"]{display:none}
+.v39-unit-create-head>.v39-territory-guide-caption{flex:1 0 100%;box-sizing:border-box}
+.v39-char-modal-nav{display:grid;gap:4px;min-width:0}
+.v39-char-modal-nav>[data-v39-unit-list-guide][hidden]{display:none}
+.app:has(#v39-territory-guide-caption:not([hidden])):not([data-v39-territory-guide-target="expansion"]) #footSettlement [data-expansion-action="open"]{border-color:#4b6871;background:#173039;color:#edf5f3}
+.v39-unit-create-panel:has(.v39-territory-guide-caption) #v39-unit-create-confirm:enabled{border-color:#4b6871;background:#173039;color:#edf5f3}
+.v39-territory-guide .v39-territory-guide-highlight,
+.app[data-v39-territory-guide-target="settlement"] [data-foot="settlement"],
+.app[data-v39-territory-guide-target="squad"] [data-foot="squad"],
+.app[data-v39-territory-guide-target="unit-list"] #v39-squad-main [data-open="character"],
+.v39-char-modal-nav:has([data-v39-unit-list-guide]:not([hidden])) [data-v39-character-tab="create"],
+[data-v39-territory-guide-target="training"][data-tab="training"] [data-unit-create-tab="create"],
+[data-v39-territory-guide-target="training"] #v39-unit-create-confirm:enabled,
+.app[data-v39-territory-guide-target="expansion"] #footSettlement [data-expansion-action="open"],
+.app[data-v39-territory-guide-target="land"] [data-foot="tile"],
+.app[data-v39-territory-guide-target="facilities"] #footTile [data-land-tab="facilities"],
+.app[data-v39-territory-guide-target="facility-action"] #footTile :is([data-land-construction-open],#v39-land-settlement-convert):enabled,
+.app[data-v39-territory-guide-target="construction-reserve"] #footTile [data-land-construction-start]:enabled{
+  border-color:#efd17b!important;background:#493b1a!important;color:#ffe4a1!important;box-shadow:inset 0 0 0 1px #efd17b
+}

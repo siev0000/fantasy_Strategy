@@ -5,14 +5,31 @@ import { getV39LandExpansionCandidates, inspectV39LandExpansion, startV39LandExp
 import {usesV39OperationPhases,isV39TerritoryPhase} from '../../lib/v39-operation-phases.js';
 import {queueV39OperationPlan,editV39OperationPlan,projectV39OperationTerritory} from '../../lib/v39-operation-plans.js';
 import {renderV39OperationPlans} from './v39-operation-plan-ui.js';
+import {inspectV39SettlementDevelopment} from '../../lib/v39-economy-rules.js';
+import {renderV39ScreenHelp} from '../ui/v39-screen-help.js';
+import {V39_SCREEN_HELP_COPY} from '../ui/v39-screen-help-copy.js';
 
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
 let selection = null;
 let graphics = null;
 let orderLabels=[];
 
+const fixedPlacement = () => window.v39FixedMapPlacement;
+const fixedExpansion = base => ({kind:'territory',baseKey:`${base.x},${base.y}`});
+function fixedExpansionCandidates(map, base) {
+  return (map?.grid ?? []).flatMap((row,y) => row.flatMap((_,x) => {
+    const tile = {x,y};
+    return fixedPlacement().inspect(tile,fixedExpansion(base)).ok ? [tile] : [];
+  }));
+}
+
 export function inspectV39LandExpansionEntry(state,player,tile,map){
   const bases=getFactionSettlements(player?.factionState).filter(base=>base.placed);
+  if(fixedPlacement()){
+    const base=getSelectedSettlement(player?.factionState) ?? bases[0];
+    const result=base ? fixedPlacement().inspect(tile,fixedExpansion(base)) : {ok:false,reason:'配置済みの拠点がありません'};
+    return {check:{...result,settlement:base,workers:0,totalTurns:0},reason:result.reason,available:result.ok};
+  }
   const checks=bases.map(base=>inspectV39LandExpansion(isV39TerritoryPhase(state)?projectV39OperationTerritory(state,player.id,base):state,player.id,base.settlementId,tile,map));
   const selected=getSelectedSettlement(player?.factionState)?.settlementId;
   const check=checks.find(row=>row.ok&&row.settlement.settlementId===selected)||checks.find(row=>row.ok)||checks.find(row=>row.settlement?.settlementId===selected)||checks[0];
@@ -29,7 +46,7 @@ export function renderV39LandExpansionEntry(state,player,tile,map){
     return `<b>開拓中 / 残り${project.remainingTurns}T</b><button type="button" class="settlement-chip" data-expansion-action="cancel" data-expansion-settlement="${escapeHtml(base.settlementId)}" data-expansion-key="${escapeHtml(project.tileKey)}">開拓を中止</button>`;
   }
   if(state.territoryOwnerByTile?.[`${tile.x},${tile.y}`])return '';
-  return `<button type="button" class="settlement-chip" data-expansion-action="tile" data-expansion-x="${tile.x}" data-expansion-y="${tile.y}"${entry.available?'':' disabled'}>領土に加える</button><small>${escapeHtml(entry.available?`${entry.check.settlement.name||'拠点'} / ${entry.check.workers}人・${entry.check.totalTurns}T`:entry.reason)}</small>`;
+  return `<button type="button" class="settlement-chip" data-expansion-action="tile" data-expansion-x="${tile.x}" data-expansion-y="${tile.y}"${entry.available?'':' disabled'}>領土に加える</button><small>${escapeHtml(entry.available?`${entry.check.settlement.name||'拠点'} / ${fixedPlacement()?'即時':`${entry.check.workers}人・${entry.check.totalTurns}T`}`:entry.reason)}</small>`;
 }
 
 function context() {
@@ -39,9 +56,11 @@ function context() {
 }
 
 function clearSelection() {
+  const wasSelecting=Boolean(selection);
   selection = null;
   graphics?.destroy(); graphics = null;
   for(const label of orderLabels)label.destroy();orderLabels=[];
+  if(wasSelecting)window.dispatchEvent(new Event('v39:territory-guide-selection-changed'));
 }
 
 function drawCandidates(tiles) {
@@ -71,8 +90,18 @@ function drawCandidates(tiles) {
 
 export function renderV39LandExpansionControls(state, player, settlement) {
   const map = window.__v39FieldRuntime?.mapData;
-  if (selection && (selection.playerId !== player.id || selection.settlementId !== settlement.settlementId)) clearSelection();
-  if(!selection&&isV39TerritoryPhase(state))selection={playerId:player.id,settlementId:settlement.settlementId,tile:null};
+  if(fixedPlacement()){
+    if(selection && (selection.playerId !== player.id || selection.settlementId !== settlement.settlementId)) clearSelection();
+    const check=selection?.tile && fixedPlacement().inspect(selection.tile,fixedExpansion(settlement));
+    return `<header class="v39-expansion-heading"><strong>領土拡張</strong></header>
+      <p class="v39-expansion-purpose">地図で土地を選ぶと、費用・工期なしで領土に加えられます。</p>
+      <div class="settlement-chip-list"><button type="button" class="settlement-chip" data-expansion-action="choose">${selection?'選択解除':'土地を選ぶ'}</button></div>
+      ${check?`<div class="settlement-inline-facts"><b>(${selection.tile.x},${selection.tile.y})</b>
+        <span>${escapeHtml(check.reason||'即時')}</span><button type="button" class="settlement-chip" data-expansion-action="start"${check.ok?'':' disabled'}>領土に加える</button></div>`:''}`;
+  }
+  if(selection?.playerId===player.id&&selection.settlementId!==settlement.settlementId&&isV39TerritoryPhase(state)){
+    selection={playerId:player.id,settlementId:settlement.settlementId,tile:null};
+  }else if(selection&&(selection.playerId!==player.id||selection.settlementId!==settlement.settlementId))clearSelection();
   if(selection&&isV39TerritoryPhase(state))drawCandidates(getV39LandExpansionCandidates(projectV39OperationTerritory(state,player.id,settlement),player.id,settlement.settlementId,map));
   const projects = settlement.landExpansionProjects || [];
   const rows = projects.map(project => {
@@ -87,7 +116,27 @@ export function renderV39LandExpansionControls(state, player, settlement) {
     target = `<label>編入先 <select data-expansion-base>${bases.map(base=>`<option value="${escapeHtml(base.settlementId)}"${base.settlementId===settlement.settlementId?' selected':''}>${escapeHtml(base.name||base.type||'拠点')}</option>`).join('')}</select></label><div class="settlement-inline-facts"><b>${escapeHtml(check.key)}</b><span>${check.ok ? `${check.workers}人 / ${check.totalTurns}T / 資材消費なし` : escapeHtml(check.reason)}</span><button type="button" class="settlement-chip" data-expansion-action="start"${check.ok ? "" : " disabled"}>${usesV39OperationPhases(state)?"計画に追加":"開拓開始"}</button></div>`;
   }
   const canChoose = isV39TerritoryPhase(state)||projects.length < V39_LAND_EXPANSION_BALANCE.maxProjects;
-  return `${usesV39OperationPhases(state)?`<section><h3>拡張順</h3>${renderV39OperationPlans(state,player,settlement,{scope:'expansion',showFinish:false})}</section>`:''}${target}${rows}${usesV39OperationPhases(state)?'':`<div class="settlement-chip-list"><button type="button" class="settlement-chip" data-expansion-action="choose"${canChoose ? "" : " disabled"}>${selection ? "選択解除" : "土地を選ぶ"}</button></div>`}${selection ? '<div class="settlement-empty">地図の黄色の土地を選択（拠点フェーズでは押す順に追加）</div>' : ""}<div class="settlement-empty">担当${V39_LAND_EXPANSION_BALANCE.workers}人を生産から外す / ${V39_LAND_EXPANSION_BALANCE.turns}ターン。停止中は生産へ復帰。</div>`;
+  const phased=usesV39OperationPhases(state);
+  const labor=`着手すると担当${V39_LAND_EXPANSION_BALANCE.workers}人が生産を離れ、${V39_LAND_EXPANSION_BALANCE.turns}ターンかけて開拓します。停止中は担当者が生産へ戻ります。`;
+  const development=inspectV39SettlementDevelopment(state,player.id,settlement.settlementId);
+  const available=state.timeline?.phase==='player'&&(!phased||isV39TerritoryPhase(state));
+  const canReserve=available&&phased&&!!development.next&&!development.project;
+  const canDevelop=available&&(development.available||canReserve);
+  const developmentStatus=!available?(phased?'開発フェーズで操作できます。':'自分のターンに操作できます。'):!development.available
+    ? [development.reason,canReserve?'予約可・着手条件未達':''].filter(Boolean).join(' ／ ')
+    : '';
+  const reservationCount=(settlement.operationPlans||[]).filter(plan=>plan.kind==='expansion').length;
+  const copy=V39_SCREEN_HELP_COPY.expansion;
+  const help=renderV39ScreenHelp('領土拡張',[
+    ['領土拡張',phased?copy.plan:copy.start],
+    ...copy.order,
+    ['担当人数',labor],
+    ['拠点発展',copy.develop+developmentStatus]
+  ]);
+  const header=`<header class="v39-expansion-heading"><strong>${phased?`拡張順 ${reservationCount}件`:'領土拡張'}</strong><button type="button" class="settlement-chip" data-settlement-development${canDevelop?'':' disabled'}>拠点発展</button>${help}</header>
+    <p class="v39-expansion-purpose">資源の採取や建築に使える土地を増やします。</p>
+    ${developmentStatus?`<small class="v39-expansion-development-status">${escapeHtml(developmentStatus)}</small>`:''}`;
+  return `${header}${phased?renderV39OperationPlans(state,player,settlement,{scope:'expansion',showFinish:false}):''}${target}${rows}${phased?'':`<div class="settlement-chip-list"><button type="button" class="settlement-chip" data-expansion-action="choose"${canChoose ? "" : " disabled"}>${selection ? "選択解除" : "土地を選ぶ"}</button></div>`}${selection&&!isV39TerritoryPhase(state) ? '<div class="settlement-empty">地図の黄色の土地を選択</div>' : ""}`;
 }
 
 function selectBase(player,id){
@@ -110,6 +159,7 @@ function appendExpansionTile(state,player,settlement,tile,map){
   const result=queueV39OperationPlan(state,player.id,settlement.settlementId,{kind:'expansion',tile});
   if(!result.ok){window.showV39TurnBanner?.(result.reason);return false;}
   selection={playerId:player.id,settlementId:settlement.settlementId,tile:null};
+  window.dispatchEvent(new Event('v39:territory-guide-selection-changed'));
   window.setV39GameState({players:result.state.players},{reason:'expansion-planned'});
   const base=getFactionSettlementById(result.state.players.find(row=>row.id===player.id).factionState,settlement.settlementId);
   drawCandidates(getV39LandExpansionCandidates(projectV39OperationTerritory(result.state,player.id,base),player.id,base.settlementId,map));
@@ -124,6 +174,8 @@ export function beginV39LandExpansionSelection(){
   window.renderV39SettlementPanel?.();return true;
 }
 window.beginV39LandExpansionSelection=beginV39LandExpansionSelection;
+window.clearV39LandExpansionSelection=clearSelection;
+window.isV39LandExpansionSelecting=()=>Boolean(selection);
 
 document.addEventListener("click", event => {
   const button = event.target instanceof Element ? event.target.closest("[data-expansion-action]") : null;
@@ -132,6 +184,27 @@ document.addEventListener("click", event => {
   if(button.dataset.expansionSettlement)settlement=getFactionSettlementById(player?.factionState,button.dataset.expansionSettlement);
   if (!settlement || state.timeline?.phase !== "player") return;
   const action = button.dataset.expansionAction;
+  if(fixedPlacement()){
+    if(action==='open'||action==='tile'){
+      window.openV39SettlementExpansion?.();
+      const tile=action==='tile'?{x:Number(button.dataset.expansionX),y:Number(button.dataset.expansionY)}:null;
+      selection={playerId:player.id,settlementId:settlement.settlementId,tile};
+      drawCandidates(fixedExpansionCandidates(map,settlement));
+    }else if(action==='choose'){
+      if(selection)clearSelection();
+      else{
+        selection={playerId:player.id,settlementId:settlement.settlementId,tile:null};
+        drawCandidates(fixedExpansionCandidates(map,settlement));
+      }
+    }else if(action==='start'&&selection?.tile){
+      const result=fixedPlacement().place(selection.tile,fixedExpansion(settlement));
+      if(!result.ok){window.showV39TurnBanner?.(result.reason);return;}
+      selection.tile=null;
+      drawCandidates(fixedExpansionCandidates(map,settlement));
+    }
+    window.renderV39SettlementPanel?.();
+    return;
+  }
   if(usesV39OperationPhases(state)&&!isV39TerritoryPhase(state)&&action!=='open'){window.showV39TurnBanner?.('領土運営フェーズで操作してください');return;}
   if(action==='start'&&usesV39OperationPhases(state)){
     if(selection?.tile)appendExpansionTile(state,player,settlement,selection.tile,map);return;
@@ -143,6 +216,7 @@ document.addEventListener("click", event => {
     window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.();
     window.openV39SettlementExpansion?.();
     selection={playerId:player.id,settlementId:settlement.settlementId,tile};
+    window.dispatchEvent(new Event('v39:territory-guide-selection-changed'));
     if(tile&&isV39TerritoryPhase(state)){appendExpansionTile(state,player,settlement,tile,map);return;}
     drawCandidates(getV39LandExpansionCandidates(isV39TerritoryPhase(state)?projectV39OperationTerritory(state,player.id,settlement):state,player.id,settlement.settlementId,map));
     window.renderV39SettlementPanel?.();return;
@@ -172,6 +246,12 @@ window.addEventListener("v39:tile-selected", event => {
   if (!selection) return;
   const { state, player, settlement, map } = context();
   if (player?.id !== selection.playerId || settlement?.settlementId !== selection.settlementId) { clearSelection(); return; }
+  if(fixedPlacement()){
+    if(!Number.isInteger(event.detail?.x)||!Number.isInteger(event.detail?.y))return;
+    selection.tile={x:event.detail.x,y:event.detail.y};
+    window.renderV39SettlementPanel?.();
+    return;
+  }
   if(isV39TerritoryPhase(state)){appendExpansionTile(state,player,settlement,{x:event.detail.x,y:event.detail.y},map);return;}
   const check = inspectV39LandExpansion(isV39TerritoryPhase(state)?projectV39OperationTerritory(state,player.id,settlement):state, player.id, settlement.settlementId, event.detail, map);
   selection.tile = { x:event.detail.x, y:event.detail.y };

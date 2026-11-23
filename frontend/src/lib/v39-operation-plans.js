@@ -35,10 +35,20 @@ export function editV39OperationPlan(state,playerId,settlementId,planId,action,v
   if(index<0)return {ok:false,state,reason:'計画がありません'};
   if(action==='cancel')plans.splice(index,1);
   else if(action==='turn')plans[index]={...plans[index],notBeforeTurn:Math.max(state.timeline.turnNumber,Math.floor(Number(value)||state.timeline.turnNumber))};
-  else if(action==='up'||action==='down'){
+  else if(action==='up'||action==='down'||action==='move'){
     const indices=plans.flatMap((plan,i)=>scope==='all'||(scope==='expansion'?plan.kind==='expansion':plan.kind!=='expansion')?[i]:[]);
-    const position=indices.indexOf(index),target=indices[position+(action==='up'?-1:1)];
-    if(position>=0&&target!==undefined)[plans[index],plans[target]]=[plans[target],plans[index]];
+    const position=indices.indexOf(index);
+    if(action==='move'){
+      const ordered=indices.map(i=>plans[i]);
+      if(position<0||value?.targetId===planId||!ordered.some(plan=>plan.id===value?.targetId))return {ok:false,state,reason:'移動先の予約を選んでください'};
+      const [moved]=ordered.splice(position,1);
+      const target=ordered.findIndex(plan=>plan.id===value.targetId);
+      ordered.splice(target+(value.after?1:0),0,moved);
+      indices.forEach((i,position)=>{plans[i]=ordered[position];});
+    }else{
+      const target=indices[position+(action==='up'?-1:1)];
+      if(position>=0&&target!==undefined)[plans[index],plans[target]]=[plans[target],plans[index]];
+    }
   }
   else return {ok:false,state,reason:'不明な操作です'};
   const faction=replaceFactionSettlement(player.factionState,{...base,operationPlans:plans},{ownerPlayerId:playerId,select:false});

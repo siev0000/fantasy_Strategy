@@ -41,14 +41,14 @@ try {
     await page.locator("[data-select-research]").click();
     await page.locator('.v39-research-efficiency > summary').click();
     const retained=await page.evaluate(()=>{
-      const select=document.querySelector('[data-research-assignee]'),board=document.querySelector('.v39-research-board'),item=document.querySelector('[data-research-item="鍛冶Lv:2:製作効率Ⅰ"]');select.focus();
+      const summary=document.querySelector('.v39-research-efficiency summary'),board=document.querySelector('.v39-research-board'),item=document.querySelector('[data-research-item="鍛冶Lv:2:製作効率Ⅰ"]');summary.focus();
       for(let i=0;i<10;i++)window.dispatchEvent(new CustomEvent('v39:game-state-changed'));
-      const unchanged=select===document.querySelector('[data-research-assignee]')&&board===document.querySelector('.v39-research-board')&&item===document.querySelector('[data-research-item="鍛冶Lv:2:製作効率Ⅰ"]')&&document.activeElement===select;
+      const unchanged=summary===document.querySelector('.v39-research-efficiency summary')&&board===document.querySelector('.v39-research-board')&&item===document.querySelector('[data-research-item="鍛冶Lv:2:製作効率Ⅰ"]')&&document.activeElement===summary;
       window.addV39ResearchExperience('鍛冶Lv',7);
-      return {unchanged,changed:select===document.querySelector('[data-research-assignee]')&&document.activeElement===select,expanded:document.querySelector('.v39-research-efficiency').open,
+      return {unchanged,changed:summary===document.querySelector('.v39-research-efficiency summary')&&document.activeElement===summary,expanded:document.querySelector('.v39-research-efficiency').open,
         exp:window.getV39ResearchState().progress.targetExpMap['鍛冶Lv:2:製作効率Ⅰ']};
     });
-    assert(retained.unchanged&&retained.changed&&retained.expanded,'updates retain research inputs, board, cards and open explanation');assert.equal(retained.exp,7);
+    assert(retained.unchanged&&retained.changed&&retained.expanded,'updates retain the research board, cards and open explanation');assert.equal(retained.exp,7);
     await page.evaluate(()=>{window.addV39ResearchExperience("鍛冶Lv",30);window.importV39SaveJson(window.exportV39SaveJson());window.openV39Research("鍛冶Lv");});
     assert.equal(await page.evaluate(()=>window.getV39ActiveFactionState().research.progress.targetExpMap["鍛冶Lv:2:製作効率Ⅰ"]),37);
     await page.locator("[data-research-view]").selectOption("list");

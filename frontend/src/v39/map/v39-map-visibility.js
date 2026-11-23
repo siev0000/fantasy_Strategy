@@ -153,6 +153,7 @@ function activePlayer(state) {
 }
 
 function isTestMode() {
+  if (window.isV39FixedMapEditing?.()) return true;
   return window.isV39TestMode?.() === true || window.getV39DisplaySettings?.().testMode === true;
 }
 

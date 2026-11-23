@@ -17,6 +17,7 @@ export function getV39LandFieldTab(label) { return fieldTabs[label] || 'overview
 
 export function selectV39LandTab(panel, requested) {
   const id = V39_LAND_TABS.some(tab => tab.id === requested) ? requested : 'overview';
+  const changed = panel.dataset.landTab !== id;
   panel.dataset.landTab = id;
   for (const button of panel.querySelectorAll('[data-land-tab]')) {
     const active = button.dataset.landTab === id;
@@ -26,5 +27,6 @@ export function selectV39LandTab(panel, requested) {
   for (const section of panel.querySelectorAll('[data-land-page]')) section.hidden = section.dataset.landPage !== id;
   const body = panel.querySelector('#v39-land-scroll');
   if (body) body.scrollTop = 0;
+  if (changed) window.dispatchEvent(new CustomEvent('v39:land-tab-changed'));
   return id;
 }

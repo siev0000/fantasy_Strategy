@@ -1,6 +1,7 @@
 import { installV39ModalGallery } from "../dev/v39-modal-gallery.js";
 import {loadV39SharedIconSettings} from "../../lib/v39-shared-icon-settings.js";
 import {loadV39EnchantmentColors} from "../../lib/v39-enchantment-color-state.js";
+import {bindGameAudioInteractions} from "../../lib/audio-player.js";
 
 // Load the v39 runtime in ordered groups so startup progress is visible without changing module order.
 const BOOTSTRAP_STAGES = Object.freeze([
@@ -62,8 +63,10 @@ function nextPaint() {
 
 async function bootstrap() {
   const overlay = installLoadingOverlay();
+  let unbindAudio;
   setLoadingProgress(overlay, 3, "起動準備中...");
   try {
+    if (window.parent === window) unbindAudio = bindGameAudioInteractions();
     await Promise.all([loadV39SharedIconSettings().catch(() => {}), loadV39EnchantmentColors()]);
     let loadedModules = 0;
     for (const stage of BOOTSTRAP_STAGES) {
@@ -86,6 +89,7 @@ async function bootstrap() {
       document.getElementById("v39-bootstrap-loading-style")?.remove();
     }, 240);
   } catch (error) {
+    unbindAudio?.();
     overlay.classList.add("is-error");
     const stage = overlay.querySelector("[data-v39-load-stage]");
     if (stage) stage.textContent = `読み込みに失敗しました: ${String(error?.message || error || "不明なエラー")}`;

@@ -8,6 +8,14 @@ const surface = unit => !unit.worldId || unit.worldId === "surface";
 const alive = unit => Number(unit.hp ?? unit.currentHp) > 0;
 const keyOf = unit => `${unit.x},${unit.y}`;
 
+export function clearV39LegacyRecruitInstructors(faction){
+  const entries=[...Object.values(faction.recruitInstructorByTile||{}),...Object.values(faction.recruitInstructorTransfers||{})];
+  if(!entries.length)return faction;
+  const previousHolds=new Map(entries.filter(entry=>entry?.unitId).map(entry=>[entry.unitId,entry.previousMovementHold===true]));
+  return {...faction,recruitInstructorByTile:{},recruitInstructorTransfers:{},
+    units:(faction.units||[]).map(unit=>previousHolds.has(unit?.id)?{...unit,movementHold:previousHolds.get(unit.id)}:unit)};
+}
+
 export function getV39RecruitInstructorFacility(faction, village, className, state = {}) {
   const facilityName = getV39FacilityRecruitmentClasses().find(entry => entry.className === className)?.facilityName
     || balance.defaultInstructorFacilityName;
@@ -125,13 +133,4 @@ export function advanceV39RecruitInstructorMovement(state, playerId, mapData, tu
   }
   return {state:{...state,players:state.players.map(row => row.id === playerId
     ? {...row,factionState:{...faction,units,recruitInstructorByTile:assignments,recruitInstructorTransfers:transfers}} : row)}};
-}
-
-export function resolveV39AssignedRecruitInstructor(faction, village, unit, state = {}, tileKey) {
-  const facility = getV39RecruitInstructorFacility(faction, village, unit.className, state);
-  if (tileKey !== undefined) facility.tileKey = facility.tileKeys.includes(tileKey) ? tileKey : "";
-  const assigned = faction.recruitInstructorByTile?.[facility.tileKey];
-  if (!assigned || assigned.className !== unit.className || assigned.settlementId !== village.settlementId) return null;
-  return faction.units?.find(candidate => candidate.id === assigned.unitId && !candidate.isMob && alive(candidate)
-    && surface(candidate) && keyOf(candidate) === facility.tileKey && candidate.className === unit.className) || null;
 }

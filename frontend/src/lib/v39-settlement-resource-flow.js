@@ -24,6 +24,7 @@ export function inspectV39SettlementResourceFlow(state,player,base,map){
     ...MATERIAL_RESOURCE_KEYS.map(key=>[key,round(n(raw.material[key])*civic*specialization.materialMultiplier)])
   ]);
   for(const [key,value] of Object.entries(raw.specialtyFood?.fixedIncome||{}))production[key]=round(n(production[key])+value);
+  for(const [key,value] of Object.entries(raw.initialSubsistenceFood||{}))production[key]=round(n(production[key])+value);
   for(const [key,value] of Object.entries(raw.facilityFixedIncome||{}))production[key]=round(n(production[key])+value);
   const harvest=advanceV39SpecialResourceHarvest(state,player,base,turn,map);
   for(const [key,value] of Object.entries(harvest.income))production[key]=round(n(production[key])+value);
@@ -35,5 +36,5 @@ export function inspectV39SettlementResourceFlow(state,player,base,map){
   const before={...base.foodStockByType,...base.materialStockByType};
   const after={...population.foodStockByType,...Object.fromEntries(MATERIAL_RESOURCE_KEYS.map(key=>[key,round(n(before[key])+n(trade.income[key]))]))};
   return {...buildV39ResourceFlowRecord({production,before,after,maintenance:population.consumedByType,reserved:trade.reserved}),
-    turn,shortage:population.shortageTotal,specialtyFoodFixedIncome:raw.specialtyFood?.fixedIncome||{},facilityFixedIncome:raw.facilityFixedIncome||{}};
+    turn,shortage:population.shortageTotal,specialtyFoodFixedIncome:raw.specialtyFood?.fixedIncome||{},facilityFixedIncome:raw.facilityFixedIncome||{},initialSubsistenceFood:raw.initialSubsistenceFood||{}};
 }

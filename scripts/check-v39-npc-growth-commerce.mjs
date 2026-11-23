@@ -71,7 +71,7 @@ try{
     check(!promotion.acquireV39UpperClass(low,npc.id,hero.id,'ウォーリアー',{aiTurn:true}).ok,'surplus level still required');
     const rareGoal={name:'銀鉄',missing:2,stock:0,required:2,settlementId:base.id,purpose:'装備更新'};
     check(growth.inspectV39NpcRareResourcePlan(initial,npc,map,[rareGoal]).status==='研究待ち','rare resources require completed discovery research');
-    const priority=growth.selectV39NpcRequiredResearch(npc.factionState.research,[{category:'地質調査',level:2}],hero);
+    const priority=growth.selectV39NpcRequiredResearch(npc.factionState.research,[{category:'地質調査',level:2}],npc.factionState.selectedSettlementId);
     check(Object.values(priority.research.selection).some(id=>id.startsWith('地質調査Lv:1:')),'discovery prerequisite selected from data graph');
     const completed=normalizeResearchState();
     for(const [category,entry] of Object.entries(researchTreeData.categories))for(const level of entry.levels){completed.progress.completedByCategoryLevel[category]||={};completed.progress.completedByCategoryLevel[category][level.level]=level.items.map(item=>item.id);}

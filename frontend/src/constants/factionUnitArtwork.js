@@ -10,7 +10,7 @@ export const FACTION_UNIT_ARTWORK_SLOTS = Object.freeze([
   Object.freeze({ sheetIndex:0, artworkName:"戦士", aliases:Object.freeze(["戦士", "ファイター"]) }),
   Object.freeze({ sheetIndex:1, artworkName:"騎士", aliases:Object.freeze(["騎士", "ナイト"]) }),
   Object.freeze({ sheetIndex:2, artworkName:"軽戦士", aliases:Object.freeze(["軽戦士", "フェンサー"]) }),
-  Object.freeze({ sheetIndex:3, artworkName:"格闘家", aliases:Object.freeze(["格闘家"]) }),
+  Object.freeze({ sheetIndex:3, artworkName:"格闘家", aliases:Object.freeze(["格闘家", "モンク"]) }),
   Object.freeze({ sheetIndex:4, artworkName:"狩人&アーチャー", aliases:Object.freeze(["狩人&アーチャー", "狩人", "レンジャー", "アーチャー"]) }),
   Object.freeze({ sheetIndex:5, artworkName:"クロスボウ兵", aliases:Object.freeze(["クロスボウ兵"]) }),
   Object.freeze({ sheetIndex:6, artworkName:"スカウト&シーフ", aliases:Object.freeze(["スカウト&シーフ", "スカウト", "シーフ", "密偵", "盗賊"]) }),

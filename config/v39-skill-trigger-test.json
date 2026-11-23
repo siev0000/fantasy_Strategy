@@ -23,7 +23,76 @@
       {"id": "equipment-test-dummy-far", "name": "案山子・遠距離", "x": 5, "y": 6}
     ],
     "equipmentNames": ["剣", "弓", "篭手"],
+    "skillGrantTestUnit": {
+      "id": "equipment-skill-test",
+      "name": "装備スキル検証",
+      "race": "只人",
+      "className": "ファイター",
+      "level": 1,
+      "x": 3,
+      "y": 5,
+      "equipment": [{"name":"短剣","quality":"common","slot":"武器1","効果":"獲得スキル:闘気撃"}]
+    },
+    "skillGrantThief": {
+      "id": "equipment-skill-test-thief",
+      "name": "装備スキル検証・シーフ",
+      "race": "只人",
+      "className": "シーフ",
+      "level": 1,
+      "x": 4,
+      "y": 6,
+      "equipment": [{"name":"短剣","quality":"common","slot":"武器1"}]
+    },
+    "skillGrantStock": {"name":"短剣","quality":"rare","enchantments":["戦士"]},
     "startingQualities": ["common", "uncommon", "rare"]
+  },
+  "namedUnitTest": {
+    "unit": {
+      "id": "trigger-test-reaper",
+      "name": "死神検証・フェンサー",
+      "race": "只人",
+      "className": "フェンサー",
+      "level": 40,
+      "prerequisiteClassLevels": {"アサシン": 1},
+      "x": 3,
+      "y": 5
+    },
+    "weapon": {
+      "name": "剣",
+      "quality": "legendary",
+      "slot": "武器1",
+      "instanceId": "trigger-test-reaper-weapon",
+      "namedWeapon": {"name": "空刀・無影", "qualityMultiplierBonus": 0.25}
+    },
+    "additionalSkillNames": ["検証・竜変身"],
+    "rewards": {
+      "namedUnitName": "死神",
+      "grantedSkills": ["検証・無影斬り"],
+      "statusBonus": {"HP": 30, "攻撃": 10}
+    },
+    "actions": [
+      {
+        "名前": "検証・暗殺",
+        "行動": "A",
+        "系統": "暗殺",
+        "攻撃手段": "武器",
+        "対象": "相手",
+        "判定": "攻撃",
+        "切断": 20,
+        "射程": 20,
+        "AP消費": 10,
+        "詳細": "死神の特殊①を表示する検証用攻撃。"
+      },
+      {
+        "名前": "影隠れ",
+        "行動": "A",
+        "対象": "自身",
+        "隠密": 10,
+        "効果時間": "2t",
+        "AP消費": 10,
+        "詳細": "2ターンの間、死神の通常姿を特殊②に切り替える検証用スキル。"
+      }
+    ]
   },
   "units": [
     {

@@ -3,38 +3,45 @@ import {buildV39UnitEntity} from '../../lib/v39-unit-creation-rules.js';
 import {createPlayerFactionState} from '../../lib/player-state.js';
 import {normalizeV39EquipmentInventory} from '../../lib/v39-equipment-rules.js';
 import {researchTreeData} from '../../lib/research-tree-config.js';
+import {getHexNeighborCoords,HEX_CLOCKWISE_NEIGHBOR_INDICES} from '../../lib/hex-grid.js';
 
 const targetLayouts=[
   {id:'spy-test-defender',label:'防諜側',name:'防諜拠点',x:8,y:5,
-    facilities:[[9,5,'兵舎'],[8,4,'鍛冶場'],[9,4,'倉庫']]},
+    facilities:['兵舎','鍛冶場','倉庫']},
   {id:'spy-test-golem',label:'ゴーレム研究勢力',name:'ゴーレム研究拠点',x:17,y:4,
-    facilities:[[16,4,'ゴーレム工房（小）'],[18,4,'ゴーレム工房（中）'],[17,3,'ゴーレム工房（大）'],[17,5,'鍛冶場'],[18,5,'倉庫'],[18,3,'兵舎']]},
+    facilities:['ゴーレム工房（小）','ゴーレム工房（中）','ゴーレム工房（大）','鍛冶場','倉庫','兵舎']},
   {id:'spy-test-beast',label:'魔獣研究勢力',name:'魔獣収容拠点',x:16,y:12,
-    facilities:[[15,12,'魔獣研究所'],[17,12,'兵舎'],[16,11,'魔獣研究所'],[16,13,'倉庫'],[17,13,'鍛冶場']]}
+    facilities:['魔獣研究所','兵舎','魔獣研究所','倉庫','鍛冶場']}
 ];
 
 export function createSpyTestFixture(player,map){
   const ownerId=player.id;
+  const neighbors=(x,y)=>getHexNeighborCoords(map.w,map.h,x,y);
   const base=(id,ownerPlayerId,name,x,y,facilities=[])=>({
     id,settlementId:id,ownerPlayerId,name,x,y,placed:true,worldId:'surface',type:'村',population:50,
     foodStockByType:{穀物:500},materialStockByType:{木材:100},
-    territoryTileKeys:[...new Set([x+','+y,...facilities.map(([fx,fy])=>fx+','+fy)])],
+    territoryTileKeys:[`${x},${y}`,...neighbors(x,y).map(tile=>tile.key)],
     buildings:facilities.map(([, ,name])=>name),
     tileFacilityMap:Object.fromEntries(facilities.map(([fx,fy,name])=>[fx+','+fy,[name]]))
   });
   const home=base('spy-home',ownerId,'派遣拠点',4,7);
-  const targets=targetLayouts.map(layout=>({
-    ...layout,
-    settlement:{...base(layout.id+'-base',layout.id,layout.name,layout.x,layout.y,layout.facilities),
-      equipmentInventory:normalizeV39EquipmentInventory([
-        {name:'剣',quality:'common',count:3},{name:'弓',quality:'rare',count:1}])}
-  }));
+  const targets=targetLayouts.map(layout=>{
+    const ring=neighbors(layout.x,layout.y);
+    const facilities=layout.facilities.map((name,index)=>{
+      const tile=ring[HEX_CLOCKWISE_NEIGHBOR_INDICES[index]];
+      return [tile.x,tile.y,name];
+    });
+    return {...layout,facilities,
+      settlement:{...base(layout.id+'-base',layout.id,layout.name,layout.x,layout.y,facilities),
+        equipmentInventory:normalizeV39EquipmentInventory([
+          {name:'剣',quality:'common',count:3},{name:'弓',quality:'rare',count:1}])}};
+  });
   const makeUnit=(id,name,x,y,settlementId,className,minimum={},prerequisiteClassLevels={},race='只人')=>({
     ...buildV39UnitEntity({id,name,x,y,settlementId,race,level:30,className,prerequisiteClassLevels}),
     testOnly:true,testSkillMinimum:minimum,worldId:'surface'
   });
   const minimum={隠密:180,変装:180};
-  const spies=[makeUnit('spy-test-agent','検証スパイ',4,7,home.id,'スパイ',minimum),
+  const spies=[makeUnit('spy-test-agent','検証スパイ',4,8,home.id,'スパイ',minimum),
     makeUnit('spy-test-thief','検証怪盗',5,7,home.id,'スパイ',minimum,{怪盗:1})];
   const buildSide=(id,label,v,units,overrides={})=>({...player,id,name:label,label,isPlayer:true,isNpc:false,ready:true,
     factionState:createPlayerFactionState({units,settlements:[v],selectedSettlementId:v.id,selectedUnitId:units[0].id,
@@ -57,7 +64,8 @@ export function createSpyTestFixture(player,map){
         animal?'ウルフ':'ファイター',{}, {},animal?'ウルフ':'只人');
       return [{unit,tileKey:fx+','+fy,facilityName:name,worldId:'surface',runtimeByKey:{}}];
     });
-    const guard=makeUnit(id+'-guard',label+'の警備担当者',x,y,settlement.id,'ファイター',
+    const station=neighbors(x,y).find(tile=>!settlement.tileFacilityMap[tile.key])??{x,y:y+2};
+    const guard=makeUnit(id+'-guard',label+'の警備担当者',station.x,station.y,settlement.id,'ファイター',
       index===0?{索敵:220,看破:180}:{索敵:120,看破:100});
     return buildSide(id,label,settlement,[guard],{facilityStorage,research:{
       selection:items[0]?{[category]:items[0].id}:{},

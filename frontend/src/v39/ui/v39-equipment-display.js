@@ -2,7 +2,7 @@ import "./v39-equipment-display.css";
 import "./v39-resource-item-icon.css";
 import {getV39EquipmentEnhancementDisplay,getV39EquipmentRarity, getV39EquipmentSlotCandidates} from "../../lib/v39-equipment-rules.js";
 import {normalizeV39IconColor,renderV39IconAssignment,resolveV39IconAssignment} from "../../lib/v39-icon-assignment.js";
-import {getV39WeaponEnchantmentColors} from "../../lib/v39-enchantment-color-state.js";
+import {getV39EnchantmentMarkColor,getV39WeaponEnchantmentColors} from "../../lib/v39-enchantment-color-state.js";
 import {resolveV39WeaponPhysicalPower,V39_WEAPON_PHYSICAL_TYPES} from "../../lib/v39-weapon-physical-power.js";
 import {getV39SharedIconRow} from "../../lib/v39-shared-icon-settings.js";
 import {resolveV39EquipmentIconSheet} from "../../lib/v39-equipment-icon-sheets.js";
@@ -10,6 +10,31 @@ import {resolveV39EquipmentIconSheet} from "../../lib/v39-equipment-icon-sheets.
 const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[character]));
+
+export function renderV39EnchantmentMark(name, color) {
+  return `<i title="${escapeHtml(name)}"${color ? ` style="--affix-color:${color}"` : ""}></i>`;
+}
+
+export function renderV39EquipmentTile(row, {selected, keyAttribute, showName = false, sortStat}) {
+  const {item,key,equippedCount} = row;
+  const remaining = row.remainingCount ?? row.count;
+  const rarity = getV39EquipmentRarity(item.quality);
+  const {name,used,applied} = getV39EquipmentEnhancementDisplay(item);
+  const label = `${name}${used ? ` +${used}` : ""} ${rarity.label} 在庫${remaining}${equippedCount ? ` 装備中${equippedCount}` : ""}${sortStat ? ` ${sortStat.label}` : ""}`;
+  const count = `<span class="v39-equip-count" aria-hidden="true">${equippedCount ? "残" : ""}${remaining}</span>`;
+  return `<button type="button" class="v39-equip-tile" data-quality="${escapeHtml(rarity.key)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}" aria-pressed="${selected}" ${keyAttribute}="${escapeHtml(key)}">
+    <span class="v39-equip-tile-badges" aria-hidden="true">
+      <span class="v39-equip-rank">${renderV39EquipmentRarityBadge(rarity.key)}</span>
+      ${applied.length ? `<span class="v39-equip-enchantment-badges">
+        ${used ? `<span class="v39-equipment-enhancement-level">+${escapeHtml(used)}</span>` : ""}
+        <span class="v39-equip-enchantment-colors">${applied.map(({name})=>renderV39EnchantmentMark(name,getV39EnchantmentMarkColor(name))).join("")}</span>
+      </span>` : ""}
+    </span>
+    <span class="v39-equip-icon" aria-hidden="true">${renderV39EquipmentIcon(item)}</span>
+    ${sortStat ? `<span class="v39-equip-tile-footer" aria-hidden="true"><span class="v39-equip-tile-stat">${escapeHtml(sortStat.text)}</span>${count}</span>` : count}
+    ${showName ? `<span class="v39-equip-tile-name" aria-hidden="true">${escapeHtml(name)}</span>` : ""}
+  </button>`;
+}
 
 export function getV39EquipmentDisplayStats(item) {
   const weapon=String(item.slot).startsWith("武器");
@@ -79,11 +104,11 @@ export function renderV39EquipmentIcon(item, name = item?.name ?? "", appearance
   return renderWeaponGlow(icon, item);
 }
 
-export function renderV39EquipmentDisplayRow(item, {slot = item.slotLabel ?? item.slot, expandKey, detail = "", expanded = false, changeUnitId} = {}) {
+export function renderV39EquipmentDisplayRow(item, {slot = item.slotLabel ?? item.slot, expandKey, detail = "", expanded = false, changeUnitId, inline = false} = {}) {
   const rarity = getV39EquipmentRarity(item.quality ?? item.qualityLabel);
   const {name,used}=getV39EquipmentEnhancementDisplay(item);
   const interactive = expandKey !== undefined;
-  const tag = interactive ? "button" : "div";
+  const tag = interactive ? "button" : inline ? "span" : "div";
   const action = interactive ? ` type="button" data-v39-equipment-key="${escapeHtml(expandKey)}" aria-expanded="${expanded}"${changeUnitId ? ` data-v39-equip-hold-unit="${escapeHtml(changeUnitId)}" data-v39-equip-hold-slot="${escapeHtml(item.slot)}"` : ""}` : "";
   return `<${tag} class="v39-equipment-display-row${interactive ? ` equipment-card${expanded ? " is-expanded" : ""}` : ""}" data-quality="${escapeHtml(rarity.key)}"${action}>
     <span class="v39-equipment-display-summary">

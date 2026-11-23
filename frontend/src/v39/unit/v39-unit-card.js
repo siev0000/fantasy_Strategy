@@ -7,6 +7,7 @@ import { getRaceIconSrc } from "../../lib/race-icon-library.js";
 import {resolveUnitArtwork,getV39UnitArtworkBrightness} from '../../lib/map-entity-artwork.js';
 import {resolveMonsterSheetArtwork} from '../../lib/monster-sheet-artwork.js';
 import {resolveV39ActiveTransformationArtwork} from '../../lib/v39-transformation-artwork.js';
+import {resolveV39NamedUnitArtwork} from '../../lib/v39-named-unit-artwork.js';
 import "./v39-unit-card.css";
 import './v39-unit-card-name-fit.js';
 import {v39SquadMoveMode,v39SquadMoveLabel} from '../../lib/v39-squad-coordination.js';
@@ -49,9 +50,10 @@ function levelBadgeIconMarkup(unit, options = {}) {
 
 function portraitMarkup(unit, exp, expTitle, snapshot) {
   const state=!snapshot&&typeof window.getV39GameState==='function'?window.getV39GameState({includeWorlds:false}):null;
-  const transformation=snapshot?null:resolveV39ActiveTransformationArtwork(unit,state);
-  const art=transformation||resolveMonsterSheetArtwork(unit)||resolveUnitArtwork(unit);
-  const brightness=transformation?1:getV39UnitArtworkBrightness(unit);
+  const transformation=snapshot?null:resolveV39ActiveTransformationArtwork(unit,state,{normal:true});
+  const named=resolveV39NamedUnitArtwork(unit,{normal:true,state});
+  const art=transformation||named||resolveMonsterSheetArtwork(unit)||resolveUnitArtwork(unit);
+  const brightness=transformation||named?1:getV39UnitArtworkBrightness(unit);
   if(!art?.src || art.type==='icon')return '';
   const frame=art.sheetFrame;
   const columns=Math.max(1,Number(frame?.columns)||1),rows=Math.max(1,Number(frame?.rows)||1);

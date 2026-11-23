@@ -72,7 +72,11 @@ try {
     await page.locator('[data-select-research]').click();
     assert.equal(await page.locator('[data-select-research]').innerText(),'研究中');
     assert(await page.locator('.v39-research-item.picked').count()>0,'chosen research appears as active in list');
-    if(width<=760)await page.locator('[data-research-back]').click();
+    if(width<=760){
+      const board=await page.locator('.v39-research-board').boundingBox();
+      const detail=await page.locator('.v39-research-detail').boundingBox();
+      assert(board&&detail&&detail.y>=board.y+board.height,'mobile research detail stays below the visible list');
+    }
     await page.locator('[data-research-view]').selectOption('flow');
     await page.screenshot({path:`${out}/research-flow-${width}.png`});
     await page.evaluate(()=>{document.getElementById('researchModal').classList.remove('open');window.activateV39FooterTab('settlement');});

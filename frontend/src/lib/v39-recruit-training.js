@@ -1,17 +1,31 @@
 import {V39_RECRUIT_TRAINING_BALANCE as balance} from "./v39-gameplay-balance.js";
 import {resolveV39UnitRaceCategory, resolveV39UnitTotalExpForLevel, grantV39UnitExperience,resolveV39ArmyExpMultiplier} from "./v39-unit-experience.js";
-import {resolveV39AssignedRecruitInstructor, getV39RecruitInstructorFacility} from "./v39-recruit-instructor.js";
+import {getV39RecruitInstructorFacility} from "./v39-recruit-instructor.js";
 import {getV39FacilityRecruitmentClasses} from "./v39-facility-recruitment.js";
 import {supplyV39DefaultTools} from "./v39-consumables.js";
 import {resolveV39CitySpecializationModifiers} from './v39-city-specialization-rules.js';
+import {collectV39WaitingSupportUnits} from './v39-production-unit-support.js';
 
-export function inspectV39RecruitTraining(faction, village, unit, state = {}, tileKey) {
-  const instructor = resolveV39AssignedRecruitInstructor(faction, village, unit, state, tileKey);
-  const expPerTurn = Math.max(1,Math.floor((balance.baseExpPerTurn + (instructor ? Number(instructor.level) * balance.instructorExpPerLevel : 0))
+function resolveTrainingSupport(faction,village,state){
+  const playerId=village?.ownerPlayerId||state.players?.find(player=>player.factionState===faction)?.id||state.activePlayerId;
+  const turn=Number(state.timeline?.turnNumber);
+  if(!playerId||!(turn>0))return new Map();
+  return collectV39WaitingSupportUnits({id:playerId,factionState:faction},state,turn);
+}
+
+export function inspectV39RecruitTraining(faction, village, unit, state = {}, waitingUnits) {
+  const waiting=waitingUnits??resolveTrainingSupport(faction,village,state).get(village?.settlementId)??[];
+  let instructor=null,instructorBonus=0;
+  for(const candidate of waiting){
+    if(candidate.isMob||candidate.className!==unit.className||(candidate.worldId||"surface")!==(village?.worldId||"surface"))continue;
+    const bonus=Number(candidate.level)*balance.instructorExpPerLevel;
+    if(bonus>instructorBonus){instructor=candidate;instructorBonus=bonus;}
+  }
+  const expPerTurn = Math.max(1,Math.floor((balance.baseExpPerTurn + instructorBonus)
     * Math.max(0,1+resolveV39CitySpecializationModifiers(village).trainingExpPercent/100)));
   const requiredExp = Math.ceil(Math.max(balance.minimumTrainingExp,
     resolveV39UnitTotalExpForLevel(unit.level, resolveV39UnitRaceCategory(unit)))*resolveV39ArmyExpMultiplier(unit));
-  return {requiredExp, expPerTurn, instructor, instructorRewardExp:balance.instructorRewardExpPerTurn, turns:Math.ceil(requiredExp / expPerTurn)};
+  return {requiredExp, expPerTurn, instructor, instructorBonus, instructorRewardExp:balance.instructorRewardExpPerTurn, turns:Math.ceil(requiredExp / expPerTurn)};
 }
 
 export function getV39RecruitTrainingSlots(faction, village, className, state = {}) {
@@ -31,6 +45,7 @@ export function getV39RecruitTrainingSlots(faction, village, className, state = 
 export function inspectV39RecruitTrainingQueue(faction, state = {}) {
   const occupied = new Set();
   const playerId = state.players?.find(p => p.factionState === faction)?.id;
+  let waitingBySettlement;
   return (faction.unitTrainingQueue || []).map(entry => {
     const village = faction.settlements?.find(row => row.settlementId === entry.settlementId && row.placed
       && (!playerId || !row.ownerPlayerId || row.ownerPlayerId === playerId));
@@ -40,7 +55,8 @@ export function inspectV39RecruitTrainingQueue(faction, state = {}) {
     const slot = free.find(slot => slot.id === entry.trainingSlotId) || free[0];
     if (!slot) return {entry, village, status:slots.length ? "waiting" : "paused", reason:slots.length ? "順番待ち" : "利用できる訓練施設がありません"};
     occupied.add(slot.id);
-    return {entry, village, slot, status:"training", training:inspectV39RecruitTraining(faction, village, entry.unit, state, slot.tileKey)};
+    waitingBySettlement??=resolveTrainingSupport(faction,village,state);
+    return {entry, village, slot, status:"training", training:inspectV39RecruitTraining(faction, village, entry.unit, state, waitingBySettlement.get(village.settlementId)||[])};
   });
 }
 

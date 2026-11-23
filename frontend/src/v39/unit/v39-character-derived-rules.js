@@ -1,18 +1,18 @@
 import {normalizeV39ReductionFields} from '../../lib/v39-reduction-keys.js';
 import {applyAbilityDamage} from '../../lib/v39-ability-damage.js';
 import { getGameDataRows, classData as classDb, skillData as skillDb, testClassData as testClassDb, testSkillData as testSkillDb } from "../../lib/game-data-registry.js";
-import { isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
-import { RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "../../constants/unitCommon.js";
+import { getV39NamedUnitTestRewards, isV39TestSkillModeEnabled } from "../../lib/v39-test-skill-rules.js";
+import { COMBAT_STATUS_FIELDS, RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEVEL_FIELDS, STATUS_GROWTH_FIELDS } from "../../constants/unitCommon.js";
 import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules, rowStatusVector } from "../../composables/unitStatusUtils.js";
 import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
 import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
-import { resolveV39MovementStatFromStatus } from "../../lib/v39-gameplay-balance.js";
+import { resolveV39MovementStatFromStatus, V39_BODY_WEAPON_BALANCE, V39_CLASS_SKILL_UNLOCK_LEVELS } from "../../lib/v39-gameplay-balance.js";
 import {applyV39SizStatusModifiers} from '../../lib/v39-siz-status-rules.js';
 import { isV39InvalidDataToken } from "../../lib/v39-class-rules.js";
 import { deriveV39BodyWeaponLevels } from "../../lib/v39-body-weapon-rules.js";
 import { getV39PassiveRows, isV39ConditionalPassive, collectV39PassiveBonuses, addV39PassiveValues } from "../../lib/v39-passive-rules.js";
-import { V39_BODY_WEAPON_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39FacilityClassGrowth } from "../../lib/v39-facility-growth-rules.js";
+import {getV39NamedUnitDefinition} from "../../lib/v39-named-unit-definitions.js";
 
 const INITIAL_RACE_BONUS_LEVEL = 5;
 const STATUS_GROWTH_DIVISOR = 10;
@@ -80,10 +80,21 @@ function skillNameAt(row, level) {
 
 const golemSkillUnlockLevels=[1,3,6,9,12,15,18,21,24,27];
 
-function collectSkills(row, levels) {
+function classSkillUnlockLevels(unit) {
+  if (unit.namedUnit?.name || unit.unitType === "ネームド") return V39_CLASS_SKILL_UNLOCK_LEVELS.named;
+  const profile = unit.combatProfile;
+  const isArmy = text(unit.unitType).includes("軍隊") ||
+    text(profile?.unitTypeLabel).includes("軍隊") ||
+    ["army", "elite_army", "territory_guard"].includes(profile?.mode) ||
+    Number(profile?.memberCount) > 1;
+  return isArmy ? V39_CLASS_SKILL_UNLOCK_LEVELS.army : V39_CLASS_SKILL_UNLOCK_LEVELS.hero;
+}
+
+function collectSkills(row, levels, unlockLevels = null) {
   const out = [];
   const count = Math.max(0, Math.round(number(levels, 0)));
   for (let level = 1; level <= count; level += 1) {
+    if (unlockLevels && !unlockLevels.includes(level)) continue;
     const name = skillNameAt(row, level);
     if (name) out.push(name);
   }
@@ -92,6 +103,10 @@ function collectSkills(row, levels) {
 
 function techniqueFromName(name, { allowTest = false, golemAddition = false } = {}) {
   const row = (golemAddition?golemAdditionByName.get(name):null) || skillByName.get(name) || (allowTest ? testSkillByName.get(name) : null) || null;
+  return techniqueFromRow(name,row);
+}
+
+function techniqueFromRow(name,row){
   if (!row) return { name, apCost: null, hpCost: null, range: null, area: null, target: null, detail: "", action: "", source: null };
   return {
     name,
@@ -103,6 +118,20 @@ function techniqueFromName(name, { allowTest = false, golemAddition = false } = 
     detail: text(row.詳細),
     action: text(row.行動),
     source: row
+  };
+}
+
+const namedUnitStatusFields = new Set([...COMBAT_STATUS_FIELDS,"移動"]);
+function namedUnitPassive(definition) {
+  const bonuses = Object.entries(definition?.statusBonus ?? {}).filter(([key,value])=>
+    namedUnitStatusFields.has(key) && Number.isFinite(value) && value > 0
+  );
+  if (!bonuses.length) return null;
+  return {
+    名前:`${definition.name}の名を持つ者`,
+    行動:"P",
+    詳細:bonuses.map(([key,value])=>`${key}+${value}`).join("、"),
+    ...Object.fromEntries(bonuses)
   };
 }
 
@@ -224,13 +253,14 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     for (const key of RESISTANCE_FIELDS) resistances[key] += number(strongAnimalClassRow[key]);
   }
 
+  const classUnlockLevels = classSkillUnlockLevels(unit);
   const acquiredNames = [
-    ...prerequisiteClasses.flatMap(prior => collectSkills(prior.row,prior.levels)),
+    ...prerequisiteClasses.flatMap(prior => collectSkills(prior.row, prior.levels, classUnlockLevels)),
     ...(unit.golemBuild
       ? collectSkills(raceRow,golemSkillUnlockLevels.filter(required=>required<=level).length)
-      : [...collectSkills(raceRow, raceLevels),...collectSkills(classRow, classLevels)])
+      : [...collectSkills(raceRow, raceLevels), ...collectSkills(classRow, classLevels, classUnlockLevels)])
   ];
-  if (strongAnimalClassRow) acquiredNames.push(...collectSkills(strongAnimalClassRow, strongAnimalClassLevel));
+  if (strongAnimalClassRow) acquiredNames.push(...collectSkills(strongAnimalClassRow, strongAnimalClassLevel, classUnlockLevels));
   // Direct fusion rewards are permanent, independent of class skill unlock levels.
   const fusionSkillNames = Array.isArray(unit.fusionGrowth?.acquiredSkillNames)
     ? unit.fusionGrowth.acquiredSkillNames.filter(name => typeof name === 'string' && !isPlaceholder(name)).map(text) : [];
@@ -238,15 +268,33 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   const golemAdditions=new Set(unit.golemBuild?.additionalSkillNames||[]);
   acquiredNames.push(...golemAdditions);
   acquiredNames.push(...(unit.reincarnationInheritedSkillNames||[]));
+  const namedDefinition=getV39NamedUnitDefinition(unit.namedUnit?.name);
+  const testRewards = getV39NamedUnitTestRewards(unit);
+  const namedSkillRows = new Map();
+  for (const name of namedDefinition?.grantedSkills ?? []) {
+    if (skillByName.has(name)) namedSkillRows.set(name, skillByName.get(name));
+  }
+  for (const name of testRewards?.grantedSkills ?? []) {
+    const row = testSkillByName.get(name);
+    if (row?.テスト専用 === true && !namedSkillRows.has(name)) namedSkillRows.set(name, row);
+  }
+  acquiredNames.push(...namedSkillRows.keys());
+  const titlePassive = namedUnitPassive(testRewards ? {
+    name: unit.namedUnit.name,
+    statusBonus: {...testRewards.statusBonus, ...namedDefinition?.statusBonus}
+  } : namedDefinition);
+  if(titlePassive)acquiredNames.push(titlePassive.名前);
 
   let secondClassRow = null;
   if ((isHumanRace && level >= 10 || unit.reincarnationSecondClassName===secondClassName) && secondClassName && secondClassName !== className) {
     secondClassRow = classByName.get(secondClassName) || null;
-    if (secondClassRow) acquiredNames.push(...collectSkills(secondClassRow, 1));
+    if (secondClassRow) acquiredNames.push(...collectSkills(secondClassRow, 1, classUnlockLevels));
   }
 
   const uniqueNames = [...new Set(acquiredNames.filter(Boolean))];
   const techniques = uniqueNames.map(name => {
+    if (name === titlePassive?.名前) return techniqueFromRow(name,titlePassive);
+    if (namedSkillRows.has(name)) return techniqueFromRow(name,namedSkillRows.get(name));
     const technique = techniqueFromName(name, { allowTest:testMode,golemAddition:golemAdditions.has(name) });
     return !technique.source && fusionSkillNames.includes(name)
       ? {...technique, detail:'スキル一覧に未登録のため、名前のみ保持しています。効果はありません。'} : technique;

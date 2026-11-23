@@ -16,7 +16,7 @@ try {
       window.closeV39PlayModeSelection();await window.setV39TestMode(true);window.startV39ExpeditionTest();
       const faction = window.getV39ActiveFactionState();
       window.updateV39ActiveFactionState({
-        units:faction.units.map(unit=>({...unit,level:1,Lv:1,skillLevels:{}})),
+        units:[],
         research:{}
       },{reason:"research-efficiency-fixture"});
       window.openV39Research("調査Lv");
@@ -26,9 +26,9 @@ try {
     const select = page.locator("[data-select-research]");
     assert.equal(await select.isEnabled(),true);
     await page.locator('.v39-research-efficiency > summary').click();
-    assert.match(await page.locator(".v39-research-efficiency").innerText(),/推奨ユニットLv 5.*解禁条件ではありません/s);
-    const preview=Number((await page.locator('.v39-research-assignee small').innerText()).match(/\+([\d.]+)/)[1]);
-    assert(preview>=1&&preview<10,'low-Lv researcher proceeds at reduced speed');
+    assert.match(await page.locator(".v39-research-efficiency").innerText(),/支援ユニット なし/);
+    const preview=Number((await page.locator('.v39-research-support small').innerText()).match(/\+([\d.]+)/)[1]);
+    assert.equal(preview,10,'research proceeds at its base speed without a waiting unit');
     await inspect('地質調査Lv:2:地質調査Ⅱ');
     assert(await select.isDisabled(),'unmet prerequisites prevent starting, not inspecting');
     await inspect('地質調査Lv:1:地質調査Ⅰ');
@@ -46,7 +46,7 @@ try {
     await page.evaluate(()=>window.openV39Research("調査Lv"));
     await page.screenshot({path:`${out}/${width}-research.png`});
     assert.deepEqual(errors,[]);
-    console.log(`${width}px: low-Lv selection, locked prerequisites, preview=turn gain, save passed`);
+    console.log(`${width}px: research without a unit, locked prerequisites, preview=turn gain, save passed`);
     await page.close();
   }
 } finally { await browser.close(); }

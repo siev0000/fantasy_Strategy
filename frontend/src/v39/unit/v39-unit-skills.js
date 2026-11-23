@@ -2,7 +2,7 @@ import {renderV39ScreenIcon} from "../ui/v39-screen-icons.js";
 import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abilities.js';
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { getIconSrcByName } from "../../lib/icon-library.js";
-import { hasV39SkillWeapon, resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
+import { hasV39SkillWeapon, resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39EquipmentActionRows, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
 import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
 import {formatV39SkillCombatValues,resolveSkillBaseState} from '../../lib/skill-power.js';
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
@@ -25,7 +25,7 @@ function techniqueEntries(unit) {
     names.add(name);
     rows.push(row);
   }
-  return rows;
+  return [...rows,...resolveV39EquipmentActionRows(unit,names)];
 }
 
 function techniqueSource(technique) {
@@ -54,7 +54,7 @@ function techniqueAttackCategory(source = {}) {
 function techniqueIconMarkup(source, iconName) {
   const category = techniqueAttackCategory(source);
   const override = renderV39ScreenIcon(iconName)||renderV39ScreenIcon("技・"+category);
-  if (override) return {category, markup:override};
+  if (override) return {category, markup:`<span class="technique-icon-content" aria-hidden="true">${override}</span>`};
   if (category === "その他") {
     return { category, markup:'<span class="technique-icon-glyph" aria-hidden="true">◆</span>' };
   }

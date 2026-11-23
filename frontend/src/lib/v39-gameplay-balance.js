@@ -1,8 +1,30 @@
 import {normalizeV39DamageMultiplier} from './v39-combat-settings.js';
+export const V39_CLASS_SKILL_UNLOCK_LEVELS = Object.freeze({
+  army: Object.freeze([1, 4, 7, 10]),
+  hero: Object.freeze([1, 3, 4, 5, 7, 9, 10]),
+  named: Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+});
+
 // 仕様未確定の調整値はここへ集約し、確定後に処理本体を変えず差し替える。
 export const V39_INITIAL_STOCK_BALANCE = Object.freeze({
   territoryIncomeTurns:3,
-  normalFoodMaintenanceTurns:10 // 魂・死体を含む維持食料。人口増加用の消費は保証しない。
+  normalFoodMaintenanceTurns:10, // 魂・死体を含む維持食料。人口増加用の消費は保証しない。
+  initialFoodCoverageRate:1.05, // 初期の通常食料維持費に対する自給の目標。
+  guaranteeFoodFacilityMaterials:true
+});
+
+export const V39_FOOD_UPKEEP_BALANCE = Object.freeze({
+  residentScale:0.18,
+  unitScale:0.2
+});
+
+export const V39_POPULATION_GROWTH_BALANCE = Object.freeze({
+  fedTurnGaugeRate:0.1, // 維持費を賄えたターンの基本ゲージ進行率。
+  surplusStepRate:0.1, // 通常食料の産出超過が維持費の10%に達するごとに1段階。
+  extraConsumptionRatePerStep:0.05, // 1段階あたり通常維持費の5%を追加消費。
+  growthSpeedBonusPerStep:0.1, // 1段階あたり基本の成長速度に10%分を加算。
+  toleratedFoodDeficitRate:0.2, // 維持費の20%まで備蓄を使わず、成長速度を落とす。
+  growthSpeedAtToleratedDeficit:0.5 // 不足の許容上限に達したときの基本成長速度倍率。
 });
 
 export const V39_CORPSE_LIFETIME_BALANCE = Object.freeze({

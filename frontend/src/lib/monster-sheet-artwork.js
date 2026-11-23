@@ -257,15 +257,18 @@ function resolveReferenceFromEnemy(enemy) {
   return monsterSheetReferenceByRace.get(baseRace) || null;
 }
 
-function resolveReferenceArtwork(reference, enemy = null) {
+function resolveReferenceArtwork(reference, enemy = null, grid = null) {
   reference = migrateRetiredMonsterArtwork(reference);
   if (!reference) return null;
   const baseSlotNumber = integer(reference.slotNumber);
-  if (baseSlotNumber === null || baseSlotNumber < 1 || baseSlotNumber > MONSTER_SHEET_SLOT_COUNT) return null;
+  const columns = grid?.columns ?? MONSTER_SHEET_COLUMNS;
+  const rows = grid?.rows ?? MONSTER_SHEET_ROWS;
+  const slotCount = columns * rows;
+  if (baseSlotNumber === null || baseSlotNumber < 1 || baseSlotNumber > slotCount) return null;
   const slotNumber = reference.sizeByLevel === true
     ? baseSlotNumber + levelSizeOffset(enemy?.level)
     : baseSlotNumber;
-  if (slotNumber < 1 || slotNumber > MONSTER_SHEET_SLOT_COUNT) return null;
+  if (slotNumber < 1 || slotNumber > slotCount) return null;
 
   const sheet = findSheet(reference.fileName);
   if (!sheet) {
@@ -274,14 +277,15 @@ function resolveReferenceArtwork(reference, enemy = null) {
   }
 
   const zeroBasedIndex = slotNumber - 1;
-  const column = zeroBasedIndex % MONSTER_SHEET_COLUMNS;
-  const row = Math.floor(zeroBasedIndex / MONSTER_SHEET_COLUMNS);
+  const column = zeroBasedIndex % columns;
+  const row = Math.floor(zeroBasedIndex / columns);
   const sheetKey = lookupKey(sheet.fileName);
+  const kind = grid ? "named-unit" : "enemy-sheet";
 
   return {
-    type:"enemy-sheet",
+    type:kind,
     src:sheet.src,
-    textureKey:`v39-enemy-sheet:${sheetKey}`,
+    textureKey:`v39-${kind}:${sheetKey}`,
     name:`${sheet.stem}#${slotNumber}`,
     sourcePath:sheet.sourcePath,
     sheetFrame:{
@@ -290,8 +294,9 @@ function resolveReferenceArtwork(reference, enemy = null) {
       slotNumber,
       column,
       row,
-      columns:MONSTER_SHEET_COLUMNS,
-      rows:MONSTER_SHEET_ROWS
+      columns,
+      rows,
+      ...(grid ? {integerBounds:true} : {})
     }
   };
 }
@@ -309,4 +314,20 @@ export function resolveMonsterSheetFrame(fileNameOrSheetNumber, slotNumberValue)
     fileName,
     slotNumber:slotNumberValue
   });
+}
+
+export function resolveNamedUnitSheetFrame(fileName, slotNumber) {
+  return resolveReferenceArtwork({fileName, slotNumber}, null, {columns:3, rows:3});
+}
+
+export function resolveNamedUnitSingleImage(fileName) {
+  const sheet = findSheet(fileName);
+  if (!sheet) return null;
+  return {
+    type:"named-unit",
+    src:sheet.src,
+    textureKey:`v39-named-unit:${lookupKey(sheet.fileName)}`,
+    name:sheet.stem,
+    sourcePath:sheet.sourcePath
+  };
 }

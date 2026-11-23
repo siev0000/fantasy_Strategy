@@ -17,10 +17,14 @@ import { normalizeFactionSettlements, normalizeTerritoryStateRecord,getFactionSe
 import { normalizeV39EnemyNests, normalizeV39EnemySquads, normalizeV39GroundLootByTile, normalizeV39SquadLogistics } from "../../lib/v39-logistics-state.js";
 import { normalizeV39Village } from "../../lib/v39-economy-rules.js";
 import {resolveV39NamedWeaponCreation} from "../../lib/v39-equipment-rules.js";
+import {resolveV39NamedUnit} from "../../lib/v39-named-unit-rules.js";
 import { normalizeGameStartSettings } from "../../lib/game-start-settings.js";
 import {releaseV39DestroyedGolemPilots} from '../../lib/v39-golem-boarding.js';
+import {clearV39LegacyRecruitInstructors} from '../../lib/v39-recruit-instructor.js';
 import {findV39NewUnitDeaths,applyV39DeathPurification} from '../../lib/v39-death-purification.js';
 import {evaluateV39Victory} from '../../lib/v39-victory-rules.js';
+import {restoreV39InitialTerritorySurveys} from '../../lib/v39-exploration-rules.js';
+import {focusV39MapTile} from '../map/v39-map-focus.js';
 import {
   normalizeV39LocalPlayerCount,
   normalizeV39LocalParticipantCount,
@@ -165,7 +169,7 @@ function normalizeUnitArray(value) {
 }
 
 function normalizeFactionState(value = {}, ownerPlayerId = "", race = "只人") {
-  const source = releaseV39DestroyedGolemPilots(value && typeof value === "object" ? value : {});
+  const source = releaseV39DestroyedGolemPilots(clearV39LegacyRecruitInstructors(value && typeof value === "object" ? value : {}));
   const base = createPlayerFactionState(source, ownerPlayerId);
   const settlementState = normalizeFactionSettlements(base, ownerPlayerId);
   const selectedSettlement = settlementState.settlements.find(row => row.settlementId === settlementState.selectedSettlementId) || null;
@@ -276,6 +280,7 @@ function cloneUnit(unit) {
     ...(unit.classGrowthStart ? {classGrowthStart:cloneRecord(unit.classGrowthStart)} : {}),
     ...(unit.promotionGrowthStart ? {promotionGrowthStart:cloneRecord(unit.promotionGrowthStart)} : {}),
     ...(unit.classPromotionHistory ? {classPromotionHistory:normalizeEntityArray(unit.classPromotionHistory)} : {}),
+    ...(unit.namedUnit ? {namedUnit:cloneRecord(unit.namedUnit)} : {}),
     status: cloneRecord(unit?.status),
     skillLevels: cloneRecord(unit?.skillLevels),
     acquiredSkillNames: Array.isArray(unit?.acquiredSkillNames) ? [...unit.acquiredSkillNames] : unit?.acquiredSkillNames,
@@ -402,6 +407,31 @@ function applyDeathPurification(before,next,fields,options={}){
   }
 }
 
+function resolveNamedUnits(players) {
+  const changes = [];
+  for (const player of players) {
+    const units = player.factionState.units;
+    for (const [index, unit] of units.entries()) {
+      const named = resolveV39NamedUnit(unit);
+      if (named === unit) continue;
+      const rewarded = applyV39DerivedCharacterData(named);
+      units[index] = rewarded;
+      changes.push({playerId:player.id, previousName:unit.name, named:rewarded});
+    }
+  }
+  return changes;
+}
+
+function notifyNamedUnits(changes, turn) {
+  for (const {playerId, previousName, named} of changes) {
+    window.pushV39Notification?.(`${previousName || "ユニット"}が「${named.name}」になりました`, {
+      title:"ネームドユニット", tone:"success", actorId:named.id,
+      audiencePlayerId:playerId, turn
+    });
+    window.dispatchEvent(new CustomEvent("v39:named-unit-achieved", {detail:{playerId, unit:named}}));
+  }
+}
+
 function setState(patch = {}, options = {}) {
   const next = { ...state };
   if(Object.prototype.hasOwnProperty.call(patch,'teleportGates'))next.teleportGates=normalizeEntityArray(cloneJson(patch.teleportGates,[]));
@@ -465,9 +495,11 @@ function setState(patch = {}, options = {}) {
   reconcileV39Casting(state,normalized,options.reason);
   reconcileV39RestraintLinks(state,normalized);
   applyDeathPurification(state,normalized,Object.keys(patch),options);
+  const namedUnits = Object.hasOwn(patch, "players") ? resolveNamedUnits(normalized.players) : [];
   const popupBefore=state;
   state = normalized;
   dispatchV39CombatPopupChanges(popupBefore,state,patch,options);
+  notifyNamedUnits(namedUnits, normalized.timeline.turnNumber);
   if (options.silent !== true) dispatchChange(options.reason || "set");
   // Internal writes can omit an unused detached return value; public callers keep it by default.
   return options.returnState === false ? undefined : getState();
@@ -807,6 +839,42 @@ function startMultiplayerSession(playerCount, options = {}) {
   return getState();
 }
 
+function startFixedMapSession({mapData, players, ...spatial}, {editing = false} = {}) {
+  const activePlayerId = players.find(player => player.isPlayer)?.id ?? (editing ? players[0]?.id : undefined);
+  if ((!editing && !activePlayerId) || typeof window.loadV39FieldSnapshot !== "function") {
+    throw new Error("固定マップを開始できる状態ではありません。");
+  }
+  const next = normalizeState({
+    ...EMPTY_STATE,
+    ...spatial,
+    players,
+    activePlayerId,
+    gameSettings:{...EMPTY_STATE.gameSettings,npcFactionCount:players.filter(player => !player.isPlayer).length},
+    timeline:{...EMPTY_STATE.timeline,activeTurnPlayerId:activePlayerId,
+      playerTurnOrder:players.filter(player => player.isPlayer).map(player => player.id)}
+  });
+  const previous = state;
+  state = editing ? next : restoreV39InitialTerritorySurveys(next,mapData);
+  try {
+    window.loadV39FieldSnapshot(mapData,{neutralVillageCount:0});
+  } catch (error) {
+    state = previous;
+    throw error;
+  }
+  dispatchChange(editing ? "fixed-map-editing" : "local-session-started");
+  if (editing) return;
+  window.dispatchEvent(new CustomEvent("v39:local-session-started",{
+    detail:{playMode:"single-normal",playerCount:next.timeline.playerTurnOrder.length,activePlayerId,
+      playerIds:players.map(player => player.id),participantCount:next.sessionParticipants.length}
+  }));
+  window.dispatchEvent(new CustomEvent("v39:initial-placement-complete",{
+    detail:{playerId:activePlayerId,mapData,restored:true}
+  }));
+  const faction = getActiveFactionState();
+  const leader = faction?.units.find(unit => unit.id === faction.selectedUnitId);
+  if (leader) focusV39MapTile(leader,{worldId:"surface",select:true,notify:false});
+}
+
 function startLocalSession(playerCount, options = {}) {
   const count = normalizeV39LocalPlayerCount(playerCount);
   const playMode = options?.playMode === "single-test" ? "single-test" : "single-normal";
@@ -845,6 +913,18 @@ function startLocalSession(playerCount, options = {}) {
 
 function updateActiveFactionState(patch = {}, options = {}) {
   const activeId = state.activePlayerId;
+  if (patch && Object.hasOwn(patch, "selectedUnitId") && Object.keys(patch).length === 1) {
+    // 選択だけで陣営全体のユニットや拠点を再計算しない。
+    const selectedUnitId = String(patch.selectedUnitId || "");
+    state = {
+      ...state,
+      players:state.players.map(player => player.id === activeId
+        ? { ...player, factionState:{ ...player.factionState, selectedUnitId } }
+        : player)
+    };
+    if (options.silent !== true) dispatchChange(options.reason || "active-faction");
+    return options.returnState === false ? undefined : getActiveFactionState();
+  }
   const next = {
     ...state,
     players: state.players.map(player => player.id === activeId
@@ -852,7 +932,10 @@ function updateActiveFactionState(patch = {}, options = {}) {
       : player)
   };
   applyDeathPurification(state,next,Object.hasOwn(patch,'units')?['players']:[],options);
+  const namedUnits = Object.hasOwn(patch, "units")
+    ? resolveNamedUnits(next.players.filter(player => player.id === activeId)) : [];
   state=next;
+  notifyNamedUnits(namedUnits, next.timeline.turnNumber);
   if (options.silent !== true) dispatchChange(options.reason || "active-faction");
   return getActiveFactionState();
 }
@@ -902,6 +985,7 @@ window.updateV39ActiveFactionState = updateActiveFactionState;
 window.updateV39TileState = updateTileState;
 window.clearV39GameState = clearState;
 window.startV39LocalSession = startLocalSession;
+window.startV39FixedMapSession = startFixedMapSession;
 window.reconcileV39InitialNpcRaces = reconcileInitialNpcRaces;
 window.startV39MultiplayerSession = startMultiplayerSession;
 window.addV39TestFaction = createTestFaction;

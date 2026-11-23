@@ -55,6 +55,13 @@ button{color:inherit}
   --v39-feedback-left-clearance:48px;
   --v39-feedback-right-clearance:calc(var(--v39-side-log-width, 0px) + 18px);
 }
+.v39-enemy-attack-banner{
+  position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:29;pointer-events:none;
+  width:max-content;max-width:calc(100% - 112px);padding:6px 10px;border:1px solid #66818a;
+  border-radius:6px;background:#101e25;color:#f4faf9;font-size:var(--font-body, 13px);
+  font-weight:700;line-height:1.35;text-align:center;overflow-wrap:anywhere;
+}
+.v39-unit-creation-preview{display:grid;gap:6px;min-width:0;margin-bottom:6px}
 .v39-feedback-lane{
   position:absolute;top:6px;
   left:var(--v39-feedback-left-clearance);right:var(--v39-feedback-right-clearance);
@@ -2418,8 +2425,12 @@ html,body{
   font-size:var(--font-size-22)!important;
   line-height:1!important;
 }
+#resourceDrawerBody .resource-sub > span,
 #resourceDrawerBody .resource-sub .sub-ico{
-  transform:scale(1.3);
+  overflow:visible;
+}
+#resourceDrawerBody .resource-sub .sub-ico{
+  transform:scale(1.5)!important;
   transform-origin:left center;
 }
 .resource-sub b{
@@ -4336,6 +4347,8 @@ html,body{
     <aside class="research-rail" id="researchRail" aria-label="研究対象"></aside>
 
     <svg id="map" viewBox="0 0 1180 650" preserveAspectRatio="xMidYMid slice" aria-label="ヘックスマップ"></svg>
+    <div id="v39-territory-guide-caption" class="v39-territory-guide-caption" hidden></div>
+    <div id="v39EnemyAttackBanner" class="v39-enemy-attack-banner" role="status" hidden></div>
     <div class="v39-feedback-lane" id="v39FeedbackLane" aria-live="polite">
       <div class="mode-banner" id="modeBanner"></div>
       <div class="toast" id="toast"></div>
@@ -4376,7 +4389,7 @@ html,body{
 
 <!-- Character / Squad -->
 <div class="modal-backdrop" id="characterModal"><div class="modal">
-  <div class="modal-head"><h2>ユニット一覧</h2><button class="close" data-close>×</button></div>
+  <div class="modal-head"><h2>ユニット一覧</h2><div id="v39-create-settlement-host" hidden></div><button class="close" data-close>×</button></div>
   <div class="modal-body">
     <div class="modal-tabs"><button class="active" data-char-tab="character">キャラクター</button><button data-char-tab="squad">部隊</button></div>
     <div class="character-layout" id="charCharacter">

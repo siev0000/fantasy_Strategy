@@ -1,0 +1,52 @@
+#v39-audio-settings {
+  width: min(560px, calc(100% - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  border: 1px solid #4c6971;
+  border-radius: 10px;
+  background: #101c22;
+  color: #edf4f2;
+  font-size: 14px;
+}
+#v39-audio-settings[open] { display: flex; flex-direction: column; }
+#v39-audio-settings::backdrop { background: #061014b8; }
+#v39-audio-settings :is(header,footer) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+#v39-audio-settings h2 { margin: 0; font-size: 18px; }
+#v39-audio-settings header { border-bottom: 1px solid #344c55; }
+#v39-audio-settings footer { border-top: 1px solid #344c55; }
+#v39-audio-settings .v39-audio-settings-body { overflow: auto; min-height: 0; padding: 8px 12px; }
+#v39-audio-settings fieldset {
+  min-width: 0;
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid #344c55;
+  border-radius: 6px;
+}
+#v39-audio-settings :is(.v39-audio-volume,.v39-audio-selection) {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 28%) minmax(0,1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+}
+#v39-audio-settings .v39-audio-volume input { min-width: 0; width: 100%; accent-color: #79cbd8; }
+#v39-audio-settings .v39-audio-volume output { min-width: 3.3em; text-align: end; }
+#v39-audio-settings :is(button,select) {
+  min-height: 34px;
+  border: 1px solid #536e79;
+  border-radius: 5px;
+  padding: 4px 7px;
+  background: #1b3038;
+  color: #edf4f2;
+  font: inherit;
+}
+#v39-audio-settings select { width: 100%; }
+#v39-audio-settings button:disabled { background: #273238; color: #bac7cb; }
+#v39-audio-settings :is(button,select,input):focus-visible { outline: 2px solid #91e0ec; outline-offset: 1px; }

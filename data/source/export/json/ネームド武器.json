@@ -1,0 +1,38 @@
+[
+  {
+    "requiredAffixes": [
+      {
+        "family": "光付与",
+        "minimumStage": 1
+      }
+    ],
+    "materials": {
+      "宝石": 4
+    },
+    "uniqueEffect": "透明化",
+    "name": "空刀・無影",
+    "baseWeapon": "刀",
+    "minimumQuality": "レジェンダリー",
+    "requiredFacility": "鍛冶場",
+    "qualityMultiplierBonus": 0.25
+  },
+  {
+    "requiredAffixes": [
+      {
+        "family": "雷付与",
+        "minimumStage": 3
+      }
+    ],
+    "materials": {
+      "赤黒鋼": 3
+    },
+    "uniqueEffect": "連鎖_2_雷",
+    "name": "戦槍・爆激",
+    "baseWeapon": "槍",
+    "minimumQuality": "レジェンダリー",
+    "requiredFacility": "鍛冶場",
+    "requiredClass": "スミス",
+    "minimumCraftSkill": 300,
+    "qualityMultiplierBonus": 0.25
+  }
+]

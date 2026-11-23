@@ -60,6 +60,8 @@ SHEET_TO_JSON = {
     "付与": "付与.json",
     "消費量": "消費量.json",
     "装備": "装備.json",
+    "ネームド武器": "ネームド武器.json",
+    "ネームドユニット": "ネームドユニット.json",
     "勝利対象土地": "勝利対象土地.json",
     "特産品": "特産品.json",
     "性格会話": "性格会話.json",
@@ -245,6 +247,8 @@ UNIQUE_KEYS = {
     "付与": ("付与能力", "Lv"),
     "消費量": ("Lv", "種別"),
     "装備": ("装備名",),
+    "ネームド武器": ("武器名",),
+    "ネームドユニット": ("ユニット名",),
     "勝利対象土地": ("ID",),
 }
 
@@ -431,8 +435,10 @@ def expand_enchantment_stages(record):
         initial, duplicates, unparsed = parse_data_field(str(value))
         if duplicates or unparsed:
             raise ValueError(f"{field}に重複または未解釈の記法があります: {value}")
-        if set(initial) & (set(metadata) | {"付与系統", "段階", "効果未設定"}):
+        if set(initial) & ((set(metadata) - {"獲得スキル"}) | {"付与系統", "段階", "効果未設定"}):
             raise ValueError(f"{field}に管理項目を指定できません")
+        if "獲得スキル" in initial and not isinstance(initial["獲得スキル"], str):
+            raise ValueError(f"{field}の獲得スキルにはスキル名を指定してください")
         return initial
     initial = effects(initial_text, "初期効果")
     step = effects(step_text, "段階上昇量") if step_text else {
@@ -452,6 +458,192 @@ def expand_enchantment_stages(record):
             stage["効果未設定"] = True
         stages.append(stage)
     return stages
+
+
+NAMED_WEAPON_TEXT_COLUMNS = {
+    "武器名": "name",
+    "元武器": "baseWeapon",
+    "最低品質": "minimumQuality",
+    "必要施設": "requiredFacility",
+    "必要クラス": "requiredClass",
+    "固有効果": "uniqueEffect",
+}
+NAMED_WEAPON_COLUMNS = (*NAMED_WEAPON_TEXT_COLUMNS, "最低制作", "必要付与", "消費素材", "品質倍率加算")
+NAMED_UNIT_COLUMNS = ("ユニット名", "必要武器", "必要クラス", "必要種族", "Lv")
+NAMED_UNIT_STATUS_FIELDS = {
+    "HP", "MP", "ST", "攻撃", "防御", "魔力", "精神", "速度", "命中", "SIZ", "APP",
+    "Cr率", "Cr威力", "耐性貫通", "移動",
+}
+NAMED_WEAPON_NAME_AND_NUMBER = re.compile(r"([^_/]+)_([1-9][0-9]*)")
+
+
+def named_weapon_recipe(record):
+    recipe = {"requiredAffixes": [], "materials": {}, "uniqueEffect": ""}
+    for header, key in NAMED_WEAPON_TEXT_COLUMNS.items():
+        value = record.get(header)
+        if value is None and header not in ("武器名", "元武器"):
+            continue
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"{header}は名前を入力してください")
+        recipe[key] = value
+
+    for header, key in (("最低制作", "minimumCraftSkill"), ("品質倍率加算", "qualityMultiplierBonus")):
+        if header not in record:
+            continue
+        value = record[header]
+        if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+            raise ValueError(f"{header}は0以上の数値を入力してください")
+        recipe[key] = value
+
+    affixes = record.get("必要付与")
+    if affixes is not None:
+        error = "必要付与は「雷付与_1 氷付与_2」のように付与名_最低段階を空白で区切ってください"
+        if not isinstance(affixes, str):
+            raise ValueError(error)
+        for part in affixes.split():
+            match = NAMED_WEAPON_NAME_AND_NUMBER.fullmatch(part)
+            if not match:
+                raise ValueError(error)
+            recipe["requiredAffixes"].append({"family": match[1], "minimumStage": int(match[2])})
+
+    materials = record.get("消費素材")
+    if materials is not None:
+        if not isinstance(materials, str):
+            raise ValueError("消費素材は「赤黒鋼_3」のように入力してください")
+        for part in materials.split("/"):
+            match = NAMED_WEAPON_NAME_AND_NUMBER.fullmatch(part.strip())
+            if not match or not match[1].strip():
+                raise ValueError("消費素材は「赤黒鋼_3/宝石_4」のように素材名_個数を / で区切ってください")
+            material = match[1].strip()
+            if material in recipe["materials"]:
+                raise ValueError(f"消費素材が重複しています: {material}")
+            recipe["materials"][material] = int(match[2])
+    return recipe
+
+
+def normalize_named_unit_image_file(value):
+    if not isinstance(value, str):
+        return None
+    file_name = value.strip()
+    if re.fullmatch(r"[^/\\\r\n]+\.(?:png|jpe?g|webp|avif|gif)", file_name, re.IGNORECASE):
+        return file_name
+    if re.fullmatch(r"[^./\\\r\n]+", file_name):
+        return f"{file_name}.webp"
+    return None
+
+
+def named_unit_definition(record):
+    definition = {}
+    for header, key in (("ユニット名", "name"), ("必要武器", "requiredWeapon"),
+                        ("必要クラス", "requiredClasses"), ("必要種族", "requiredRace")):
+        value = record.get(header)
+        if value is None and header != "ユニット名":
+            continue
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"{header}は名前を入力してください")
+        if header != "必要クラス":
+            definition[key] = value
+            continue
+        classes = []
+        class_levels = {}
+        for token in value.split():
+            match = re.fullmatch(r"(.+?)Lv([0-9]+)", token, re.IGNORECASE)
+            name = match[1] if match else token
+            if match and int(match[2]) < 1:
+                raise ValueError("必要クラスのLvは1以上の整数を入力してください")
+            if name not in classes:
+                classes.append(name)
+            if match:
+                class_levels[name] = max(class_levels.get(name, 0), int(match[2]))
+        definition[key] = classes
+        if class_levels:
+            definition["requiredClassLevels"] = class_levels
+    level = record.get("Lv")
+    if level is not None:
+        if type(level) not in (int, float) or not math.isfinite(level) or not float(level).is_integer() or level < 1:
+            raise ValueError("Lvは1以上の整数を入力してください")
+        definition["minimumLevel"] = int(level)
+    granted_skills = record.get("獲得スキル")
+    if granted_skills is not None:
+        if not isinstance(granted_skills, str):
+            raise ValueError("獲得スキルにはスキル一覧の名前を入力してください")
+        names = [name.strip() for name in re.split(r"[/／、\n]+", granted_skills) if name.strip()]
+        if names:
+            definition["grantedSkills"] = list(dict.fromkeys(names))
+    status_bonus = record.get("ステータスボーナス")
+    if status_bonus is not None:
+        if not isinstance(status_bonus, str):
+            raise ValueError("ステータスボーナスは「HP+30 攻撃+10」のように入力してください")
+        bonuses = {}
+        for token in re.split(r"[\s/／、]+", status_bonus.strip()):
+            if not token:
+                continue
+            match = re.fullmatch(r"([^+＋]+)[+＋]([0-9]+(?:\.[0-9]+)?)", token)
+            if not match or match[1] not in NAMED_UNIT_STATUS_FIELDS:
+                raise ValueError(f"ステータスボーナスの項目または書式が不正です: {token}")
+            key, raw = match.groups()
+            amount = float(raw)
+            if key in bonuses or not math.isfinite(amount) or amount <= 0:
+                raise ValueError(f"ステータスボーナスは各項目に正の値を一つ指定してください: {token}")
+            bonuses[key] = int(amount) if amount.is_integer() else amount
+        if bonuses:
+            definition["statusBonus"] = bonuses
+    special_conditions = []
+    for slot in (1, 2, 3):
+        condition = record.get(f"特殊{slot}")
+        if condition is not None:
+            if not isinstance(condition, str):
+                raise ValueError(f"特殊{slot}は動作条件を入力してください")
+            prefix, separator, value = condition.partition(":")
+            if separator and (prefix not in ("攻撃手段", "条件系統") or not value.strip()):
+                raise ValueError(f"特殊{slot}はスキル名・回避・攻撃手段:○○・条件系統:○○のいずれかを入力してください")
+        special_conditions.append(condition)
+    if any(special_conditions):
+        definition["specialConditions"] = special_conditions
+    image_format = record.get("画像形式")
+    if image_format is not None:
+        formats = {"3×3": "sheet", "3x3": "sheet", "３ｘ３": "sheet", "単体": "single"}
+        format_key = formats.get(str(image_format).strip().lower())
+        if not format_key:
+            raise ValueError("画像形式は「3×3」または「単体」を入力してください")
+        definition["imageFormat"] = format_key
+    image_file = record.get("画像ファイル")
+    if image_file is not None:
+        file_name = normalize_named_unit_image_file(image_file)
+        if not file_name:
+            raise ValueError("画像ファイルは「悪魔_ネームド」または「悪魔_ネームド.webp」のように入力してください")
+        definition["imageFile"] = file_name
+    image_number = record.get("画像番号")
+    if image_number is not None:
+        if definition.get("imageFormat") != "single":
+            raise ValueError("画像番号は画像形式が「単体」の場合だけ入力してください")
+        if type(image_number) not in (int, float) or not float(image_number).is_integer() or not 1 <= image_number <= 9:
+            raise ValueError("画像番号は1〜9の整数を入力してください")
+        definition["imageNumber"] = int(image_number)
+    image_rules = record.get("変身画像")
+    if image_rules is not None:
+        if not isinstance(image_rules, str):
+            raise ValueError("変身画像は「スキル名=画像ファイル名」で入力してください")
+        transformations = {}
+        for line in image_rules.splitlines():
+            if not line.strip():
+                continue
+            skill, _, file_name = (part.strip() for part in line.partition("="))
+            file_name = normalize_named_unit_image_file(file_name)
+            if not skill or not file_name:
+                raise ValueError("変身画像は「竜化=死神_竜化」のように1行ずつ入力してください")
+            if skill in transformations:
+                raise ValueError(f"変身画像のスキル名が重複しています: {skill}")
+            transformations[skill] = file_name
+        if transformations:
+            definition["transformationImages"] = transformations
+    return definition
+
+
+NAMED_TABLES = {
+    "ネームド武器": (NAMED_WEAPON_COLUMNS, named_weapon_recipe),
+    "ネームドユニット": (NAMED_UNIT_COLUMNS, named_unit_definition),
+}
 
 
 def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=False):
@@ -478,6 +670,8 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         for col, cell in header_cells.items()
         if (h := header_text(cell.value)) is not None
     }
+    if sheet_name == "ネームドユニット" and "Lv" not in headers.values():
+        headers = {col: "Lv" if header == "最低ユニットLv" else header for col, header in headers.items()}
     if not headers:
         result.errors.append(
             {"type": "missing_header", "row": header_row_no, "message": "1行目にヘッダーがありません"}
@@ -485,6 +679,13 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         return result
 
     dup_headers = {k: v for k, v in Counter(headers.values()).items() if v > 1}
+    if sheet_name in NAMED_TABLES:
+        columns, _ = NAMED_TABLES[sheet_name]
+        invalid = [key for key in columns if list(headers.values()).count(key) != 1]
+        if invalid:
+            result.errors.append({"type": "invalid_named_headers", "headers": invalid,
+                                  "message": f"{sheet_name}の各見出しを1列ずつ指定してください"})
+            return result
     if dup_headers:
         result.warnings.append(
             {
@@ -567,6 +768,9 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         # 一意キーがない行は、同じシート内の説明表・集計・区切りとしてJSONへ出力しない。
         required_keys = UNIQUE_KEYS.get(sheet_name, ())
         if required_keys and not all(key in record and not is_blank(record[key]) for key in required_keys):
+            if sheet_name in NAMED_TABLES:
+                result.errors.append({"type": "invalid_named_record", "row": row_no,
+                                      "message": f"{required_keys[0]}を入力してください"})
             result.skipped_missing_key_rows += 1
             continue
         if sheet_name == "出現敵" and "編成人数" in record:
@@ -650,6 +854,16 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
         parse_golem_recipes(reader, result)
     if sheet_name == "勝利対象土地":
         validate_guardian_landmarks(reader, result)
+    if sheet_name in NAMED_TABLES:
+        _, convert_named_record = NAMED_TABLES[sheet_name]
+        converted_records = []
+        for record in result.records:
+            try:
+                converted_records.append(convert_named_record(record))
+            except ValueError as error:
+                result.errors.append({"type": "invalid_named_record", "name": record.get(UNIQUE_KEYS[sheet_name][0]),
+                                      "message": str(error)})
+        result.records = converted_records
     return result
 
 
@@ -990,6 +1204,8 @@ def main():
                 return 0
 
             selected = expand_selected_tables(args.sheet or list(SHEET_TO_JSON))
+            if not args.sheet:
+                selected = [sheet for sheet in selected if sheet not in NAMED_TABLES or sheet in reader.sheet_targets]
             # Older workbooks can still synchronize the original dictionary tables.
             if "ゴーレム作成レシピ" in selected and "ゴーレム作成レシピ" not in (args.sheet or []):
                 source = source_sheet_name(reader, "ゴーレム作成レシピ")

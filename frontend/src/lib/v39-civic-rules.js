@@ -1,5 +1,6 @@
 import { getGameDataRows } from "./game-data-registry.js";
 import { V39_CIVIC_BALANCE } from "./v39-gameplay-balance.js";
+import { resolveV39OccupiedHousing } from "./v39-population-economy.js";
 
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const optionalNumber = value => {
@@ -63,10 +64,10 @@ function foodReserveBonus(village, race = "") {
 }
 
 function housingComfortBonus(village) {
-  const population = Math.max(0, number(village?.population, Object.values(village?.populationByRace || {}).reduce((sum, value) => sum + number(value), 0)));
+  const occupied = resolveV39OccupiedHousing(village?.populationByRace, village?.population);
   const capacity = Math.max(0, number(village?.populationCapacity));
   if (capacity <= 0) return 0;
-  const rate = population / capacity;
+  const rate = occupied / capacity;
   const fullRate = Math.max(0, number(V39_CIVIC_BALANCE.housingComfortFullBonusRate));
   const zeroRate = Math.max(fullRate, number(V39_CIVIC_BALANCE.housingComfortZeroBonusRate, 1));
   const maxBonus = Math.max(0, number(V39_CIVIC_BALANCE.housingComfortMaxBonus));

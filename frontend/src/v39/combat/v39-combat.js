@@ -10,7 +10,7 @@ import {collectV39JoinedWallPairs,resolveV39JoinedWallDamageScales,resolveV39Smo
 
 import {applyV39ControlTurnAp,getV39ActionBlock,resolveV39MaxAp,standUpV39Unit,V39_STAND_UP_AP_COST} from '../../lib/v39-control-status.js';
 import {reduceV39BlockedHealing} from '../../lib/v39-ability-damage.js';
-import {resolveV39ChainDepth,runV39ChainAttacks} from '../../lib/v39-chain-attacks.js';
+import {runV39ChainAttacks} from '../../lib/v39-chain-attacks.js';
 import {attachV39HitStatusPopups} from '../../lib/v39-combat-popup-rules.js';
 import {resolveV39TransformationSpec,replaceV39TransformationEffect,resolveV39TransformationMaxHp,scaleV39TransformationHp} from '../../lib/v39-transformation.js';
 import {isV39SustainedSkill,isV39SustainedTornado,moveV39SustainedTornado,v39TornadoTiles} from '../../lib/v39-sustained-effects.js';
@@ -18,8 +18,8 @@ import {applyV39ForcedMovement} from '../../lib/v39-forced-movement.js';
 import {resolveV39SkillForcedMovement} from '../../lib/v39-skill-forced-movement.js';
 
 function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,achievementInfo={}){
-  const chainDepth=achievementInfo.support?0:resolveV39ChainDepth(skillRow);
-  if(chainDepth)patch=applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,chainDepth);
+  const chain=achievementInfo.support?null:resolveV39AttackChain(skillRow,attacker,achievementInfo);
+  if(chain)patch=applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,chain,achievementInfo.isCounter);
   const result=applyV39SkillForcedMovement({...state,...patch},map,attacker,skillRow,combatLog);
   for(const entry of result.damageEntries)combatLog.push({...entry,targetId:entry.unitId,targetName:entry.name,hitCount:1,hitResults:[{hit:true,damage:entry.damage}],friendly:false,forcedMovementCollision:true});
   for(const entry of result.entries)window.appendV39ActivityLog?.([state.activePlayerId],'戦闘',`${entry.name}: ${entry.source}で${entry.distance}マス移動 (${entry.to.x},${entry.to.y})`,entry);
@@ -83,6 +83,7 @@ import {
   isV39SupportSkill,
   isV39TimedWeaponEnhancement,
   resolveAreaType,
+  resolveV39AttackChain,
   resolveAttackApCost,
   resolveAttackPower,
   resolveAttackRange,
@@ -175,11 +176,11 @@ function guardStatePatch(unit, damage, grantedGuard = 0, turnNumber = currentV39
   return { ...patch, ...v39DefenseDamagePatch(unit, damage), ...pilotPatch };
 }
 
-function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, powerScale = 1, friendly = false, isCounter = false }) {
+function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, powerScale = 1, friendly = false, isCounter = false, onlyDamageType = "" }) {
   if(Array.isArray(scale)){
     let current=target,merged=null;
     for(const hit of scale){
-      const damage=resolveAppliedAttackDamage({attacker,target:current,skillRow,scale:hit.scale,powerScale,friendly,isCounter});
+      const damage=resolveAppliedAttackDamage({attacker,target:current,skillRow,scale:hit.scale,powerScale,friendly,isCounter,onlyDamageType});
       const protectedIds=hit.protectedId?[hit.protectedId]:[];
       if(!merged)merged={...damage,guardProtectedIds:protectedIds};
       else {
@@ -212,12 +213,13 @@ function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, pow
     skillRow,
     scale,
     powerScale,
+    onlyDamageType,
     deferRounding:true,
     friendly,
     isCounter
   });
-  if (!isV39TestInstantDeathSkill(skillRow)) {
-    const death=(Number(skillRow?.呪い)>0||baseDamage.detail.damageType==='力場')&&hasV39SkillEffect(skillRow,'即死')
+  if (onlyDamageType || !isV39TestInstantDeathSkill(skillRow)) {
+    const death=!onlyDamageType&&(Number(skillRow?.呪い)>0||baseDamage.detail.damageType==='力場')&&hasV39SkillEffect(skillRow,'即死')
       ?resolveV39InstantDeath(adjustedAttacker,adjustedTarget,skillRow,applyV39GuardToDamage(target,baseDamage),powerScale)
       :null;
     if(death){
@@ -246,7 +248,7 @@ function resolveAppliedAttackDamage({ attacker, target, skillRow, scale = 1, pow
       damage.hitResults[death.index]={...hit,damage:death.beforeHp,instantDeath:true,...source};
     }
     const pilot=target.boardingPilot;
-    if(number(pilot?.hp,pilot?.currentHp)>0 && hasV39SkillEffect(skillRow,'貫通') && damage.hitResults.some(hit=>hit.hit)){
+    if(!onlyDamageType && number(pilot?.hp,pilot?.currentHp)>0 && hasV39SkillEffect(skillRow,'貫通') && damage.hitResults.some(hit=>hit.hit)){
       const pilotTarget=terrainAdjusted({...pilot,x:target.x,y:target.y,worldId:target.worldId});
       const pilotDamage=computeAttackDamage({attacker:adjustedAttacker,target:pilotTarget,skillRow,
         scale,powerScale,friendly,isCounter,deferRounding:true,landedAttack:damage});
@@ -363,7 +365,7 @@ function applyDirectDamage(unit, damage, skillRow, { directTarget = false } = {}
   };
 }
 
-function applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,depth){
+function applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,{depth,attribute},isCounter){
   const current={...state,...patch};
   const player=current.players.find(row=>row.factionState.units.some(unit=>unit.id===attacker.id));
   const village=current.neutralVillages.find(row=>row.defenseUnits?.some(unit=>unit.id===attacker.id));
@@ -393,7 +395,7 @@ function applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,depth){
       const beforeHp=number(target?.hp,target?.currentHp);
       if(beforeHp<=0)return false;
       const row={...skillRow,攻撃回数:1,効果:followUp?`${skillRow.効果}/必中`:skillRow.効果};
-      const damage=resolveAppliedAttackDamage({attacker:chainAttacker,target,skillRow:row,powerScale:scale});
+      const damage=resolveAppliedAttackDamage({attacker:chainAttacker,target,skillRow:row,powerScale:scale,onlyDamageType:attribute,isCounter:attribute&&isCounter});
       const afterHp=Math.max(0,beforeHp-damage.total);
       let next={...applyDirectDamage(target,damage,row),lastCombatTurn:turn};
       if(player){
@@ -402,7 +404,7 @@ function applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,depth){
         next={...next,expRewardedHpDamage:reward.nextRewardedHpDamage};
       }
       updates.set(id,next);
-      const hits=damage.hitResults.map(hit=>({...hit,chainStage:stage}));
+      const hits=damage.hitResults.map(hit=>({...hit,chainStage:stage,...(attribute?{chainDamageType:attribute}:{})}));
       const hitCount=hits.filter(hit=>hit.hit).length;
       const entry=entriesById.get(id);
       if(entry){
@@ -2231,7 +2233,7 @@ window.addEventListener("v39:tile-selected", (event) => {
       for(const log of result.logs){
         if(['bleeding-damage','periodic-damage'].includes(log.kind)&&log.damage>0){
           const unit=[...(result.state.players||[]).flatMap(p=>p.factionState?.units||[]),...(result.state.enemies||[]),...(result.state.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])].find(unit=>unit.id===log.targetId);
-          if(unit)window.dispatchEvent(new CustomEvent('v39:unit-effect-feedback',{detail:{defer:true,worldId:unit.worldId||'surface',entries:[{targetId:unit.id,x:unit.x,y:unit.y,popupType:'dot',popupLabel:log.status||'出血',amount:log.damage,total:log.damage,beforeHp:Number(unit.hp)+log.damage,afterHp:unit.hp,maxHp:unit.maxHp}]}}));
+          if(unit)window.dispatchEvent(new CustomEvent('v39:unit-effect-feedback',{detail:{defer:true,worldId:unit.worldId||'surface',entries:[{targetId:unit.id,x:unit.x,y:unit.y,popupType:'dot',popupLabel:log.status||'出血',amount:log.damage,total:log.damage,beforeHp:log.beforeHp,afterHp:log.afterHp,maxHp:unit.maxHp}]}}));
         }
         playV39TriggerEffect(log);
         window.appendV39ActivityLog?.([state.activePlayerId],'スキル',formatV39SkillTriggerLog(log),log);

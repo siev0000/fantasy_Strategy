@@ -4,6 +4,7 @@ import "../ui/v39-notification-rail.js";
 // Install performance listeners first so turn-stage event boundaries are measured before handlers run.
 import "../dev/v39-performance-monitor.js";
 import "../ui/v39-operation-ui.js";
+import "../ui/v39-selection-state.css";
 import "../ui/v39-feedback.js";
 import "../core/v39-game-state-bridge.js";
 import "../core/v39-initial-sovereign-vue-bridge.js";
