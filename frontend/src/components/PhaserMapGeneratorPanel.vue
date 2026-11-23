@@ -6,6 +6,7 @@ import { addV39FieldVisionRangeKeys } from "../lib/v39-field-visibility.js";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Phaser from "phaser";
 import GenericModal from "./GenericModal.vue";
+import NameGeneratorModal from "./NameGeneratorModal.vue";
 import RaceSelectModal from "./RaceSelectModal.vue";
 import ClassSelectModal from "./ClassSelectModal.vue";
 import OwnFactionNavigatorModal from "./OwnFactionNavigatorModal.vue";
@@ -399,6 +400,7 @@ const isPageHidden = ref(typeof document !== "undefined" ? !!document.hidden : f
 const focusCameraOnTileClick = ref(false); // クリック時カメラフォーカス
 const showSettingsModal = ref(false); // ゲーム設定モーダル表示
 const showQuickSettingsModal = ref(false); // 右上設定メニュー表示
+const showNameGeneratorModal = ref(false); // 設定から開く名前生成
 const squadFormationEnabled = ref(true); // チーム編成機能ON/OFF
 const gameStartSettings = ref(normalizeGameStartSettings()); // 開始時のターン進行設定
 const saveExportInProgress = ref(false); // セーブ出力中フラグ
@@ -16883,6 +16885,12 @@ function openDisplaySettingsFromQuickMenu() {
   openSettingsModal();
 }
 
+function openNameGeneratorFromQuickMenu() {
+  showQuickSettingsModal.value = false;
+  showNameGeneratorModal.value = true;
+  audio.playSe("open");
+}
+
 function setSquadFormationEnabled(nextValue, options = {}) {
   const nextEnabled = !!nextValue;
   if (squadFormationEnabled.value === nextEnabled) return;
@@ -24031,6 +24039,7 @@ watch(() => props.characterCommand, command => {
         <div class="quick-settings-grid">
           <button type="button" class="secondary" @click="openDisplaySettingsFromQuickMenu">表示設定</button>
           <button type="button" class="secondary" data-audio-se="open" @click="openV39AudioSettings">音設定</button>
+          <button type="button" class="secondary" @click="openNameGeneratorFromQuickMenu">名前作成</button>
           <label class="setting-row quick-settings-checkbox-row">
             <input
               type="checkbox"
@@ -24061,6 +24070,7 @@ watch(() => props.characterCommand, command => {
         </div>
       </div>
     </div>
+    <name-generator-modal :show="showNameGeneratorModal" @close="showNameGeneratorModal = false" />
     <div
       v-if="showCityBlockPlacementConfirmModal"
       class="settings-backdrop"

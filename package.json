@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "check:docs": "node scripts/check-docs.mjs",
+    "check:name-generator": "node scripts/check-name-generator.mjs",
     "check:guardian-sheet": "node scripts/check-v39-guardian-sheet.mjs",
     "check:ritual-facilities": "node scripts/check-v39-ritual-facilities.mjs",
     "check:ritual-test-buttons": "node scripts/check-v39-ritual-test-buttons.mjs",

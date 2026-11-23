@@ -42,6 +42,7 @@ SHEET_TO_JSON = {
     "道具": "道具.json",
     "クラス": "クラス.json",
     "種族": "種族.json",
+    "命名辞書": "命名辞書.json",
     "勢力": "勢力.json",
     "説明": "説明.json",
     "技能": "技能.json",
@@ -83,6 +84,7 @@ RACE_TABLE_COLUMNS = {
     "key":"種族", "name":"種族", "className":"能力クラス", "icon":"画像", "summary":"概要",
     "detail":"詳細", "traits":"特徴", "使用可":"使用可", "旧名称":"旧名称", "設定メモ":"設定メモ",
     "推奨クラス":"推奨クラス", "推奨都市特化":"推奨都市特化",
+    "男性名候補":"男性名候補", "女性名候補":"女性名候補",
     **{key:key for key in ("マーカー文字", "マーカー色", "初期人数", "高さ", "ヒーロー", "軍隊", "土地")},
 }
 FACTION_TABLE_COLUMNS = {
@@ -115,7 +117,7 @@ def validate_unified_race_table(reader):
     rows = iter(reader.sheet_rows("種族"))
     _, header = next(rows)
     columns = {str(cell.value).strip():col for col,cell in header.items() if isinstance(cell.value,str)}
-    required = set(RACE_TABLE_COLUMNS.values()) - {"旧名称", "設定メモ", "推奨クラス", "推奨都市特化"}
+    required = set(RACE_TABLE_COLUMNS.values()) - {"旧名称", "設定メモ", "推奨クラス", "推奨都市特化", "男性名候補", "女性名候補"}
     if not required.issubset(columns):
         raise ValueError(f"種族: 統合表の列が不足しています: {', '.join(sorted(required-columns.keys()))}")
     class_rows = {}
@@ -230,6 +232,7 @@ UNIQUE_KEYS = {
     "道具": ("名前",),
     "特産品": ("名前",),
     "種族": ("key",),
+    "命名辞書": ("種族", "語", "区分", "性別傾向"),
     "クラス": ("名前",),
     "勢力": ("種族",),
     "説明": ("技能名",),
@@ -773,6 +776,19 @@ def convert_sheet(reader, sheet_name, output_name, allow_missing_formula_cache=F
                                       "message": f"{required_keys[0]}を入力してください"})
             result.skipped_missing_key_rows += 1
             continue
+        if sheet_name == "命名辞書":
+            required_name_fields = ("種族", "語", "意味", "区分", "性別傾向", "使用可", "出典区分")
+            missing_fields = [key for key in required_name_fields if is_blank(record.get(key))]
+            if missing_fields:
+                result.errors.append({"type": "invalid_name_dictionary", "row": row_no, "missing": missing_fields})
+            if not isinstance(record.get("使用可"), bool):
+                result.errors.append({"type": "invalid_name_enabled", "row": row_no, "value": record.get("使用可")})
+            if record.get("区分") not in ("接頭語", "接尾語", "両用"):
+                result.errors.append({"type": "invalid_name_position", "row": row_no, "value": record.get("区分")})
+            if record.get("性別傾向") not in ("共通", "男性系", "女性系"):
+                result.errors.append({"type": "invalid_name_gender", "row": row_no, "value": record.get("性別傾向")})
+            if not isinstance(record.get("語"), str) or not re.fullmatch(r"[ァ-ヴー・]+", record["語"]):
+                result.errors.append({"type": "invalid_name_katakana", "row": row_no, "value": record.get("語")})
         if sheet_name == "出現敵" and "編成人数" in record:
             count = record["編成人数"]
             if isinstance(count, bool) or not isinstance(count, (int, float)) or not float(count).is_integer() or not 1 <= count <= 99:
@@ -1205,7 +1221,7 @@ def main():
 
             selected = expand_selected_tables(args.sheet or list(SHEET_TO_JSON))
             if not args.sheet:
-                selected = [sheet for sheet in selected if sheet not in NAMED_TABLES or sheet in reader.sheet_targets]
+                selected = [sheet for sheet in selected if (sheet not in NAMED_TABLES and sheet != "命名辞書") or sheet in reader.sheet_targets]
             # Older workbooks can still synchronize the original dictionary tables.
             if "ゴーレム作成レシピ" in selected and "ゴーレム作成レシピ" not in (args.sheet or []):
                 source = source_sheet_name(reader, "ゴーレム作成レシピ")

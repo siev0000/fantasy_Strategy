@@ -42,6 +42,7 @@ const tableMap = new Map();
 const sourcePathMap = new Map();
 
 const TABLE_KEY_FIELDS = Object.freeze({
+  命名辞書:["種族", "語", "区分", "性別傾向"],
   召喚モンスターリスト:["名称"],
   ゴーレム作成レシピ:["ゴーレム名"], ゴーレム追加スキル:["名前"],
   性格会話:["性格"],
@@ -61,6 +62,7 @@ const TABLE_KEY_FIELDS = Object.freeze({
 });
 
 const RUNTIME_ROW_KEY_FIELDS = Object.freeze({
+  命名辞書:["種族", "語", "区分", "性別傾向"],
   召喚モンスターリスト:["名称"],
   道具:["名前"],
   特産品:["名前"],
@@ -79,6 +81,7 @@ const REQUIRED_FIELDS = Object.freeze({
   クラス:["名前", "種類"], テストクラス:["名前", "種類", "テスト専用"], スキル一覧:["名前", "行動"], テストスキル:["名前", "行動", "テスト専用"], 装備:["装備名", "装備箇所"],
   地形:["地形"], 出現敵:["ID", "出現地形", "種族名"],
   研究:["ID", "項目名", "技術対象", "Lv", "必要ユニットLv"], 災害:["表示名", "効果"],
+  命名辞書:["種族", "語", "意味", "区分", "性別傾向"],
   種族:["key", "name", "className"], 種族分類:["種類", "説明"], 勢力:["種族", "カナ", "マーカー文字", "マーカー色"], 範囲:["範囲タイプ", "処理タイプ"],
   勝利対象土地:["ID", "名称", "配置地形", "発見方法"],
   ネームド武器:["name", "baseWeapon"], ネームドユニット:["name", "requiredWeapon"]
@@ -101,6 +104,7 @@ export const GAME_DATA_TABLE_METADATA = Object.freeze({
   災害:{ purpose:"自然災害・常設危険地帯・攻撃による地形崩壊/落石/瓦礫。発生条件と威力・耐久・撤去APを参照", status:"connected" },
   施設:{ purpose:"建設条件、費用、時間、範囲、都市・土地効果", status:"connected" },
   種族:{ purpose:"種族統合表の表示・能力参照・初期設定・使用可否・旧名称。未完成は新規選択しない", status:"connected" },
+  命名辞書:{ purpose:"種族別の命名用語彙・意味・位置・性別傾向。設定画面の名前作成で使用", status:"connected" },
   種族分類:{ purpose:"開始種族UIの人族・亜人・魔族分類説明", status:"connected" },
   種族幸福度仮:{ purpose:"クラス.jsonへ幸福度係数を追加するまでの種族別幸福度フォールバック", status:"provisional" },
   出現敵:{ purpose:"地形別の敵、レベル、装備、個体数", status:"connected" },
