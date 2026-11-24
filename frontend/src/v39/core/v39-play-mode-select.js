@@ -77,7 +77,9 @@ function createModal() {
         <button type="button" class="v39-play-mode-reference" data-v39-equipment-icon-reference>アイコン設定</button>
         <button type="button" class="v39-play-mode-reference" data-v39-start-enchantment-colors>付与カラー設定</button>
         <button type="button" class="v39-play-mode-reference" data-v39-start-audio data-audio-se="open">音設定</button>
+        <button type="button" class="v39-play-mode-reference" data-v39-start-name-generator>名前作成</button>
       </div>
+      <output class="v39-play-mode-reference-status" data-v39-start-name-generator-status role="status"></output>
       <output class="v39-play-mode-reference-status" data-v39-equipment-icon-reference-status role="status"></output>
     </section>`;
   document.body.appendChild(modal);
@@ -113,6 +115,8 @@ function createModal() {
     void openV39EnchantmentColorSettings();
   });
   modal.querySelector("[data-v39-start-audio]").addEventListener("click",openV39AudioSettings);
+  const nameGeneratorButton = modal.querySelector("[data-v39-start-name-generator]");
+  nameGeneratorButton.addEventListener("click", () => { void openNameGeneratorFromStart(nameGeneratorButton); });
   const fixedMapInput = modal.querySelector("#v39-start-fixed-map-file");
   const fixedMapStatus = modal.querySelector("[data-v39-fixed-map-status]");
   modal.querySelector("[data-v39-start-fixed-map]").addEventListener("click", () => fixedMapInput.click());
@@ -261,6 +265,41 @@ function closePlayModeSelection() {
   modal?.classList.remove("open");
   modal?.setAttribute("aria-hidden", "true");
   if (wasOpen) window.dispatchEvent(new CustomEvent("v39:play-mode-closed"));
+}
+
+async function openNameGeneratorFromStart(button) {
+  if (loadingSave || loadingFixedMap || button.disabled) return;
+  button.disabled = true;
+  const status = modal.querySelector("[data-v39-start-name-generator-status]");
+  status.textContent = "";
+  let host;
+  let app;
+  try {
+    const [{createApp},{default:NameGeneratorModal}] = await Promise.all([
+      import("vue"), import("../../components/NameGeneratorModal.vue")
+    ]);
+    if (loadingSave || loadingFixedMap || !modal.classList.contains("open")) return;
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    app = createApp(NameGeneratorModal, {
+      show: true,
+      onClose: () => {
+        app.unmount();
+        host.remove();
+        openPlayModeSelection();
+        button.focus();
+      }
+    });
+    app.mount(host);
+    closePlayModeSelection();
+  } catch (error) {
+    app?.unmount();
+    host?.remove();
+    status.textContent = "名前作成画面を読み込めませんでした。";
+    console.error("[名前作成]", error);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function openEquipmentIconReference(button) {
