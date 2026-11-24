@@ -4,6 +4,8 @@
   --mobile-base-font:12px; /* スマホの通常文字 */
   --base-font:var(--pc-base-font);
   --font-scale:1; /* 表示設定の倍率。JSから更新する。 */
+  --v39-section-heading-min-height:18px; /* 画面内の共通見出し */
+  --v39-section-heading-padding-y:1px;
   --font-body:calc(var(--base-font) * var(--font-scale));
   --pc-min-font:11px; /* 読ませる補助文字のPC下限 */
   --mobile-min-font:10px; /* 読ませる補助文字のスマホ下限 */

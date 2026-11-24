@@ -24,7 +24,7 @@
 .v39-facility-hp-track[data-hp-tone="critical"]>span{background:#f17b77}
 .v39-facility-operations .settlement-chip-list:empty{display:none}
 .v39-facility-description{margin-top:6px;color:#b6c9cc}
-.v39-facility-description>summary{cursor:pointer;font-size:var(--font-secondary)}
+.v39-facility-description>summary{min-height:var(--v39-section-heading-min-height);padding-block:var(--v39-section-heading-padding-y);cursor:pointer;font-size:var(--font-secondary)}
 .v39-facility-description>p{margin-top:6px}
 .v39-facility-queue{padding:6px;color:#e4c480}
 #v39-land-facility-actions{grid-column:1/-1;border:1px solid #557983;border-radius:6px;background:#122127}

@@ -43,7 +43,7 @@
       }
       .squad-detail-pane .squad-detail-section+ .squad-detail-section{margin-top:4px!important}
       .squad-detail-pane .squad-detail-section-title{
-        position:static!important;min-height:18px!important;padding:1px 7px!important;background:#132126!important;
+        position:static!important;min-height:var(--v39-section-heading-min-height)!important;padding:var(--v39-section-heading-padding-y) 7px!important;background:#132126!important;
         font-size:var(--font-compact)!important;color:#c6d3d5!important;font-weight:800!important;cursor:pointer!important;
         display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;
         list-style:none!important;user-select:none!important
