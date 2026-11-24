@@ -14,6 +14,8 @@ import {renderV39EquipmentDisplayRow} from '../ui/v39-equipment-display.js';
 import {resolveV39UnitWeatherMovement} from '../../lib/v39-terrain-traversal.js';
 import {V39_UNIT_ACHIEVEMENT_FIELDS} from '../../lib/v39-unit-achievements.js';
 import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
+import {describeV39SkillCounters} from '../../lib/v39-skill-counters.js';
+import {normalizeV39SkillCounterHoldTurns} from '../../lib/v39-combat-settings.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -77,6 +79,10 @@ export function renderV39UnitConditions(unit){
   const state=globalThis.window?.getV39GameState?.({includeWorlds:false}),turn=Number(state?.timeline?.turnNumber)||1;
   const remaining=expires=>expires?'残り'+Math.max(0,Number(expires)-turn)+'T':'期限なし';
   const active=expires=>!expires||Number(expires)>turn;
+  const counterHoldTurns=normalizeV39SkillCounterHoldTurns(state?.gameSettings?.skillCounterHoldTurns ?? globalThis.window?.getV39GameSettings?.()?.skillCounterHoldTurns);
+  for(const {name,count,remainingTurns} of describeV39SkillCounters(unit,counterHoldTurns)){
+    if(Number(count)>0)buffs.push([`${name}カウンター`,`${count} / ${remainingTurns===null?'期限なし':`残り${remainingTurns}T`}`]);
+  }
   const spatialPercent=resolveV39SpatialDistortionPercent(unit,state);
   if(spatialPercent!==null)(spatialPercent>100?buffs:debuffs).push([`空間歪曲 ${spatialPercent}%`,`移動AP・射程 ${spatialPercent}%`]);
   if(unit?.knockedDown)debuffs.push(['転倒','起き上がり 20AP / 回避 -25%']);
