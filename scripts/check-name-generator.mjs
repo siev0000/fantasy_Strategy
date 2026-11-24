@@ -31,4 +31,10 @@ for(const race of races) {
 }
 const disabled = lexicon.map(row => ({...row, 使用可:false}));
 assert.deepEqual(generateNameResults({race:"只人",lexicon:disabled}), []);
-console.log("name generator: 11 races × 3 gender modes × (single/batch/preset) OK");
+const appMarkup = readFileSync("frontend/src/App.vue", "utf8");
+const mapPanelMarkup = readFileSync("frontend/src/components/PhaserMapGeneratorPanel.vue", "utf8");
+assert.match(appMarkup, /class="name-generator-title-launch"/, "ゲーム開始前の名前生成ボタン");
+assert.match(appMarkup, /<name-generator-modal\s+:show="showNameGeneratorModal"/, "開始前の生成モーダル接続");
+assert.match(mapPanelMarkup, /@click="openNameGeneratorFromQuickMenu"/, "右上設定メニューからの起動");
+assert.match(mapPanelMarkup, /<name-generator-modal\s+:show="showNameGeneratorModal"/, "ゲーム中の生成モーダル接続");
+console.log("name generator: 11 races × 3 gender modes × (single/batch/preset), start launcher and settings modal OK");

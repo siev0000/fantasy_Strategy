@@ -25,6 +25,7 @@ const RaceSelectModal = defineAsyncComponent(() => import("./components/RaceSele
 const ClassSelectModal = defineAsyncComponent(() => import("./components/ClassSelectModal.vue"));
 const CharacterStatusModal = defineAsyncComponent(() => import("./components/CharacterStatusModal.vue"));
 const CharacterNameModal = defineAsyncComponent(() => import("./components/CharacterNameModal.vue"));
+const NameGeneratorModal = defineAsyncComponent(() => import("./components/NameGeneratorModal.vue"));
 const EquipmentIconReferenceModal = defineAsyncComponent(() => import("./components/EquipmentIconReferenceModal.vue"));
 
 const DEFAULT_RACE_STATS = { hp: 100, atk: 20 };
@@ -259,6 +260,7 @@ const showRaceModal = ref(false);
 const showClassModal = ref(false);
 const showCharacterStatusModal = ref(false);
 const showCharacterNameModal = ref(false);
+const showNameGeneratorModal = ref(false);
 const showGameStartSetupModal = ref(false);
 const showEquipmentIconReference = ref(false);
 const skillTreeCategories = ref([...RESEARCH_CATEGORY_ORDER]);
@@ -557,6 +559,7 @@ function closeModal(kind) {
   if (kind === "class") showClassModal.value = false;
   if (kind === "characters") showCharacterStatusModal.value = false;
   if (kind === "name") showCharacterNameModal.value = false;
+  if (kind === "name-generator") showNameGeneratorModal.value = false;
   if (kind === "game-start-setup") showGameStartSetupModal.value = false;
 }
 
@@ -576,6 +579,7 @@ function closeAllModals() {
     showCharacterNameModal.value = false;
   }
   showCharacterStatusModal.value = false;
+  showNameGeneratorModal.value = false;
   showGameStartSetupModal.value = false;
 }
 
@@ -1825,10 +1829,13 @@ watch(gameOnlyMode, () => {
       @game-view-size-change="handleGameViewSizeChange"
     />
 
+    <button v-if="!gameSetupReady" type="button" class="name-generator-title-launch"
+      @click="showNameGeneratorModal = true">名前作成</button>
     <button v-if="!gameSetupReady" type="button" class="equip-icon-title-launch"
       @click="showEquipmentIconReference = true">アイコン設定</button>
     <equipment-icon-reference-modal v-if="showEquipmentIconReference" :show="showEquipmentIconReference"
       @close="showEquipmentIconReference = false" />
+    <name-generator-modal :show="showNameGeneratorModal" @close="closeModal('name-generator')" />
 
     <room-modal
       :show="showRoomModal"
@@ -2061,6 +2068,16 @@ watch(gameOnlyMode, () => {
 </template>
 
 <style scoped>
+.name-generator-title-launch {
+  position:fixed; right:18px; bottom:72px; z-index:1100;
+  min-height:42px; padding:10px 16px;
+  border:1px solid #609fad; border-radius:8px;
+  background:rgba(21,56,66,.96); color:#edf3f2;
+  box-shadow:0 5px 18px rgba(0,0,0,.38); cursor:pointer;
+  font-size:14px; font-weight:700;
+}
+.name-generator-title-launch:focus-visible {outline:2px solid #8de8f5;outline-offset:2px;}
+@media(max-width:600px){.name-generator-title-launch {right:10px;bottom:61px;padding:8px 12px;font-size:13px;}}
 .equip-icon-title-launch {
   position:fixed; right:18px; bottom:18px; z-index:1100;
   padding:10px 16px; min-height:42px;
