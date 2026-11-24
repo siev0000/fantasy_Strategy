@@ -50,7 +50,7 @@ export function generateNameResults({
   const combinations = new Map();
   for (const first of prefixes) for (const second of suffixes) {
     if (first === second || first.word === second.word) continue;
-    const name = first.word + second.word;
+    const name = raceName === "竜人" ? first.word + "・" + second.word : first.word + second.word;
     if ([...name].length > NAME_MAX_LENGTH) continue;
     if (combinations.has(name)) continue;
     combinations.set(name, {
