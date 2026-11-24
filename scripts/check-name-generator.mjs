@@ -31,4 +31,13 @@ for(const race of races) {
 }
 const disabled = lexicon.map(row => ({...row, 使用可:false}));
 assert.deepEqual(generateNameResults({race:"只人",lexicon:disabled}), []);
-console.log("name generator: 11 races × 3 gender modes × (single/batch/preset) OK");
+const appMarkup = readFileSync("frontend/src/App.vue", "utf8");
+const mapPanelMarkup = readFileSync("frontend/src/components/PhaserMapGeneratorPanel.vue", "utf8");
+const playModeSelect = readFileSync("frontend/src/v39/core/v39-play-mode-select.js", "utf8");
+assert.match(playModeSelect, /id="v39-start-settings"[\s\S]*?data-v39-start-name-generator/, "プレイ形式選択の設定欄に名前作成");
+assert.match(playModeSelect, /openNameGeneratorFromStart\(nameGeneratorButton\)/, "プレイ形式選択の設定欄から起動");
+assert.match(playModeSelect, /createApp\(NameGeneratorModal/, "既存名前生成モーダルを接続");
+assert.doesNotMatch(appMarkup, /name-generator-title-launch/, "初期画面の不要な独立ボタンは表示しない");
+assert.match(mapPanelMarkup, /@click="openNameGeneratorFromQuickMenu"/, "右上設定メニューからの起動");
+assert.match(mapPanelMarkup, /<name-generator-modal\s+:show="showNameGeneratorModal"/, "ゲーム中の生成モーダル接続");
+console.log("name generator: 11 races × 3 gender modes × (single/batch/preset), play-mode settings and in-game settings OK");
