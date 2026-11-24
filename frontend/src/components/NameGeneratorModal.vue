@@ -11,6 +11,7 @@ const dictionary = getGameDataRows("命名辞書");
 const race = ref(races[0]?.key || "");
 const gender = ref("共通");
 const mode = ref("words");
+const hasGenderSpecificWords = computed(() => dictionary.some(row => row?.種族 === race.value && row?.使用可 === true && ["男性系", "女性系"].includes(row?.性別傾向)));
 const results = ref([]);
 const feedback = ref("");
 const allCopyText = computed(() => results.value.map((row, i) =>
@@ -67,6 +68,8 @@ watch(() => props.show, value => { if (value) generate(1); });
           </select>
         </label>
       </div>
+      <p v-if="mode === 'words' && race === '竜人'" class="name-generator-note">竜人は個人名と氏族名を「・」で区切って表示します。</p>
+      <p v-if="mode === 'words' && !hasGenderSpecificWords" class="name-generator-note">この種族の語はすべて共通のため、男性系・女性系の生成候補に違いはありません。</p>
       <div class="name-generator-actions">
         <button type="button" @click="generate(1)">1人生成</button>
         <button type="button" @click="generate(10)">10人まとめて生成</button>
@@ -102,6 +105,7 @@ watch(() => props.show, value => { if (value) generate(1); });
 .name-generator-actions button:disabled { opacity:.45; cursor:not-allowed; }
 .name-generator-actions .name-generator-close { margin-left:auto; background:#24373b; }
 .name-generator-feedback { margin:0; color:#b9e6b8; font-size:15px; }
+.name-generator-note { margin:0; color:#aacbd1; font-size:14px; line-height:1.5; }
 .name-generator-results { flex:1; min-height:0; overflow:auto; display:grid; align-content:start; gap:9px; }
 .name-generator-result { border:1px solid #344b52; border-radius:8px; padding:10px 12px; background:#122329; display:grid; gap:6px; }
 .name-generator-result-main { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
