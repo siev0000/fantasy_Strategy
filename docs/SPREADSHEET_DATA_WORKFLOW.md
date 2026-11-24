@@ -31,6 +31,7 @@ Google Sheets のセルを直接読むのは、XLSX で確認できない情報�
 - 変換は `python scripts/game_data_converter.py --input game_data.xlsx --sheet 命名辞書 --sheet 種族` を実行し、`data/source/export/json/命名辞書.json` と `種族.json`（統合種族の変換時は `勢力.json` も）を生成する。生成JSONは手編集しない。
 - `frontend/src/lib/name-generator.js` はゲームデータレジストリのJSONから選択種族の語を組み合わせる。重複や20文字超の結果は除外し、単体／10人一括で生成する。竜人の語組み合わせモードだけは「個人名・氏族名」として中点で区切り、それ以外の種族は2語を直接連結する。登録済み候補モードでは `種族.json` の男女別リストを用いる。元の名前の語源を推測して表示しない。性別の区分を持たない語は「共通」とし、男女選択で差がない場合もある。
 - 新語の追加・無効化は原本シートのみ変更し、変換バッチを再実行して反映する。
+- 名前生成UIは、ゲーム開始前なら初期画面の「名前作成」ボタンから、ゲーム開始後ならマップ画面右上の「設定」→「名前作成」から開ける。前者は `frontend/src/App.vue`、後者は `frontend/src/components/PhaserMapGeneratorPanel.vue` で起動する。
 - テストは `npm run check:name-generator`。公開時にはD&Dなど第三者由来の語の利用条件も確認する。
 
 ### スキル
