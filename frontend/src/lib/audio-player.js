@@ -41,11 +41,13 @@ class GameAudioController {
     this.bgmRequested = false;
     this.preview = null;
     this.seCache = new Map();
+    this.activeSe = new Set();
     this.explicitSeCount = 0;
     this.sounds = {bgm:{...defaultSounds.bgm},se:{...defaultSounds.se}};
     this.masterVolume = 0.5;
     this.bgmVolume = 0.15;
     this.seVolume = 0.5;
+    this.muted = false;
     this.loadVolumeSettings();
   }
 
@@ -56,9 +58,14 @@ class GameAudioController {
   }
 
   applyAudioVolumes() {
-    if (this.bgmAudio) this.bgmAudio.volume = this.masterVolume * this.bgmVolume;
-    if (this.preview) this.preview.audio.volume = this.masterVolume
-      * (this.preview.kind === "bgm" ? this.bgmVolume : this.seVolume);
+    if (this.bgmAudio) {
+      this.bgmAudio.volume = this.masterVolume * this.bgmVolume;
+      this.bgmAudio.muted = this.muted;
+    }
+    if (this.preview) {
+      this.preview.audio.volume = this.masterVolume * (this.preview.kind === "bgm" ? this.bgmVolume : this.seVolume);
+      this.preview.audio.muted = this.muted;
+    }
   }
 
   loadVolumeSettings() {
@@ -69,6 +76,7 @@ class GameAudioController {
       this.masterVolume = this.clampVolume(parsed?.masterVolume, this.masterVolume);
       this.bgmVolume = this.clampVolume(parsed?.bgmVolume, this.bgmVolume);
       this.seVolume = this.clampVolume(parsed?.seVolume, this.seVolume);
+      this.muted = parsed?.muted === true;
       for (const [kind, entries] of Object.entries(this.sounds)) {
         for (const key of Object.keys(entries)) {
           const id = parsed?.sounds?.[kind]?.[key];
@@ -86,6 +94,7 @@ class GameAudioController {
         masterVolume: this.masterVolume,
         bgmVolume: this.bgmVolume,
         seVolume: this.seVolume,
+        muted: this.muted,
         sounds: this.sounds
       }));
     } catch {
@@ -155,18 +164,23 @@ class GameAudioController {
     if (!Object.hasOwn(this.sounds.se,sound)) return;
     if (!fallback) this.explicitSeCount++;
     const volume = this.masterVolume * this.seVolume;
-    if (volume <= 0) return;
+    if (this.muted || volume <= 0) return;
     const base = this.getSeAudio(sound);
     if (!base) return;
+    const se = base.cloneNode(true);
+    const release = () => {
+      this.activeSe.delete(se);
+      se.removeEventListener("ended", release);
+      se.removeEventListener("error", release);
+    };
+    se.volume = volume;
+    se.addEventListener("ended", release);
+    se.addEventListener("error", release);
+    this.activeSe.add(se);
     try {
-      const se = base.cloneNode(true);
-      se.volume = volume;
-      const played = se.play();
-      if (played && typeof played.catch === "function") {
-        played.catch(() => {});
-      }
+      Promise.resolve(se.play()).catch(release);
     } catch {
-      // no-op
+      release();
     }
   }
 
@@ -184,7 +198,7 @@ class GameAudioController {
 
   async previewSound(kind,id) {
     const src = soundUrls[kind]?.get(id);
-    if (!src) return false;
+    if (this.muted || !src) return false;
     this.stopPreview({resumeBgm:kind !== "bgm"});
     if (kind === "bgm") this.bgmAudio?.pause();
     const audio = new Audio(src);
@@ -231,11 +245,19 @@ class GameAudioController {
     this.saveVolumeSettings();
   }
 
+  setMuted(value) {
+    this.muted = value === true;
+    this.applyAudioVolumes();
+    for (const se of this.activeSe) se.muted = this.muted;
+    this.saveVolumeSettings();
+  }
+
   getVolumeSettings() {
     return {
       masterVolume: this.masterVolume,
       bgmVolume: this.bgmVolume,
-      seVolume: this.seVolume
+      seVolume: this.seVolume,
+      muted: this.muted
     };
   }
 }

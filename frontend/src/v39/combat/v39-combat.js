@@ -16,6 +16,47 @@ import {resolveV39TransformationSpec,replaceV39TransformationEffect,resolveV39Tr
 import {isV39SustainedSkill,isV39SustainedTornado,moveV39SustainedTornado,v39TornadoTiles} from '../../lib/v39-sustained-effects.js';
 import {applyV39ForcedMovement} from '../../lib/v39-forced-movement.js';
 import {resolveV39SkillForcedMovement} from '../../lib/v39-skill-forced-movement.js';
+import {applyV39SkillCounters,getV39SkillCounterBlock,markV39SkillCounterCombat} from '../../lib/v39-skill-counters.js';
+
+function mapCombatUnits(units, transform) {
+  const next = units.map(transform);
+  return next.some((unit, index) => unit !== units[index]) ? next : units;
+}
+
+function settleCombatSkillCounters(before, after, attacker, row, entries, {support, isCounter, ongoing} = {}) {
+  const turn = currentV39TurnNumber(before);
+  const targets = new Set();
+  const defeated = new Set();
+  if (!support) for (const entry of entries) {
+    if (entry.friendly || !entry.targetId || entry.targetId === attacker.id) continue;
+    targets.add(entry.targetId);
+    if (entry.beforeHp > 0 && entry.afterHp === 0) defeated.add(entry.targetId);
+  }
+  const actor = ongoing ? attacker : applyV39SkillCounters(attacker,row,resolveV39CounterPassives(attacker,row,isCounter),defeated.size,turn);
+  const actorCounters = (support ? actor : markV39SkillCounterCombat(actor,turn)).skillCounters;
+  if (!targets.size && actorCounters === attacker.skillCounters) return after;
+  const update = unit => {
+    if (unit.id === attacker.id && actorCounters !== attacker.skillCounters) return {...unit,skillCounters:actorCounters};
+    return targets.has(unit.id) ? markV39SkillCounterCombat(unit,turn) : unit;
+  };
+  return {
+    ...after,
+    players:after.players.map(player=>{
+      const units=mapCombatUnits(player.factionState.units,update);
+      return units===player.factionState.units ? player : {...player,factionState:{...player.factionState,units}};
+    }),
+    enemies:mapCombatUnits(after.enemies,update),
+    neutralVillages:after.neutralVillages.map(village=>{
+      if (!village.defenseUnits?.length) return village;
+      const defenseUnits=mapCombatUnits(village.defenseUnits,update);
+      return defenseUnits===village.defenseUnits ? village : {...village,defenseUnits};
+    })
+  };
+}
+
+function spendSupportSkillCounters(unit, attacker, row, turn) {
+  return applyV39SkillCounters(unit,row,resolveV39CounterPassives(attacker,row),0,turn);
+}
 
 function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,achievementInfo={}){
   const chain=achievementInfo.support?null:resolveV39AttackChain(skillRow,attacker,achievementInfo);
@@ -33,7 +74,8 @@ function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,ach
 
     window.appendV39ActivityLog?.([state.activePlayerId],'スキル',formatV39SkillTriggerLog(log),log);
   }
-  const recorded=recordV39CombatAchievements(state,triggered.state,attacker,
+  const counterState=settleCombatSkillCounters(state,triggered.state,attacker,skillRow,combatLog,achievementInfo);
+  const recorded=recordV39CombatAchievements(state,counterState,attacker,
     [...combatLog,...(achievementInfo.wallEntries||[])],{...achievementInfo,skillRow});
   return {...patch,players:recorded.players,enemies:recorded.enemies,neutralVillages:recorded.neutralVillages,
     ...(recorded.enemyCombatRuntime!== (patch.enemyCombatRuntime??state.enemyCombatRuntime)?{enemyCombatRuntime:recorded.enemyCombatRuntime}:{})};
@@ -90,6 +132,7 @@ import {
   resolveAttackRangeScale,
   resolveActionSkillRows,
   hasV39SkillWeapon,
+  resolveV39CounterPassives,
   resolveAttackRows,
   resolveCounterAttackRow,
   resolveV39InstantDeath,
@@ -801,6 +844,8 @@ function unavailableAttackReason(skillName) {
   if (!unit || !row) return "攻撃するキャラクターと技を選択してください";
   if (isV39UnitWaiting(unit, currentV39TurnNumber())) return "このターンは待機済みです";
   if (text(unit?.state) === "死亡" || number(unit?.hp, unit?.currentHp) <= 0) return "死亡したキャラクターは攻撃できません";
+  const counterBlock = getV39SkillCounterBlock(unit,row);
+  if (counterBlock) return counterBlock;
   const block = getV39ActionBlock(unit,currentV39TurnNumber(),'skill',row);
   if (block) return block + "\u4e2d";
   if(isAttackBlockedByCast(window.getV39GameState({includeWorlds:false}),unit,row))return V39_CAST_ATTACK_LOCK;
@@ -909,6 +954,8 @@ function startAttack() {
   if(!isV39UnitInWorld(unit,state.activeWorldId)){
     showToast("このキャラクターは別のマップにいます");return false;
   }
+  const counterBlock=getV39SkillCounterBlock(unit,skillRow);
+  if(counterBlock){showToast(counterBlock);return false;}
   if (isV39UnitWaiting(unit, currentV39TurnNumber())) {
     showToast("このターンは待機済みです");
     return false;
@@ -1158,7 +1205,7 @@ function performRevival(target, session, options, state, player, attacker, reviv
       units:row.factionState.units.map((unit) => {
         if (text(unit.id) !== text(attacker.id)) return unit;
         const ap = options.apPaid ? currentAp(unit) : Math.max(0, currentAp(unit) - apCost);
-        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastActionTurn:currentV39TurnNumber(), lastUsedAttack:text(session.skillRow?.名前) };
+        return { ...spendSupportSkillCounters(unit,attacker,session.skillRow,currentV39TurnNumber()), ap, currentAp:ap, actionPoint:ap, lastActionTurn:currentV39TurnNumber(), lastUsedAttack:text(session.skillRow?.名前) };
       }),
       combatRuntime:{ ...runtime, pendingActionsByUnitId, cooldownsByUnitId }
     }
@@ -1204,7 +1251,7 @@ function performSoulCollection(target,session,options,state,player,attacker,apCo
     return {...row,factionState:{...row.factionState,units:row.factionState.units.map(unit=>{
       if(unit.id!==attacker.id)return unit;
       const ap=options.apPaid?currentAp(unit):currentAp(unit)-apCost;
-      return {...unit,ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:session.skillRow.名前};
+      return {...spendSupportSkillCounters(unit,attacker,session.skillRow,turn),ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:session.skillRow.名前};
     }),combatRuntime:{...runtime,pendingActionsByUnitId:pending,cooldownsByUnitId:{...runtime.cooldownsByUnitId,
       [attacker.id]:{...runtime.cooldownsByUnitId?.[attacker.id],[session.skillRow.名前]:resolveV39DeadlineTurn(turn,cooldownDurationTurns(session.skillRow))}}}}};
   });
@@ -1238,7 +1285,7 @@ function performUndeadConversion(target,session,options,state,player,attacker,ap
     return {...row,factionState:{...row.factionState,units:[...row.factionState.units.map(unit=>{
       if(unit.id!==attacker.id)return unit;
       const ap=options.apPaid?currentAp(unit):currentAp(unit)-apCost;
-      return {...unit,ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:session.skillRow.名前};
+      return {...spendSupportSkillCounters(unit,attacker,session.skillRow,turn),ap,currentAp:ap,actionPoint:ap,lastActionTurn:turn,lastUsedAttack:session.skillRow.名前};
     }),...created],combatRuntime:{...runtime,pendingActionsByUnitId,cooldownsByUnitId}}};
   });
   delete patch.spawned;
@@ -1293,7 +1340,7 @@ function performTileTransform(target, session, options, state, player, attacker,
       units:row.factionState.units.map(unit => {
         if (text(unit.id) !== text(attacker.id)) return unit;
         const ap = options.apPaid ? currentAp(unit) : Math.max(0, currentAp(unit) - apCost);
-        return { ...unit, ap, currentAp:ap, actionPoint:ap, lastActionTurn:currentV39TurnNumber(), lastUsedAttack:text(session.skillRow?.名前) };
+        return { ...spendSupportSkillCounters(unit,attacker,session.skillRow,currentV39TurnNumber()), ap, currentAp:ap, actionPoint:ap, lastActionTurn:currentV39TurnNumber(), lastUsedAttack:text(session.skillRow?.名前) };
       }),
       combatRuntime:{ ...runtime, pendingActionsByUnitId, cooldownsByUnitId }
     }
@@ -1337,6 +1384,7 @@ function strikeSustainedTornado(state,map,ownerId,unitId,effect) {
     }
   }
   if(entries.length){
+    next=settleCombatSkillCounters(state,next,caster,effect.skillRow,entries,{ongoing:true});
     commitVillageCombatState({players:next.players,enemies:next.enemies,neutralVillages:next.neutralVillages},{reason:'sustained-tornado-hit'});
     window.dispatchEvent(new CustomEvent('v39:combat-log',{detail:{summary:`${effect.skillName}：${entries.length}体に命中`,attackerId:unitId,skillName:effect.skillName,entries,unitAction:false}}));
   }
@@ -1369,7 +1417,7 @@ function performSustainedTornadoCast(target,session,options,state,player,attacke
   const pendingActionsByUnitId={...runtime.pendingActionsByUnitId};if(options.clearPending)delete pendingActionsByUnitId[unitId];
   const cooldownsByUnitId={...runtime.cooldownsByUnitId,[unitId]:{...runtime.cooldownsByUnitId?.[unitId],[skillName]:resolveV39DeadlineTurn(turn,cooldownDurationTurns(session.skillRow))}};
   const players=state.players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,
-    units:row.factionState.units.map(unit=>unit.id!==unitId?unit:{...unit,ap:options.apPaid?currentAp(unit):currentAp(unit)-apCost,currentAp:options.apPaid?currentAp(unit):currentAp(unit)-apCost,
+    units:row.factionState.units.map(unit=>unit.id!==unitId?unit:{...spendSupportSkillCounters(unit,attacker,session.skillRow,turn),ap:options.apPaid?currentAp(unit):currentAp(unit)-apCost,currentAp:options.apPaid?currentAp(unit):currentAp(unit)-apCost,
       actionPoint:options.apPaid?currentAp(unit):currentAp(unit)-apCost,hp:number(unit.hp,unit.currentHp)-hpCost,currentHp:number(unit.hp,unit.currentHp)-hpCost,lastActionTurn:turn}),
     combatRuntime:{...runtime,activeEffectsByUnitId,pendingActionsByUnitId,cooldownsByUnitId}}});
   commitVillageCombatState({players},{reason:'sustained-tornado-cast'});
@@ -1749,7 +1797,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
       ctx.data.defenseStructures = [...(ctx.data.defenseStructures || []).filter(row => row.id !== placed.id), placed];
     } else if (!enemyTarget || (enemyTarget.id !== attacker.id && (!attacker.nestId || enemyTarget.nestId !== attacker.nestId))) return false;
     window.setV39GameState({
-      enemies:state.enemies.map(unit => ({ ...unit,
+      enemies:state.enemies.map(unit => ({ ...(unit.id === attacker.id ? spendSupportSkillCounters(unit,attacker,skillRow,turn) : unit),
         ...(unit.id === targetUnit.id ? grantV39PersonalDefense(skillRow, attacker, turn) : {}),
         ...(unit.id === targetUnit.id && hasV39SkillEffect(skillRow,"遮断") ? {
           rayBlockExpiresAtTurn:resolveV39DeadlineTurn(turn,parseV39TurnCount(skillRow.効果時間,V39_DEFENSE_BALANCE.rayBlockDefaultTurns))

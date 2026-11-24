@@ -1,5 +1,12 @@
 import options from '../../../config/player_config_options.json';
 
+export const V39_SKILL_COUNTER_HOLD = options['ゲーム進行設定']['戦闘カウンターの保持ターン'];
+export function normalizeV39SkillCounterHoldTurns(value) {
+  const turns=value==null||value===''?NaN:Number(value);
+  return Math.max(V39_SKILL_COUNTER_HOLD.最小,Math.min(V39_SKILL_COUNTER_HOLD.最大,
+    Number.isFinite(turns)?Math.floor(turns):V39_SKILL_COUNTER_HOLD.デフォルト));
+}
+
 const config=options['ゲーム進行設定']['最終ダメージ倍率'];
 export const V39_DAMAGE_MULTIPLIER_MIN=Number(config['最小']);
 export const V39_DAMAGE_MULTIPLIER_MAX=Number(config['最大']);

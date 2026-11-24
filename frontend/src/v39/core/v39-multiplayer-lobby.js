@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 import {normalizeV39SoulAppSettings} from '../../lib/v39-soul-app.js';
 import {normalizeV39DetectionScoutBonus} from '../../lib/v39-detection-settings.js';
-import {normalizeV39DamageMultiplier} from '../../lib/v39-combat-settings.js';
+import {normalizeV39DamageMultiplier,normalizeV39SkillCounterHoldTurns} from '../../lib/v39-combat-settings.js';
 import { raceData } from "../../lib/game-data-registry.js";
 import {isV39RacePlayable} from '../../lib/v39-race-definitions.js';
 import {
@@ -267,8 +267,9 @@ function syncSharedDetectionSetting(){
     const value=normalizeV39DetectionScoutBonus(setup.gameSettings?.detectionScoutBonus);
     const current=window.getV39GameSettings?.();
     const damage=normalizeV39DamageMultiplier(setup.gameSettings?.combatDamageMultiplier);
+    const hold=normalizeV39SkillCounterHoldTurns(setup.gameSettings?.skillCounterHoldTurns);
     const souls=normalizeV39SoulAppSettings(setup.gameSettings);
-    if(current&&(current.detectionScoutBonus!==value||current.combatDamageMultiplier!==damage||Object.keys(souls).some(key=>current[key]!==souls[key])))window.setV39GameState({gameSettings:{...current,...souls,detectionScoutBonus:value,combatDamageMultiplier:damage}},{reason:'multiplayer-rule-settings',returnState:false});
+    if(current&&(current.detectionScoutBonus!==value||current.combatDamageMultiplier!==damage||current.skillCounterHoldTurns!==hold||Object.keys(souls).some(key=>current[key]!==souls[key])))window.setV39GameState({gameSettings:{...current,...souls,detectionScoutBonus:value,combatDamageMultiplier:damage,skillCounterHoldTurns:hold}},{reason:'multiplayer-rule-settings',returnState:false});
   }
   window.dispatchEvent(new Event('v39:shared-rule-settings-changed'));
 }
@@ -963,6 +964,14 @@ function boot() {
       if(!isHost()||!roomSnapshot.settings?.gameSetup)return false;
       socket?.emit('game:rule-settings',{roomId:roomSnapshot.roomId,detectionScoutBonus:normalizeV39DetectionScoutBonus(value)});
     }else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),detectionScoutBonus:normalizeV39DetectionScoutBonus(value)}},{reason:'detection-setting',returnState:false});
+    return true;
+  };
+  window.setV39SkillCounterHoldTurns=value=>{
+    const skillCounterHoldTurns=normalizeV39SkillCounterHoldTurns(value);
+    if(isConnectedToRoom()){
+      if(!isHost()||!roomSnapshot.settings?.gameSetup)return false;
+      socket?.emit('game:rule-settings',{roomId:roomSnapshot.roomId,skillCounterHoldTurns});
+    }else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),skillCounterHoldTurns}},{reason:'skill-counter-setting',returnState:false});
     return true;
   };
   window.addEventListener('v39:save-loaded',syncSharedDetectionSetting);

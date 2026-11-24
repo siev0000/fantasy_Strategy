@@ -5,7 +5,7 @@ import {V39_SOUL_APP_FIELDS,normalizeV39SoulAppSettings} from '../../lib/v39-sou
 import { getGameDataRows } from "../../lib/game-data-registry.js";
 import {normalizeV39RecoveryWaitPercent,updateV39RecoveryWaitSettings} from '../../lib/v39-recovery-wait.js';
 import {normalizeV39DetectionScoutBonus,V39_DETECTION_BONUS_MIN,V39_DETECTION_BONUS_MAX} from '../../lib/v39-detection-settings.js';
-import {normalizeV39DamageMultiplier,V39_DAMAGE_MULTIPLIER_MIN,V39_DAMAGE_MULTIPLIER_MAX,V39_DAMAGE_MULTIPLIER_STEP} from '../../lib/v39-combat-settings.js';
+import {normalizeV39DamageMultiplier,normalizeV39SkillCounterHoldTurns,V39_SKILL_COUNTER_HOLD,V39_DAMAGE_MULTIPLIER_MIN,V39_DAMAGE_MULTIPLIER_MAX,V39_DAMAGE_MULTIPLIER_STEP} from '../../lib/v39-combat-settings.js';
 import { GAME_START_FIELD_VISION_BONUS_MAX, GAME_START_FIELD_VISION_BONUS_MIN, normalizeFieldVisionBonusTiles, normalizeGameStartSettings } from '../../lib/game-start-settings.js';
 import {openV39AudioSettings} from "../ui/v39-audio-settings.js";
 
@@ -308,7 +308,7 @@ function installSettingsUi() {
   const body = modal?.querySelector(".modal-body");
   if (!(body instanceof HTMLElement)) return;
   body.innerHTML = `<div class="v39-save-settings">
-    <section><button type="button" id="v39-game-audio-settings" data-audio-se="open">音設定</button></section>
+    <section><button type="button" id="v39-game-audio-settings" data-audio-se="open">音量設定</button></section>
     <section><h3>セーブ・ロード</h3><p>マップ、全プレイヤー、領土、研究、経済、戦闘、外交、地形イベント、カメラ位置を保存します。</p>
       <div><button type="button" id="v39-save-download">セーブを保存</button><button type="button" id="v39-save-load">セーブを読込</button><input id="v39-save-file" type="file" accept="application/json,.json" hidden></div>
       <output id="v39-save-status">未実行</output>
@@ -321,6 +321,10 @@ function installSettingsUi() {
       <label>最終ダメージ倍率 <input id="v39-combat-damage-multiplier" type="number" min="${V39_DAMAGE_MULTIPLIER_MIN}" max="${V39_DAMAGE_MULTIPLIER_MAX}" step="${V39_DAMAGE_MULTIPLIER_STEP}" aria-label="最終ダメージ倍率"> 倍</label>
       <p>共通式の最終HPダメージに適用します。属性威力による災害被害も対象。初期1.5倍。武器威力や能力成長は変更しません。</p>
       <p id="v39-combat-setting-note"></p>
+    </section>
+    <section><h3>戦闘カウンター</h3>
+      <label>保持ターン <input id="v39-skill-counter-hold" type="number" min="${V39_SKILL_COUNTER_HOLD.最小}" max="${V39_SKILL_COUNTER_HOLD.最大}" step="1"> T</label>
+      <p>攻撃した・されたターンを除き、自分のターン終了時に数えます。新しい設定は次のターン終了から適用します。</p>
     </section>
     <section><h3>索敵の発見判定</h3>
       <label>索敵発見補正 <input id="v39-detection-scout-bonus" type="number" min="${V39_DETECTION_BONUS_MIN}" max="${V39_DETECTION_BONUS_MAX}" step="1" aria-label="索敵発見補正"></label>
@@ -354,6 +358,7 @@ function installSettingsUi() {
   const fieldVisionInput = document.getElementById('v39-field-vision-bonus');
   const detectionInput=document.getElementById('v39-detection-scout-bonus');
   const damageInput=document.getElementById('v39-combat-damage-multiplier');
+  const counterHoldInput=document.getElementById('v39-skill-counter-hold');
   const syncSoulSettings=()=>{
     const access=window.getV39CombatSettingsAccess?.()||{multiplayer:false,canEdit:true};
     const settings=normalizeV39SoulAppSettings(window.getV39GameSettings?.());
@@ -382,6 +387,8 @@ function installSettingsUi() {
   const syncCombatSetting=()=>{
     const access=window.getV39CombatSettingsAccess?.()||{multiplayer:false,canEdit:true};
     damageInput.disabled=!access.canEdit||!!window.isV39MapInputLocked?.();
+    counterHoldInput.disabled=damageInput.disabled;
+    if(document.activeElement!==counterHoldInput||access.multiplayer)counterHoldInput.value=normalizeV39SkillCounterHoldTurns(window.getV39GameSettings?.()?.skillCounterHoldTurns);
     if(document.activeElement!==damageInput||access.multiplayer)damageInput.value=normalizeV39DamageMultiplier(window.getV39GameSettings?.()?.combatDamageMultiplier);
     document.getElementById('v39-combat-setting-note').textContent=access.multiplayer
       ?access.canEdit?'ホスト設定を全参加者に共有します。':'マルチではホストの設定を使用します。'
@@ -393,6 +400,13 @@ function installSettingsUi() {
     if(window.setV39CombatDamageMultiplier)window.setV39CombatDamageMultiplier(value);
     else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),combatDamageMultiplier:value}},{reason:'combat-setting',returnState:false});
     damageInput.value=value;
+  });
+  counterHoldInput.addEventListener('change',()=>{
+    if(counterHoldInput.disabled||window.isV39MapInputLocked?.())return;
+    const value=normalizeV39SkillCounterHoldTurns(counterHoldInput.value);
+    if(window.setV39SkillCounterHoldTurns)window.setV39SkillCounterHoldTurns(value);
+    else window.setV39GameState({gameSettings:{...window.getV39GameSettings(),skillCounterHoldTurns:value}},{reason:'skill-counter-setting',returnState:false});
+    counterHoldInput.value=value;
   });
   for(const name of ['v39:game-state-changed','v39:shared-rule-settings-changed','v39:map-input-lock-changed'])window.addEventListener(name,syncCombatSetting);
   syncCombatSetting();

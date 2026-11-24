@@ -38,6 +38,13 @@
 }
 #v39-audio-settings .v39-audio-volume input { min-width: 0; width: 100%; accent-color: #79cbd8; }
 #v39-audio-settings .v39-audio-volume output { min-width: 3.3em; text-align: end; }
+#v39-audio-settings .v39-audio-mute {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+}
+#v39-audio-settings .v39-audio-mute input { accent-color: #79cbd8; }
 #v39-audio-settings :is(button,select) {
   min-height: 34px;
   border: 1px solid #536e79;

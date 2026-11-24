@@ -24,7 +24,7 @@ export function getV39PassiveRows(unit) {
     const row=technique.source||technique;
     if (text(row.行動).toUpperCase()==="P") rows.set(text(row.名前||technique.name),row);
   }
-  for(const row of getV39UnitTestSkillRows(unit))if(text(row?.行動).toUpperCase()==='P'&&text(row?.条件)==='変身中')rows.set(text(row.名前),row);
+  for(const row of getV39UnitTestSkillRows(unit))if(text(row?.行動).toUpperCase()==='P'&&(text(row?.条件)==='変身中'||row.加算カウンター||row.撃破時カウンター))rows.set(text(row.名前),row);
   return [...rows.values()];
 }
 

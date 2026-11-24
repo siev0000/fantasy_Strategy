@@ -2,7 +2,7 @@ import carriedFoodBalance from '../../../config/v39-carried-food.json';
 import playerConfigOptions from "../../../config/player_config_options.json";
 import {normalizeV39RecoveryWaitPercent} from './v39-recovery-wait.js';
 import {normalizeV39DetectionScoutBonus} from './v39-detection-settings.js';
-import {normalizeV39DamageMultiplier} from './v39-combat-settings.js';
+import {normalizeV39DamageMultiplier,normalizeV39SkillCounterHoldTurns} from './v39-combat-settings.js';
 import {normalizeV39SoulAppSettings} from './v39-soul-app.js';
 
 const progressConfig = playerConfigOptions?.["ゲーム進行設定"] || {};
@@ -93,6 +93,7 @@ function normalizeGameStartSettings(value = {}) {
     carriedFoodAutoResupply:typeof source.carriedFoodAutoResupply==='boolean'?source.carriedFoodAutoResupply:carriedFoodBalance.autoResupply,
     detectionScoutBonus:normalizeV39DetectionScoutBonus(source.detectionScoutBonus),
     combatDamageMultiplier:normalizeV39DamageMultiplier(source.combatDamageMultiplier),
+    skillCounterHoldTurns:normalizeV39SkillCounterHoldTurns(source.skillCounterHoldTurns),
     npcFactionCount:Math.max(0,Math.min(8,Math.floor(Number(source.npcFactionCount)||0))),
     fieldVisionBonusTiles: normalizeFieldVisionBonusTiles(source.fieldVisionBonusTiles),
     turnProgressionMode: turnModeValues.has(requestedMode)

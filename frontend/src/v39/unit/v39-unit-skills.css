@@ -102,3 +102,6 @@
       .squad-detail-pane .technique-detail-empty{
         grid-column:1 / -1!important;color:#829397!important;font-size:var(--font-size-8)!important;padding:3px 0!important
       }
+.technique-counter-shortage { color: #ffacaa; }
+.v39-skill-counter-status { padding: 5px 7px; border: 1px solid #405965; border-radius: 6px; }
+.v39-skill-counter-status > div { display: flex; flex-wrap: wrap; gap: 3px 10px; }

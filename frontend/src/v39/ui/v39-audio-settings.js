@@ -20,11 +20,12 @@ export function openV39AudioSettings() {
   dialog.setAttribute("aria-labelledby","v39-audio-settings-title");
   dialog.innerHTML = `
     <header>
-      <h2 id="v39-audio-settings-title">音設定</h2>
+      <h2 id="v39-audio-settings-title">音量設定</h2>
       <button type="button" data-audio-close>閉じる</button>
     </header>
     <div class="v39-audio-settings-body">
       <fieldset><legend>音量</legend>
+        <label class="v39-audio-mute"><input type="checkbox" data-audio-mute> 全ミュート</label>
         ${volumeFields.map(([key,label])=>`<div class="v39-audio-volume">
           <label for="v39-audio-volume-${key}">${label}</label>
           <input id="v39-audio-volume-${key}" type="range" min="0" max="100">
@@ -45,6 +46,13 @@ export function openV39AudioSettings() {
     </footer>`;
 
   const volumes = audio.getVolumeSettings();
+  const status = dialog.querySelector("[data-audio-status]");
+  const mute = dialog.querySelector("[data-audio-mute]");
+  mute.checked = volumes.muted;
+  mute.addEventListener("change",()=>{
+    audio.setMuted(mute.checked);
+    status.textContent = "";
+  });
   for (const [key,,setter] of volumeFields) {
     const input = dialog.querySelector(`#v39-audio-volume-${key}`);
     const output = input.nextElementSibling;
@@ -56,7 +64,6 @@ export function openV39AudioSettings() {
     });
   }
 
-  const status = dialog.querySelector("[data-audio-status]");
   for (const [,kind,entries] of soundFields) {
     for (const [key] of entries) {
       const select = dialog.querySelector(`#v39-audio-${kind}-${key}`);
@@ -64,16 +71,18 @@ export function openV39AudioSettings() {
       select.add(new Option("無音",""));
       for (const choice of audioCatalog[kind]) select.add(new Option(choice.label,choice.id));
       select.value = audio.getSoundSelection(kind,key);
-      preview.disabled = !select.value;
+      const syncPreview = () => { preview.disabled = mute.checked || !select.value; };
+      syncPreview();
+      mute.addEventListener("change",syncPreview);
       select.addEventListener("change",()=>{
         audio.setSoundSelection(kind,key,select.value);
         audio.stopPreview();
-        preview.disabled = !select.value;
+        syncPreview();
         status.textContent = "";
       });
       preview.addEventListener("click",async()=>{
         status.textContent = "";
-        if (!await audio.previewSound(kind,select.value) && dialog.open) {
+        if (!await audio.previewSound(kind,select.value) && dialog.open && !mute.checked) {
           status.textContent = "音源を試聴できませんでした。";
         }
       });

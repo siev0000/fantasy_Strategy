@@ -76,7 +76,7 @@ function createModal() {
       <div id="v39-start-settings" class="v39-play-mode-settings" hidden>
         <button type="button" class="v39-play-mode-reference" data-v39-equipment-icon-reference>アイコン設定</button>
         <button type="button" class="v39-play-mode-reference" data-v39-start-enchantment-colors>付与カラー設定</button>
-        <button type="button" class="v39-play-mode-reference" data-v39-start-audio data-audio-se="open">音設定</button>
+        <button type="button" class="v39-play-mode-reference" data-v39-start-audio data-audio-se="open">音量設定</button>
       </div>
       <output class="v39-play-mode-reference-status" data-v39-equipment-icon-reference-status role="status"></output>
     </section>`;

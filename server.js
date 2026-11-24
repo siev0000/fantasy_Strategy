@@ -10,6 +10,9 @@ const V39_RACE_DEFINITIONS = require("./data/source/export/json/種族.json");
 const {fields:V39_SOUL_APP_FIELDS,normalizeSoulAppSettings}=require('./config/v39-soul-app-settings.cjs');
 const V39_DETECTION_CONFIG = require('./config/player_config_options.json')['ゲーム進行設定']['索敵発見補正'];
 const V39_DAMAGE_CONFIG = require('./config/player_config_options.json')['ゲーム進行設定']['最終ダメージ倍率'];
+const V39_SKILL_COUNTER_HOLD_CONFIG = require('./config/player_config_options.json')['ゲーム進行設定']['戦闘カウンターの保持ターン'];
+const normalizeV39SkillCounterHoldTurns=value=>Math.max(V39_SKILL_COUNTER_HOLD_CONFIG.最小,Math.min(V39_SKILL_COUNTER_HOLD_CONFIG.最大,
+  value!=null&&value!==''&&Number.isFinite(Number(value))?Math.floor(Number(value)):V39_SKILL_COUNTER_HOLD_CONFIG.デフォルト));
 const normalizeV39DamageMultiplier=value=>{
   const step=Number(V39_DAMAGE_CONFIG['刻み']);
   const clamped=Math.max(Number(V39_DAMAGE_CONFIG['最小']),Math.min(Number(V39_DAMAGE_CONFIG['最大']),Number.isFinite(Number(value))&&value!==null&&value!==''?Number(value):Number(V39_DAMAGE_CONFIG['デフォルト'])));
@@ -423,7 +426,7 @@ function normalizeV39LobbyGameSetup(raw) {
     if (Buffer.byteLength(encoded, "utf8") > V39_LOBBY_GAME_SETUP_MAX_BYTES) return null;
     const cloned = JSON.parse(encoded);
     if(!cloned||typeof cloned!=="object"||Array.isArray(cloned))return null;
-    cloned.gameSettings={...cloned.gameSettings,...normalizeSoulAppSettings(cloned.gameSettings),detectionScoutBonus:normalizeV39DetectionBonus(cloned.gameSettings?.detectionScoutBonus),combatDamageMultiplier:normalizeV39DamageMultiplier(cloned.gameSettings?.combatDamageMultiplier)};
+    cloned.gameSettings={...cloned.gameSettings,...normalizeSoulAppSettings(cloned.gameSettings),detectionScoutBonus:normalizeV39DetectionBonus(cloned.gameSettings?.detectionScoutBonus),combatDamageMultiplier:normalizeV39DamageMultiplier(cloned.gameSettings?.combatDamageMultiplier),skillCounterHoldTurns:normalizeV39SkillCounterHoldTurns(cloned.gameSettings?.skillCounterHoldTurns)};
     return cloned;
   } catch {
     return null;
@@ -980,6 +983,7 @@ io.on("connection", socket => {
     for(const key of Object.keys(V39_SOUL_APP_FIELDS))if(Object.prototype.hasOwnProperty.call(payload,key))patch[key]=soulSettings[key];
     if(Object.prototype.hasOwnProperty.call(payload,'detectionScoutBonus'))patch.detectionScoutBonus=normalizeV39DetectionBonus(payload.detectionScoutBonus);
     if(Object.prototype.hasOwnProperty.call(payload,'combatDamageMultiplier'))patch.combatDamageMultiplier=normalizeV39DamageMultiplier(payload.combatDamageMultiplier);
+    if(Object.prototype.hasOwnProperty.call(payload,'skillCounterHoldTurns'))patch.skillCounterHoldTurns=normalizeV39SkillCounterHoldTurns(payload.skillCounterHoldTurns);
     if(!Object.keys(patch).length)return;
     room.settings.gameSetup.gameSettings={...room.settings.gameSetup.gameSettings,...patch};
     if(room.gameSnapshotJson){

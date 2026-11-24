@@ -3,6 +3,8 @@ import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abiliti
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { getIconSrcByName } from "../../lib/icon-library.js";
 import { hasV39SkillWeapon, resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39EquipmentActionRows, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
+import {describeV39SkillCounters,inspectV39SkillCounterRequirements,getV39SkillCounterBlock} from "../../lib/v39-skill-counters.js";
+import {normalizeV39SkillCounterHoldTurns} from "../../lib/v39-combat-settings.js";
 import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
 import {formatV39SkillCombatValues,resolveSkillBaseState} from '../../lib/skill-power.js';
 import { getV39UnitTestTechniques } from "../../lib/v39-test-skill-rules.js";
@@ -132,14 +134,17 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const description = techniqueDescription(row, source);
           const unsupported=action==="P" ? inspectV39Passive(source) : [];
           const expanded = name === expandedName;
+          const counters = action === "A" ? inspectV39SkillCounterRequirements(unit,source) : [];
+          const counterLabel = counters.map(({name,count,amount})=>`${name} ${count}/${amount}`).join(" / ");
+          const counterBlock = action === "A" ? getV39SkillCounterBlock(unit,source) : "";
           const detailHtml = `<span class="technique-detail-head"><b>説明</b>${durationLabel ? `<small>${escapeHtml(durationLabel)}</small>` : ""}</span>
             <span class="technique-detail-description">${description ? escapeHtml(description).replaceAll("\n","<br>") : "説明なし"}${unsupported.length ? `<br>未対応: ${escapeHtml(unsupported.join(" / "))}` : ""}</span>`;
           const attackAttr = interactive && action === "A" && (source.条件 !== "搭乗" || unit.boardingPilot) ? ` data-v39-attack-name="${escapeHtml(name)}" aria-pressed="false"` : "";
-          return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" ${interactive ? "data-v39-technique-name" : "data-v39-character-skill"}="${escapeHtml(name)}" aria-expanded="${expanded}"${interactive && action === "A" && !hasV39SkillWeapon(adjustedUnit,source) ? " disabled" : ""}${attackAttr}>
+          return `<button type="button" class="technique-card technique-select-card${action === "A" ? " action-technique" : ""}${expanded ? " is-expanded" : ""}" ${interactive ? "data-v39-technique-name" : "data-v39-character-skill"}="${escapeHtml(name)}" aria-expanded="${expanded}"${interactive && action === "A" && !hasV39SkillWeapon(adjustedUnit,source) ? " disabled" : ""}${attackAttr}${interactive && counterBlock ? ' aria-disabled="true"' : ''}>
             <span class="technique-summary">
               <span class="technique-icon ${iconAccent}" data-attack-category="${escapeHtml(icon.category)}" title="${escapeHtml(icon.category)}">${icon.markup}</span>
               <b class="technique-name">${escapeHtml(name)}</b>
-              <small class="technique-ap">${cast?.aimAfterCast&&cast.skillName===name?'AP 支払済':`AP ${apValue ?? "-"}`}</small>
+              <small class="technique-ap">${cast?.aimAfterCast&&cast.skillName===name?'AP 支払済':`AP ${apValue ?? "-"}`}${counterLabel?`<br><span class="${counterBlock?'technique-counter-shortage':''}">${escapeHtml(counterLabel)}</span>`:''}</small>
               ${combatValueText ? `<span class="technique-power">${escapeHtml(combatValueText)}</span>` : ""}
               <span class="technique-range">射 ${rangeValue ?? "-"}</span>
             </span>
@@ -162,8 +167,12 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
     const passiveHtml = passiveRows.length
       ? `<div class="technique-passive-divider">パッシブ</div>${passiveRows.map(renderTechnique).join("")}`
       : "";
-    return castHtml || activeRows.length || passiveRows.length || fusionSkills.length || fusionFacility
-      ? activeHtml + passiveHtml
+    const holdTurns=normalizeV39SkillCounterHoldTurns(window.getV39GameSettings?.()?.skillCounterHoldTurns);
+    const counters=describeV39SkillCounters(unit,holdTurns);
+    const counterHtml=counters.length?`<section class="v39-skill-counter-status"><strong>発動中のスキル</strong><div>${counters.map(({name,count,remainingTurns})=>
+      `<span>${escapeHtml(name)} ${count}${remainingTurns===null?'':`（残り${remainingTurns}T）`}</span>`).join('')}</div></section>`:'';
+    return counterHtml || castHtml || activeRows.length || passiveRows.length || fusionSkills.length || fusionFacility
+      ? counterHtml + activeHtml + passiveHtml
       : '<div class="squad-empty">行動データなし</div>';
 
 }

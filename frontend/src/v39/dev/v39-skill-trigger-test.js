@@ -40,10 +40,11 @@ export function createV39SkillTriggerFieldFixture(player,{craftEquipment=false}=
   }));
   const testers=[tester];
   if(!craftEquipment){
-    const {unit:reaper,weapon,actions,additionalSkillNames}=fixture.namedUnitTest;
+    const {unit:reaper,demonUnit,weapon,actions,additionalSkillNames}=fixture.namedUnitTest;
     const baseWeapon=getV39EquipmentCatalog().some(({name})=>name==="刀")?"刀":weapon.name;
     testers.push({...buildV39UnitEntity({...reaper,equipment:[{...weapon,name:baseWeapon}]}),
       worldId:"surface",testOnly:true,testSkillNames:[...actions.map(row=>row.名前),...additionalSkillNames]});
+    testers.push({...buildV39UnitEntity(demonUnit),worldId:"surface",testOnly:true,squadId:"solo"});
   }
   if(craftEquipment){
     const stockedRareTypes=new Set(equipmentStock.filter(item=>item.quality==="rare").map(item=>item.name));
@@ -105,7 +106,7 @@ export function selectV39SkillTriggerTestSide(index){
   focusV39MapTile(player.factionState.units[0],{worldId:'surface',select:true,notify:false});
   window.showV39TurnBanner?.(window.__v39FieldRuntime.mapData.equipmentCraftTestFixture
     ? '武具作成テスト。シーフに戦士の短剣（レア）を装備すると闘気撃が出ます。'
-    : player.name+'を操作中。部隊一覧の「死神検証・フェンサー」は、成長でスカーミッシャーを取得すると死神になります。武具検証ユニットでは剣・弓・篭手・素手を比較できます。');
+    : player.name+'を操作中。味方の「黒角侯ヴァルグ」で悪魔ネームドの姿を確認できます。「死神検証・フェンサー」はスカーミッシャー取得で死神になります。');
   return true;
 }
 

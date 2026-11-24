@@ -51,6 +51,9 @@ let latestTurnPerformance = null;
 let displayedPlanningKey='';
 let displayedPhase='',phaseBannerTimer;
 
+import {advanceV39SkillCounters} from '../../lib/v39-skill-counters.js';
+import {normalizeV39SkillCounterHoldTurns} from '../../lib/v39-combat-settings.js';
+
 function number(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -410,7 +413,10 @@ export async function advanceTurn(options = {}) {
     state=window.getV39GameState();
     const endingPlayer=state.players.find(player=>player.id===currentPlayerId);
     if(endingPlayer){
-      const factionState=settleV39CastingActions(endingPlayer.factionState,before.turnNumber);
+      let factionState=settleV39CastingActions(endingPlayer.factionState,before.turnNumber);
+      const holdTurns=normalizeV39SkillCounterHoldTurns(state.gameSettings?.skillCounterHoldTurns);
+      const units=factionState.units.map(unit=>advanceV39SkillCounters(unit,before.turnNumber,holdTurns));
+      if(units.some((unit,index)=>unit!==factionState.units[index]))factionState={...factionState,units};
       if(factionState!==endingPlayer.factionState){
         const players=state.players.map(player=>player.id===currentPlayerId?{...player,factionState}:player);
         window.setV39GameState({players},{reason:'cast-turn-end',returnState:false});
@@ -512,12 +518,13 @@ export async function advanceTurn(options = {}) {
         if(map?.caveSites)map.caveSites=advanceV39ToolSites(map,nextTurn).caveSites;
         if (map?.defenseStructures) map.defenseStructures = pruneV39DefenseStructures(map.defenseStructures,nextTurn);
         const defenseState = window.getV39GameState({includeWorlds:false});
+        const holdTurns=normalizeV39SkillCounterHoldTurns(defenseState.gameSettings?.skillCounterHoldTurns);
         window.setV39GameState({
           players:defenseState.players.map(player => ({ ...player, factionState:{ ...player.factionState,
             units:player.factionState.units.map(unit => advanceV39PersonalDefenses(unit, nextTurn)) } })),
-          enemies:defenseState.enemies.map(unit => advanceV39PersonalDefenses(unit, nextTurn)),
+          enemies:defenseState.enemies.map(unit => advanceV39PersonalDefenses(advanceV39SkillCounters(unit,activeTurn,holdTurns), nextTurn)),
           neutralVillages:(defenseState.neutralVillages || []).map(village => ({ ...village,
-            defenseUnits:(village.defenseUnits || []).map(unit => advanceV39PersonalDefenses(unit, nextTurn)) }))
+            defenseUnits:(village.defenseUnits || []).map(unit => advanceV39PersonalDefenses(advanceV39SkillCounters(unit,activeTurn,holdTurns), nextTurn)) }))
         },{returnState:false});
         window.resolveV39PendingCombatActions?.(nextTurn);
         window.runV39DeathLifecycle?.(nextTurn);
@@ -530,6 +537,7 @@ export async function advanceTurn(options = {}) {
     timings.combatResolution = performance.now() - combatResolutionStartedAt;
     const resolved = advanceV39Teleports(window.getV39GameState(),nextTurn,window.__v39FieldRuntime?.mapData);
     const healed = advanceV39ToolProduction(advanceV39ExpeditionTools(resolved,nextTurn),nextTurn);
+    const counterHoldTurns=normalizeV39SkillCounterHoldTurns(healed.gameSettings?.skillCounterHoldTurns);
     const recoveredPlayers = (healed?.players || []).map(player => {
       const settled=player.isPlayer===false?settleV39CastingActions(player.factionState,activeTurn)
         :settleV39ProductionUnitSupport(player,healed,activeTurn,nextTurn);
@@ -543,7 +551,8 @@ export async function advanceTurn(options = {}) {
               const worldId=unit.worldId||"surface";
               const spatial=worldId===visibleWorldId?resolved:resolved.explorationWorlds?.[worldId]?.spatial;
               const recovered=recoverUnitHp(unit,worldId==="surface"?player.factionState:null,player.id,spatial||{},activeTurn);
-              return restoreUnitForTurn(clearExpiredGuard(recovered,nextTurn),true,{...spatial,activeWorldId:worldId},activeTurn,nextTurn);
+              const finished=player.isPlayer===false?advanceV39SkillCounters(recovered,activeTurn,counterHoldTurns):recovered;
+              return restoreUnitForTurn(clearExpiredGuard(finished,nextTurn),true,{...spatial,activeWorldId:worldId},activeTurn,nextTurn);
             })
       };
       return { ...player, factionState:restoreV39SquadMovementForTurn(factionState) };

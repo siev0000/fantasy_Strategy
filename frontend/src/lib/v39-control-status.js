@@ -1,3 +1,5 @@
+import {getV39SkillCounterBlock} from './v39-skill-counters.js';
+
 export const V39_CONTROL_STATUS_FIELDS = {
   睡眠:['精神攻撃','精神'],
   沈黙:['魔法'],
@@ -156,7 +158,7 @@ export function getV39ActionBlock(unit, turn, action, row) {
   if (hasV39ControlStatus(unit,'睡眠',turn)) return '睡眠';
   if (action !== 'move' && hasV39ControlStatus(unit,'沈黙',turn)
       && (row?.攻撃手段 === '魔法' || row?.判定 === '魔力' || Number(row?.魔法) > 0)) return '沈黙';
-  return '';
+  return action === 'skill' ? getV39SkillCounterBlock(unit, row) : '';
 }
 
 export const V39_STAND_UP_AP_COST = 20;

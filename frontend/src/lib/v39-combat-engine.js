@@ -162,6 +162,13 @@ function matchingPassiveRows(unit,skillRow,isCounter=false) {
   return getV39PassiveRows(unit).filter(row=>matchV39PassiveCondition(row,unit,action,{isCounter}).matches);
 }
 
+export function resolveV39CounterPassives(unit, skillRow, isCounter = false) {
+  const candidates = getV39PassiveRows(unit).filter(row=>row.加算カウンター || row.撃破時カウンター);
+  if (!candidates.length) return candidates;
+  const action = passiveActionContext(unit,skillRow);
+  return candidates.filter(row=>matchV39PassiveCondition(row,unit,action,{isCounter}).matches);
+}
+
 export function applyV39PassiveCombatSkills(attacker,skillRow,options={}) {
   const result=resolveV39PassiveContext(attacker,passiveActionContext(attacker,skillRow),options);
   return {attacker:result.unit,skillRow:result.action,
