@@ -43,6 +43,9 @@ jobs:
           cp -a config/. web-vue-dist/config/
           cp -a data/. web-vue-dist/data/
 
+      - name: Verify Pages static files
+        run: node scripts/check-v39-pages-assets.mjs
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

@@ -19,7 +19,11 @@ import { MAP_ENTITY_SIZE_RULES } from "../../lib/map-entity-size-rules.js";
 import { resolveV39EffectSequence } from '../../lib/v39-effect-sequence.js';
 import atmosphereConfig from '../../../../config/v39-atmosphere-display.json';
 
+import {skillData} from "../../lib/game-data-registry.js";
+import {setV39MagicEffectSkillCatalog} from "../../lib/v39-magic-effect-settings.js";
+
 const sources = new Map();
+setV39MagicEffectSkillCatalog(skillData);
 const EFFECT_TOTAL_DURATION_MS = 1500;
 
 function assetUrl(folder, name) {
@@ -162,7 +166,9 @@ export async function playV39MapEffect(request = {}) {
   const requestedEffectName = combatEffect?.effectName || text(request.effectName ?? request.name ?? request.animation, "斬撃");
   const playbackSettings = { ...resolveV39EffectPlaybackSettings(requestedEffectName), ...combatEffect?.settings };
   const effectDurationMs=Math.max(16,Math.round(number(request.totalDurationMs,
-    EFFECT_TOTAL_DURATION_MS*100/number(playbackSettings.playbackSpeedPercent,100))));
+    EFFECT_TOTAL_DURATION_MS*100/number(request.previewPlaybackSpeedPercent ?? playbackSettings.playbackSpeedPercent,100))));
+  const impactDurationMs=combatEffect?.defaultSpeedPercent == null ? effectDurationMs : Math.max(16,Math.round(number(
+    request.totalDurationMs,EFFECT_TOTAL_DURATION_MS*100/combatEffect.defaultSpeedPercent)));
   const origin = request.attackerTile ? tileCenter(request.attackerTile.x, request.attackerTile.y) : null;
   const attackAngle = origin ? Math.atan2(position.y - origin.y, position.x - origin.x) * 180 / Math.PI : 0;
   const endpoint=request.worldX !== undefined && request.worldY !== undefined ? {x:number(request.worldX),y:number(request.worldY)} : tileCenter(x,y);
@@ -240,6 +246,7 @@ export async function playV39MapEffect(request = {}) {
     ? String(request.attacker.id)+'|'+String(request.skillRow.名前||'') : '';
   if(presentationKey)window.dispatchEvent(new CustomEvent('v39:attack-effect-queued',{detail:{key:presentationKey}}));
   let impactTimer;
+  let impactDueAt;
   let shakeTimer;
   let portrait;
   let minimumAttackMotion;
@@ -336,7 +343,9 @@ export async function playV39MapEffect(request = {}) {
           startPortrait();
           if(presentationKey){
             window.dispatchEvent(new CustomEvent('v39:attack-effect-started',{detail:{key:presentationKey}}));
-            impactTimer=setTimeout(markImpactLate,Math.round(effectDurationMs*number(playbackSettings.damageMomentPercent,75)/100));
+            const delay=Math.round(impactDurationMs*number(playbackSettings.damageMomentPercent,75)/100);
+            impactDueAt=Date.now()+delay;
+            impactTimer=setTimeout(markImpactLate,delay);
           }
           if(request.skillRow&&!isV39SupportSkill(request.skillRow,request.attacker)&&power>=500){
             const camera=activeScene()?.cameras?.main;
@@ -355,6 +364,10 @@ export async function playV39MapEffect(request = {}) {
     });
     const generation=targetPlayer.requestId;
     const played=await playback;
+    if(played && combatEffect?.defaultSpeedPercent != null && !impactLate && impactDueAt &&
+      generation===targetPlayer.requestId && activeScene()===playerScene){
+      await new Promise(resolve=>setTimeout(resolve,Math.max(0,impactDueAt-Date.now())));
+    }
     finishPortrait();
     const hitTiles=resolveV39HitTargets(request.hitEntries).filter(tile=>request.allowInFog===true || window.isV39TileInCurrentVision?.(tile.x,tile.y)!==false);
     if(played && generation===targetPlayer.requestId && hitTiles.length && activeScene()===playerScene && playbackSettings.hitEffectMode!=='none'){

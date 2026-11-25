@@ -116,7 +116,6 @@ function installStyles() {
       #v39-effect-settings-panel>.v39-effect-settings-lower{grid-column:2;grid-row:2}
     }
     .v39-effect-settings-head{min-height:42px;display:flex;align-items:center;gap:8px;padding:5px 7px;border-bottom:1px solid #3a4c53;background:#142126}
-    .v39-effect-settings-head strong{font-size:var(--font-body)}
     .v39-effect-settings-back{min-height:34px;border:1px solid #4b626b;border-radius:6px;background:#18282e;color:#e8f2f0;padding:4px 10px;font:inherit;font-weight:800;cursor:pointer}
     .v39-effect-preview-pane{min-height:0;min-width:0;display:grid;grid-template-rows:auto minmax(120px,1fr);gap:7px;padding:7px;border-bottom:1px solid #354950;background:linear-gradient(180deg,#101b20,#0a1115)}
     .v39-effect-preview-pane{overflow:hidden}
@@ -152,7 +151,7 @@ function installStyles() {
     .v39-effect-preview-combatants img{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:contain;pointer-events:none}
     .v39-effect-preview-combatants [hidden]{display:none}.v39-effect-preview-combatants button{position:absolute;transform:translate(-50%,-50%);padding:0;min-height:0;min-width:0;border:0;background:none;pointer-events:auto;cursor:pointer;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}.v39-effect-preview-combatants svg{width:100%;height:100%}.v39-effect-preview-combatants polygon{fill:#253c39;stroke:#779487;stroke-width:1}.v39-effect-preview-combatants [aria-pressed="true"] polygon{fill:#416055;stroke:#ffe28b;stroke-width:2}.v39-effect-preview-combatants span{color:#eef5f2;font-size:var(--font-secondary);text-shadow:0 1px 3px #000}
     #v39-effect-hit-image-picker{font:inherit;background:#173039;color:#edf7f4;border:1px solid #536a72;border-radius:5px;padding:5px}
-    #v39-effect-attribute-base-row,#v39-effect-attribute-brightness-row{display:none}.is-attribute-mode #v39-effect-attribute-base-row,.is-attribute-mode #v39-effect-attribute-brightness-row{display:grid}
+    #v39-effect-attribute-base-row,#v39-effect-attribute-brightness-row{display:none}:is(.is-attribute-mode,.is-magic-mode) #v39-effect-attribute-base-row,:is(.is-attribute-mode,.is-magic-mode) #v39-effect-attribute-brightness-row{display:grid}
     #v39-effect-hit-specific[hidden]{display:none}
     #v39-effect-gradient-guides{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;overflow:hidden}
     #v39-effect-gradient-guides[hidden]{display:none}
@@ -187,7 +186,7 @@ function installStyles() {
     .v39-effect-playback-controls{flex-wrap:wrap}
     #v39-effect-frame-controls{min-width:100%}
     #v39-effect-common-settings,#v39-effect-common-actions{display:grid;gap:7px}
-    #v39-effect-settings-panel:not(.is-attribute-mode) #v39-effect-base-row{display:none}
+    #v39-effect-settings-panel:not(.is-attribute-mode):not(.is-magic-mode) #v39-effect-base-row{display:none}
     #v39-effect-settings-panel:not(.is-attribute-mode)[data-sequence-scope="step"] #v39-effect-common-settings,
     #v39-effect-settings-panel:not(.is-attribute-mode)[data-sequence-scope="step"] #v39-effect-common-actions,
     #v39-effect-settings-panel[data-sequence-scope="common"] #v39-effect-setting-sequence,
@@ -270,7 +269,7 @@ function ensurePanel() {
   panel.innerHTML = `
     <header class="v39-effect-settings-head">
       <button type="button" id="v39-effect-settings-back" class="v39-effect-settings-back">← 管理</button>
-      <strong>エフェクト設定</strong>
+      <select id="v39-effect-editor-view" aria-label="エフェクト設定の表示"><option value="common">エフェクト設定</option><option value="magic">魔法一覧</option></select>
       <button type="button" id="v39-effect-preview-header-toggle" aria-controls="v39-effect-preview-controls" aria-expanded="true">条件 ▴</button>
     </header>
     <section class="v39-effect-preview-pane" aria-label="エフェクトプレビュー">
@@ -916,6 +915,7 @@ function previewCurrentEffectOnMap() {
   closePanel();
   void Promise.resolve(play({
     effectName:selectedEffectName,
+    previewPlaybackSpeedPercent:selectedEffectName==="@magic" ? previewSpeedPercent : undefined,
     previewSequenceIndex:selectedPreviewOnly && activeSequenceIndex>=0 ? activeSequenceIndex : undefined,
     ...geometry,
     allowInFog:true,

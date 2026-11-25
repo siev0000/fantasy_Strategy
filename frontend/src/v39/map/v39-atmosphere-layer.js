@@ -21,7 +21,7 @@ function resolveBundledAtmosphereAsset(path){
   const normalized=String(path??'').trim().replace(/\\/g,'/').replace(/^\/+/, '');
   if(!normalized)return '';
   const match=Object.entries(rawAtmosphereArtworkModules).find(([modulePath])=>modulePath.replace(/\\/g,'/').endsWith(normalized));
-  return String(match?.[1]||path||'');
+  return match?.[1] || `${import.meta.env?.BASE_URL || "/"}${normalized}`;
 }
 
 const ATMOSPHERE_SOURCE_URL=resolveBundledAtmosphereAsset(V39_FOG_BALANCE.normalImage);

@@ -1,17 +1,25 @@
 import { createV39EffectDraftSync, V39_EFFECT_DRAFT_PATH } from '../../lib/v39-effect-local-draft.js';
 import { getV39EffectSettingsSnapshot, importV39EffectSettings } from '../../lib/v39-effect-settings.js';
 import { normalizeV39EffectTransform } from "../../lib/v39-effect-transform.js";
+import { resolveV39CombatEffect } from "../../lib/v39-combat-effect-rules.js";
+import { resolveV39EffectSequence } from "../../lib/v39-effect-sequence.js";
+import {
+  getV39MagicEffectSpells,getV39MagicEffectSetting,getV39MagicEffectSnapshot,normalizeV39MagicEffect,
+  prepareV39MagicEffectImport,resetV39MagicEffectSetting,updateV39MagicEffectSetting
+} from "../../lib/v39-magic-effect-settings.js";
 import { configureV39EffectSettingsEditor, selectV39EffectSettingsProxy,setV39EffectPreviewSpeed } from "./v39-effect-settings.js";
 import { installV39EffectSettingsUiState } from "./v39-effect-settings-ui-state.js";
 import {
   getV39EffectSetting,
   getV39EffectSettingsCatalog,
+  resolveV39EffectPlaybackSettings,
   registerV39EffectEditorProxy
 } from "../../lib/v39-effect-settings.js";
 import {
   getV39EffectCategories,
   getV39EffectCategory,
   getV39EffectCategorySettingsSnapshot,
+  V39_EFFECT_CATEGORY_SETTINGS_VERSION,
   importV39EffectCategorySettings,
   resetV39EffectCategory,
   updateV39EffectCategory,
@@ -22,6 +30,7 @@ import {
   getV39EffectAttributes,
   getV39EffectAttribute,
   getV39EffectAttributeSettingsSnapshot,
+  V39_EFFECT_ATTRIBUTE_SETTINGS_VERSION,
   importV39EffectAttributeSettings,
   loadV39EffectAttributes,
   resetV39EffectAttribute,
@@ -32,12 +41,17 @@ const EDITOR_SELECT_ID = "v39-effect-composite-selector";
 const MODE_ID = "v39-effect-composite-mode";
 const STYLE_ID = "v39-effect-category-style";
 const COMPOSITE_SCHEMA = "v39-effect-composite-settings";
-const COMPOSITE_VERSION = 2;
+const COMPOSITE_VERSION = 3;
+const spells = getV39MagicEffectSpells();
+const systems = [...new Set(spells.map(spell=>spell.system))].sort((a,b)=>a.localeCompare(b,"ja"));
 let installed = false;
 let installing = false;
 let editorMode = "category";
 let selectedCategoryId = "";
 let selectedAttributeName = "";
+let selectedSystem = systems[0] ?? "";
+let selectedSpellKey = "";
+let activeMagicSetting = null;
 let syncing = false;
 
 function element(id) {
@@ -54,6 +68,14 @@ function installStyles() {
     #${MODE_ID}{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;flex:0 0 auto}
     #${MODE_ID} button{min-height:38px;border:1px solid #455c64;border-radius:7px;background:#111d22;color:#9eb0b3;padding:4px 9px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
     #${MODE_ID} button[aria-pressed="true"]{background:#1b343b;color:#eff9f7;border-color:#70c5d2}
+    #v39-effect-editor-view,#v39-effect-magic-selectors select{min-width:0;max-width:100%;min-height:36px;border:1px solid #536a72;border-radius:7px;background:#111d22;color:#edf5f4;padding:4px;font:inherit}
+    #v39-effect-editor-view{margin-inline:auto}
+    #v39-effect-magic-selectors{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:5px;min-width:0;flex:1}
+    #v39-effect-magic-selectors[hidden],.is-magic-mode #${MODE_ID},.is-magic-mode .v39-effect-preview-selector{display:none}
+    #v39-effect-magic-selectors select{width:100%}
+    #v39-effect-magic-preset{padding:5px 7px;border:1px solid #455c64;border-radius:7px;margin-bottom:5px}
+    #v39-effect-magic-preset summary{cursor:pointer}
+    #v39-effect-magic-preset .v39-effect-settings-actions{margin-top:5px}
     @media(max-width:600px){#${MODE_ID} button{min-height:40px;padding:4px 7px}}
   `;
   document.head.appendChild(style);
@@ -64,6 +86,76 @@ function setStatus(message, isError = false) {
   if (!status) return;
   status.textContent = String(message || "");
   status.classList.toggle("is-error", !!isError);
+}
+
+function magicMode() {
+  return element("v39-effect-editor-view")?.value === "magic";
+}
+
+function fillMagicSelectors() {
+  const system = element("v39-effect-magic-system");
+  const select = element("v39-effect-magic-spell");
+  const settings = getV39MagicEffectSnapshot();
+  system.replaceChildren(...systems.map(name=>{
+    const rows = spells.filter(spell=>spell.system === name);
+    return new Option(`${name || "系統なし"} ${rows.filter(spell=>settings[spell.key]).length}/${rows.length}`,name);
+  }));
+  system.value = selectedSystem;
+  const rows = spells.filter(spell=>spell.system === selectedSystem);
+  if (!rows.some(spell=>spell.key === selectedSpellKey)) selectedSpellKey = rows[0]?.key ?? "";
+  select.replaceChildren(...rows.map(spell=>{
+    const duplicate = rows.filter(row=>row.name === spell.name).length > 1;
+    const suffix = duplicate ? `（${[spell.row.ID,spell.row.攻撃手段,spell.row.判定].filter(Boolean).join("・")}）` : "";
+    return new Option(`${settings[spell.key] ? "✓" : "○"} ${spell.name}${suffix}`,spell.key);
+  }));
+  select.value = selectedSpellKey;
+  select.disabled = !rows.length;
+}
+
+function defaultMagicSetting(spell) {
+  const catalog = getV39EffectSettingsCatalog();
+  const automatic = resolveV39CombatEffect(spell.row,{},getV39EffectCategories(),getV39EffectAttributes(),{automatic:true});
+  const inherited = {...resolveV39EffectPlaybackSettings(automatic.effectName),...automatic.settings};
+  const steps = resolveV39EffectSequence(inherited).filter(step=>catalog.includes(step.effectName));
+  const decoration = automatic.attributeName && getV39EffectAttribute(automatic.attributeName)?.decorationEffect;
+  const separateDecoration = decoration && steps.length > 1 && steps.at(-1).effectName === decoration;
+  const decorationTransform = separateDecoration ? steps.pop() : undefined;
+  const baseEffect = steps[0]?.effectName || catalog[0];
+  return normalizeV39MagicEffect({...inherited,baseEffect,sequenceSteps:steps,
+    decorationEffect:separateDecoration ? decoration : "",decorationTransform});
+}
+
+function activateMagic({announce = true} = {}) {
+  fillMagicSelectors();
+  refreshMagicPresetControls();
+  const spell = spells.find(row=>row.key === selectedSpellKey);
+  if (!spell) {
+    setStatus("魔法データがありません。",true);
+    return false;
+  }
+  const saved = getV39MagicEffectSetting(spell.key);
+  activeMagicSetting = saved || defaultMagicSetting(spell);
+  if (!activeMagicSetting) return false;
+  const proxy = registerV39EffectEditorProxy("@magic",activeMagicSetting.baseEffect);
+  syncing = true;
+  try {
+    selectV39EffectSettingsProxy(proxy,activeMagicSetting,spell.name,`magic:${spell.key}`);
+  } finally { syncing = false; }
+  element("v39-effect-timing-playbackSpeedPercent").value = activeMagicSetting.playbackSpeedPercent;
+  setV39EffectPreviewSpeed(activeMagicSetting.playbackSpeedPercent);
+  applyModeVisibility();
+  if (announce) setStatus(`${spell.name} / ${saved ? "個別設定済み" : "自動選択"}`);
+  return true;
+}
+
+function saveMagicSetting(setting, speed = activeMagicSetting?.playbackSpeedPercent) {
+  const normalized = normalizeV39MagicEffect({...setting,playbackSpeedPercent:speed});
+  const wasSaved = !!getV39MagicEffectSetting(selectedSpellKey);
+  if (!normalized || JSON.stringify(normalized) === JSON.stringify(activeMagicSetting)
+      || !updateV39MagicEffectSetting(selectedSpellKey,normalized)) return;
+  activeMagicSetting = normalized;
+  if (!wasSaved) fillMagicSelectors();
+  setStatus("この魔法の設定をブラウザに保存しました。");
 }
 
 function currentCategory() {
@@ -121,6 +213,59 @@ function attributePreviewPatch(attribute, category = currentCategory()) {
   };
 }
 
+function refreshMagicPresetControls() {
+  const section = element("v39-effect-magic-preset");
+  if (!section?.open) return;
+  const categorySelect = section.querySelector("[data-preset-category]");
+  const attributeSelect = section.querySelector("[data-preset-attribute]");
+  const categoryId = categorySelect.value || selectedCategoryId;
+  const attributeName = attributeSelect.value;
+  const categories = getV39EffectCategories();
+  const attributes = getV39EffectAttributes();
+  categorySelect.replaceChildren();
+  for (const [label,custom] of [["追加したカテゴリ",true],["標準カテゴリ",false]]) {
+    const options = categories.filter(category=>!!category.custom === custom);
+    if (!options.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = label;
+    group.append(...options.map(({id,name})=>new Option(name,id)));
+    categorySelect.append(group);
+  }
+  if (categories.some(({id})=>id === categoryId)) categorySelect.value = categoryId;
+  attributeSelect.replaceChildren(new Option("なし",""),...attributes.map(({name})=>new Option(name,name)));
+  if (attributes.some(({name})=>name === attributeName)) attributeSelect.value = attributeName;
+  section.querySelector("button").disabled = !categories.length;
+}
+
+function installMagicPresetControls() {
+  const section = document.createElement("details");
+  section.id = "v39-effect-magic-preset";
+  section.hidden = true;
+  section.innerHTML = `
+    <summary>既存の設定を使う</summary>
+    <label class="v39-effect-setting-row"><span>カテゴリ</span><select data-preset-category></select></label>
+    <label class="v39-effect-setting-row"><span>属性</span><select data-preset-attribute></select></label>
+    <div class="v39-effect-settings-actions"><button type="button">この魔法に適用</button></div>`;
+  const categorySelect = section.querySelector("[data-preset-category]");
+  const attributeSelect = section.querySelector("[data-preset-attribute]");
+  const apply = section.querySelector("button");
+  section.addEventListener("toggle",refreshMagicPresetControls);
+  apply.addEventListener("click",()=>{
+    if (!magicMode() || !selectedSpellKey) return;
+    const category = getV39EffectCategory(categorySelect.value);
+    const attribute = getV39EffectAttribute(attributeSelect.value);
+    if (!category) return;
+    const setting = attribute ? attributePreviewPatch(attribute,category) : categoryPreviewPatch(category);
+    if (!updateV39MagicEffectSetting(selectedSpellKey,{...setting,playbackSpeedPercent:category.playbackSpeedPercent})) {
+      setStatus("設定に使える画像が見つかりません。",true);
+      return;
+    }
+    activateMagic({announce:false});
+    setStatus(`「${category.name}」${attribute ? `・「${attribute.name}」` : ""}を、この魔法に適用しました。`);
+  });
+  document.querySelector('[data-v39-effect-panel="basic"]').prepend(section);
+}
+
 function categoryPatchFromEffect(setting) {
   return {
     ...normalizeV39EffectTransform(setting),
@@ -148,8 +293,12 @@ function attributePatchFromEffect(setting) {
   };
 }
 
-function syncCurrentFromProxy() {
+function syncCurrentFromProxy(event) {
   if (syncing) return;
+  if (magicMode()) {
+    if (event?.detail?.effectName === "@magic" && event.detail.reason === "update") saveMagicSetting(getV39EffectSetting("@magic"));
+    return;
+  }
   const category = currentCategory();
   const proxy = proxyEffect(category);
   if (!proxy || element("v39-effect-setting-source")?.value !== proxy) return;
@@ -175,12 +324,18 @@ function hiddenRow(controlId, hidden) {
 }
 
 function applyModeVisibility() {
-  const attributeMode = editorMode === "attribute";
+  const spellMode = magicMode();
+  const attributeMode = !spellMode && editorMode === "attribute";
   for(const key of ['playbackSpeedPercent','shakeStartPercent','shakeEndPercent','damageMomentPercent']){
     const row=element(`v39-effect-timing-${key}`)?.closest('label');
-    if(row)row.hidden=attributeMode||(key!=='playbackSpeedPercent'&&currentCategory()?.group==='support');
+    if(row)row.hidden=attributeMode||(key!=='playbackSpeedPercent'&&(spellMode||currentCategory()?.group==='support'));
   }
   element("v39-effect-settings-panel").classList.toggle("is-attribute-mode", attributeMode);
+  element("v39-effect-settings-panel").classList.toggle("is-magic-mode", spellMode);
+  element("v39-effect-magic-selectors").hidden = !spellMode;
+  const presets = element("v39-effect-magic-preset");
+  presets.hidden = !spellMode || !selectedSpellKey;
+  if (presets.hidden) presets.open = false;
   hiddenRow("v39-effect-setting-base", attributeMode);
   element("v39-effect-setting-sequence").hidden = attributeMode;
   hiddenRow("v39-effect-setting-scale", attributeMode);
@@ -189,26 +344,26 @@ function applyModeVisibility() {
   hiddenRow("v39-effect-setting-power-axis", attributeMode);
   element("v39-effect-setting-placement-hint").hidden=attributeMode;
 
-  hiddenRow("v39-effect-setting-decoration", !attributeMode);
+  hiddenRow("v39-effect-setting-decoration", !attributeMode && !spellMode);
 
   for (const tabName of ["color", "motion"]) {
     const tab = document.querySelector(`[data-v39-effect-tab="${tabName}"]`);
-    if (tab instanceof HTMLElement) tab.hidden = !attributeMode;
+    if (tab instanceof HTMLElement) tab.hidden = !attributeMode && !spellMode;
   }
   const selectedHidden = [...document.querySelectorAll("[data-v39-effect-tab]")]
     .some(tab => tab.getAttribute("aria-selected") === "true" && tab.hidden);
   if (selectedHidden) document.querySelector('[data-v39-effect-tab="basic"]')?.click();
 
   const reset = element("v39-effect-setting-reset");
-  if (element("v39-effect-category-add")) element("v39-effect-category-add").hidden = attributeMode;
+  if (element("v39-effect-category-add")) element("v39-effect-category-add").hidden = attributeMode || spellMode;
   const nameRow = element("v39-effect-category-name-row");
   if (nameRow) {
-    nameRow.hidden = attributeMode || !currentCategory()?.custom;
+    nameRow.hidden = attributeMode || spellMode || !currentCategory()?.custom;
     element("v39-effect-category-name").value = currentCategory()?.name || "";
   }
-  if (reset) reset.textContent = attributeMode ? "↺ この属性を初期化" : "↺ このカテゴリを初期化";
+  if (reset) reset.textContent = spellMode ? "↺ この魔法を初期化" : attributeMode ? "↺ この属性を初期化" : "↺ このカテゴリを初期化";
   const note = document.querySelector('[data-v39-effect-panel="data"] .v39-effect-settings-note');
-  if (note) note.textContent = "カテゴリは基本形状・Scale、属性は色・グラデーション・動き・属性装飾を共通保存します。JSON書き出しでは両方をまとめて出力します。";
+  if (note) note.textContent = "カテゴリ・属性の共通設定と魔法別設定をまとめて書き出します。魔法別設定はブラウザに自動保存します。";
 }
 
 function fillEditorSelector() {
@@ -253,6 +408,7 @@ function updateModeButtons() {
 }
 
 function activateCurrent({ announce = true } = {}) {
+  if (magicMode()) return activateMagic({announce});
   const category = currentCategory();
   if (!category) return false;
   selectedCategoryId = category.id;
@@ -337,6 +493,24 @@ function ensureEditorUi() {
       activateCurrent();
     });
   }
+  if (!element("v39-effect-magic-selectors")) {
+    const controls = document.createElement("div");
+    controls.id = "v39-effect-magic-selectors";
+    controls.hidden = true;
+    controls.innerHTML = '<select id="v39-effect-magic-system" aria-label="魔法の系統"></select><select id="v39-effect-magic-spell" aria-label="魔法"></select>';
+    toolbar.insertBefore(controls,label);
+    controls.firstElementChild.addEventListener("change",event=>{
+      selectedSystem = event.target.value;
+      selectedSpellKey = "";
+      activateMagic();
+    });
+    controls.lastElementChild.addEventListener("change",event=>{
+      selectedSpellKey = event.target.value;
+      activateMagic();
+    });
+    element("v39-effect-editor-view").addEventListener("change",()=>activateCurrent());
+    installMagicPresetControls();
+  }
   if (!element("v39-effect-category-add")) {
     const button = document.createElement("button");
     button.id = "v39-effect-category-add";
@@ -384,6 +558,14 @@ function ensureEditorUi() {
       const input=document.createElement('input');input.type='number';input.id=`v39-effect-timing-${key}`;
       input.min=String(min);input.max=String(max);input.step=String(step);
       input.addEventListener('change',()=>{
+        if (magicMode()) {
+          if (key === "playbackSpeedPercent" && activeMagicSetting) {
+            saveMagicSetting(getV39EffectSetting("@magic"),input.value);
+            input.value = activeMagicSetting.playbackSpeedPercent;
+            setV39EffectPreviewSpeed(activeMagicSetting.playbackSpeedPercent);
+          }
+          return;
+        }
         if(editorMode!=='category')return;
         syncCurrentFromProxy();
         updateV39EffectCategory(selectedCategoryId,{[key]:Number(input.value)});
@@ -404,6 +586,7 @@ function exportCompositeJson() {
     version:COMPOSITE_VERSION,
     categories:categorySnapshot.categories,
     attributes:attributeSnapshot.attributes,
+    spells:getV39MagicEffectSnapshot(),
     exportedAt:new Date().toISOString()
   };
   const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type:"application/json;charset=utf-8" });
@@ -413,7 +596,18 @@ function exportCompositeJson() {
   anchor.download = "v39-effect-composite-settings.json";
   anchor.click();
   URL.revokeObjectURL(url);
-  setStatus(`カテゴリ ${Object.keys(payload.categories).length}件 / 属性 ${Object.keys(payload.attributes).length}件を書き出しました。`);
+  setStatus(`カテゴリ ${Object.keys(payload.categories).length}件 / 属性 ${Object.keys(payload.attributes).length}件 / 魔法 ${Object.keys(payload.spells).length}件を書き出しました。`);
+}
+
+function validateSettingsMap(value, name) {
+  const isRecord = item => item && typeof item === "object" && !Array.isArray(item);
+  if (!isRecord(value) || Object.values(value).some(item=>!isRecord(item))) throw new TypeError(`${name} の形式が正しくありません。`);
+}
+
+function validateVersion(version, maximum) {
+  if (version !== undefined && (!Number.isInteger(version) || version < 1 || version > maximum)) {
+    throw new TypeError("対応していない設定JSONのバージョンです。");
+  }
 }
 
 async function importCompositeJson(file) {
@@ -421,26 +615,43 @@ async function importCompositeJson(file) {
   try {
     const parsed = JSON.parse(await file.text());
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new TypeError("設定JSONの形式が正しくありません。");
+    let spellImport = null;
     let categoryResult = { importedCount:0, skippedCount:0 };
     let attributeResult = { importedCount:0, skippedCount:0 };
     if (parsed.schema === 'v39-effect-local-draft') {
       if (parsed.version !== 1) throw new Error('対応していないローカルJSONです。');
+      validateSettingsMap(parsed.effects,"画像");
+      validateSettingsMap(parsed.categories,"カテゴリ");
+      validateSettingsMap(parsed.attributes,"属性");
       importV39EffectSettings({ effects:parsed.effects });
       categoryResult = importV39EffectCategorySettings({ categories:parsed.categories });
       attributeResult = importV39EffectAttributeSettings({ attributes:parsed.attributes });
     } else if (parsed.schema === COMPOSITE_SCHEMA || (!parsed.schema && parsed.categories && parsed.attributes)) {
+      validateVersion(parsed.version,COMPOSITE_VERSION);
+      validateSettingsMap(parsed.categories,"カテゴリ");
+      validateSettingsMap(parsed.attributes,"属性");
+      if (parsed.version === COMPOSITE_VERSION || Object.hasOwn(parsed,"spells")) {
+        if (parsed.schema !== COMPOSITE_SCHEMA || parsed.version !== COMPOSITE_VERSION) throw new TypeError("魔法別設定にはバージョン3が必要です。");
+        spellImport = prepareV39MagicEffectImport(parsed.spells);
+      }
       categoryResult = importV39EffectCategorySettings({ categories:parsed.categories });
       attributeResult = importV39EffectAttributeSettings({ attributes:parsed.attributes });
+      spellImport?.apply();
     } else if (parsed.schema === "v39-effect-category-settings") {
+      validateVersion(parsed.version,V39_EFFECT_CATEGORY_SETTINGS_VERSION);
+      validateSettingsMap(parsed.categories,"カテゴリ");
       categoryResult = importV39EffectCategorySettings(parsed);
     } else if (parsed.schema === "v39-effect-attribute-settings") {
+      validateVersion(parsed.version,V39_EFFECT_ATTRIBUTE_SETTINGS_VERSION);
+      validateSettingsMap(parsed.attributes,"属性");
       attributeResult = importV39EffectAttributeSettings(parsed);
     } else {
       throw new TypeError(`対応していない設定形式です: ${parsed.schema || "不明"}`);
     }
     fillEditorSelector();
     activateCurrent({ announce:false });
-    setStatus(`設定JSONを読み込みました。カテゴリ ${categoryResult.importedCount}件 / 属性 ${attributeResult.importedCount}件`);
+    const spellResult = spellImport ? ` / 魔法 ${spellImport.importedCount}件（未登録の魔法・素材 ${spellImport.skippedCount}件を除外）` : "";
+    setStatus(`設定JSONを読み込みました。カテゴリ ${categoryResult.importedCount}件 / 属性 ${attributeResult.importedCount}件${spellResult}`);
   } catch (error) {
     console.error("[エフェクト共通設定] JSON読み込み失敗", error);
     setStatus(`設定JSON読み込み失敗: ${String(error?.message || error)}`, true);
@@ -454,6 +665,11 @@ function configureSaveControls() {
     exportJson:exportCompositeJson,
     importJsonFile:importCompositeJson,
     reset:() => {
+      if (magicMode()) {
+        resetV39MagicEffectSetting(selectedSpellKey);
+        activateMagic();
+        return;
+      }
       if (editorMode === "category") {
         const category = currentCategory();
         if (!category) return;
@@ -497,7 +713,9 @@ function installLocalDraft() {
       activateCurrent({ announce:false });
     }
   });
-  for (const event of ['v39:effect-settings-changed','v39:effect-category-settings-changed','v39:effect-attribute-settings-changed']) window.addEventListener(event, () => sync.changed());
+  for (const event of ['v39:effect-settings-changed','v39:effect-category-settings-changed','v39:effect-attribute-settings-changed']) {
+    window.addEventListener(event,event=>{if (event.detail?.effectName !== "@magic") sync.changed();});
+  }
   const actions = document.createElement('div'); actions.className = 'v39-effect-settings-actions';
   const save = document.createElement('button'); save.type = 'button'; save.textContent = 'JSONへ保存';
   save.addEventListener('click', async () => {
@@ -529,14 +747,23 @@ async function install() {
     installed = true;
     activateCurrent({ announce:false });
 
-    window.addEventListener("v39:effect-settings-changed", () => syncCurrentFromProxy());
+    window.addEventListener("v39:effect-settings-changed", syncCurrentFromProxy);
     window.addEventListener("v39:effect-category-settings-changed", event => {
       if (syncing) return;
+      if (magicMode()) {
+        activateMagic({announce:false});
+        return;
+      }
       const changedId = event.detail?.category?.id;
       if (!changedId || changedId === selectedCategoryId) activateCurrent({ announce:false });
     });
     window.addEventListener("v39:effect-attribute-settings-changed", event => {
-      if (syncing || editorMode !== "attribute") return;
+      if (syncing) return;
+      if (magicMode()) {
+        activateMagic({announce:false});
+        return;
+      }
+      if (editorMode !== "attribute") return;
       const changedName = event.detail?.attribute?.name;
       if (!changedName || changedName === selectedAttributeName) activateCurrent({ announce:false });
     });

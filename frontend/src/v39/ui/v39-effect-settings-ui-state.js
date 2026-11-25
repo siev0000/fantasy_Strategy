@@ -36,6 +36,9 @@ function writeState(patch = {}) {
   const next = {
     ...previous,
     mode:currentMode(),
+    view:element("v39-effect-editor-view")?.value || "common",
+    magicSystem:element("v39-effect-magic-system")?.value ?? previous.magicSystem,
+    magicSpell:element("v39-effect-magic-spell")?.value || previous.magicSpell,
     selectedValue:element(SELECT_ID)?.value || previous.selectedValue || "",
     tab:currentTab(),
     playbackMode:element("v39-effect-playback-mode")?.value || previous.playbackMode || "once",
@@ -69,6 +72,9 @@ function bindCacheEvents() {
   element(MODE_ID)?.addEventListener("click", () => window.setTimeout(() => writeState(), 0));
   const select = element(SELECT_ID);
   if (select instanceof HTMLSelectElement) preserveFrameAcrossSelectorChange(select);
+  for (const id of ["v39-effect-editor-view","v39-effect-magic-system","v39-effect-magic-spell"]) {
+    element(id)?.addEventListener("change",()=>writeState());
+  }
 
   element("v39-effect-playback-mode")?.addEventListener("change", () => writeState());
   element("v39-effect-frame-slider")?.addEventListener("input", event => {
@@ -97,6 +103,14 @@ function restoreState() {
     if (select instanceof HTMLSelectElement && state.selectedValue && [...select.options].some(option => option.value === state.selectedValue)) {
       select.value = state.selectedValue;
       select.dispatchEvent(new Event("change", { bubbles:true }));
+    }
+    if (state.view === "magic") {
+      for (const [id,value] of [["v39-effect-editor-view","magic"],["v39-effect-magic-system",state.magicSystem],["v39-effect-magic-spell",state.magicSpell]]) {
+        const input = element(id);
+        if (!(input instanceof HTMLSelectElement) || ![...input.options].some(option=>option.value===value)) continue;
+        input.value = value;
+        input.dispatchEvent(new Event("change",{bubbles:true}));
+      }
     }
 
     const playback = element("v39-effect-playback-mode");

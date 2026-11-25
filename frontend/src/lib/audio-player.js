@@ -1,7 +1,7 @@
 import audioFiles from "../../../config/v39-audio-catalog.json";
 
 function buildAudioPath(folder, filename) {
-  return `/assets/audio/${folder}/${filename.split("/").map(encodeURIComponent).join("/")}`;
+  return `${import.meta.env?.BASE_URL || "/"}assets/audio/${folder}/${filename.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 const defaultSounds = {

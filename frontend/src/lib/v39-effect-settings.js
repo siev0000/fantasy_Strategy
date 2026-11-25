@@ -178,6 +178,10 @@ function serializableSetting(setting) {
   };
 }
 
+export function normalizeV39EffectEditorSetting(baseEffect, setting) {
+  return serializableSetting(normalizeSetting(baseEffect, setting));
+}
+
 function emitChanged(detail = {}) {
   window.dispatchEvent(new CustomEvent("v39:effect-settings-changed", {
     detail:{ ...detail, customizedCount:Object.keys(state.effects).length }

@@ -2,12 +2,30 @@ import { normalizeV39EffectTransform } from './v39-effect-transform.js';
 import { resolveV39EffectSequence } from './v39-effect-sequence.js';
 import weaponTypes from "../../../config/v39-weapon-effect-types.json";
 import { resolveV39DefenseKind } from "./v39-defense-rules.js";
+import { resolveV39MagicEffectOverride } from "./v39-magic-effect-settings.js";
 
 const DAMAGE_CATEGORIES = { 切断:"slash", 貫通:"thrust", 打撃:"strike" };
 const text = value => String(value ?? "").trim();
 
 // 設定を変更せず、今回の攻撃だけに使う形状と色を決定する。
-export function resolveV39CombatEffect(skillRow = {}, attacker = {}, categories = [], attributes = []) {
+export function resolveV39CombatEffect(skillRow = {}, attacker = {}, categories = [], attributes = [], {automatic = false} = {}) {
+  const fallback = resolveAutomaticEffect(skillRow,attacker,categories,attributes);
+  const spell = automatic ? null : resolveV39MagicEffectOverride(skillRow);
+  if (!spell) return fallback;
+  return {
+    ...fallback,effectName:spell.baseEffect,reason:"魔法別設定",
+    defaultSpeedPercent:fallback.settings?.playbackSpeedPercent ?? 100,
+    settings:{
+      ...spell,
+      sequenceSteps:resolveV39EffectSequence(spell),
+      damageMomentPercent:fallback.settings?.damageMomentPercent ?? 75,
+      shakeStartPercent:fallback.settings?.shakeStartPercent ?? 0,
+      shakeEndPercent:fallback.settings?.shakeEndPercent ?? 15
+    }
+  };
+}
+
+function resolveAutomaticEffect(skillRow, attacker, categories, attributes) {
   const explicit = text(skillRow.アニメ);
   const specifiedCategory=explicit?categories.find(item=>item.id===explicit):null;
   if (explicit&&!specifiedCategory) return { effectName:explicit, reason:"スキル指定" };

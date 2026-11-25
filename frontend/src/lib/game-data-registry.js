@@ -257,10 +257,19 @@ export function validateGameDataRegistry() {
       }
     }
   }
+  const warningGroups = new Map();
+  for (const {level,type,table,field,targetTable} of issues) {
+    if (level !== "warning") continue;
+    const key = JSON.stringify([type,table,field,targetTable]);
+    const group = warningGroups.get(key) ?? {type,table,field,targetTable,count:0};
+    group.count++;
+    warningGroups.set(key,group);
+  }
   return {
     valid:!issues.some(issue => issue.level === "error"),
     errorCount:issues.filter(issue => issue.level === "error").length,
     warningCount:issues.filter(issue => issue.level === "warning").length,
+    warningGroups:[...warningGroups.values()].sort((a,b)=>b.count-a.count),
     issues,
     idsByTable
   };
@@ -328,5 +337,5 @@ if (typeof window !== "undefined") {
   const validation = validateGameDataRegistry();
   window.__gameDataValidation = validation;
   if (!validation.valid) console.error("[ゲームデータ検証]", validation);
-  else if (validation.warningCount) console.warn(`[ゲームデータ検証] 警告 ${validation.warningCount}件`, validation.issues);
+  if (validation.warningCount) console.warn(`[ゲームデータ検証] 警告 ${validation.warningCount}件（原因別）`, validation.warningGroups, validation.issues);
 }

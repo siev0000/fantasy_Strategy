@@ -23,7 +23,7 @@ export function getV39WeaponEnchantmentColors(item) {
 }
 
 export function loadV39EnchantmentColors() {
-  initialRead ??= fetch("/config/v39-enchantment-colors.json", {cache:"no-store"})
+  initialRead ??= fetch(`${import.meta.env?.BASE_URL || "/"}config/v39-enchantment-colors.json`, {cache:"no-store"})
     .then(response => response.ok ? response.json() : null)
     .then(data => {
       if (data && typeof data === "object" && !Array.isArray(data)) setV39EnchantmentColors(data);

@@ -1140,7 +1140,7 @@ function renderEntityLayers() {
       const center=tileCenter(x,y),kind=ground.rubbleByTile?.[k]?'rubble':ground.pendingByTile?.[k]&&!ground.pendingByTile[k].hiddenWarning?'warning':'canyon';
       addV39FieldSymbol(scene,structureContainer,kind,center.x,center.y,tileMetrics().width*.65,{color:kind==='warning'?0xffb34d:0xc5aa83,name:`v39-ground-${kind}`}).setData('tileKey',k);
     }
-    const gateArtwork={src:teleportBalance.gateImage,textureKey:'v39-teleport-gate'};
+    const gateArtwork={src:`${import.meta.env?.BASE_URL || "/"}${teleportBalance.gateImage.replace(/^\/+/, "")}`,textureKey:'v39-teleport-gate'};
     for(const gate of getV39TeleportGates(state))for(const [side,tile] of [['a',gate.a],['b',gate.b]]){
       if(!isTestMode()&&!window.isV39TileInCurrentVision?.(tile.x,tile.y))continue;
       const center=tileCenter(tile.x,tile.y);

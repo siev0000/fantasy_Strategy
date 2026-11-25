@@ -173,6 +173,10 @@ export async function openV39EnchantmentColorSettings({onSaved} = {}) {
     await loadV39EnchantmentColors();
     if (!dialog.open) return;
     resetDraft();
+    if ((import.meta.env?.BASE_URL || "/") !== "/" || window.location.hostname.endsWith(".github.io")) {
+      status.textContent = "配布版の付与カラーを表示しています。編集にはローカル版を使用してください。";
+      return;
+    }
     const data = await requestColors();
     if (!dialog.open) return;
     setV39EnchantmentColors(data.colors);

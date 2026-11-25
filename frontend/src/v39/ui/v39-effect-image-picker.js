@@ -15,6 +15,7 @@ export function openEffectImagePicker({ catalog, selected, onSelect, returnFocus
   heading.style.cssText = 'display:flex;align-items:center;gap:8px;flex:none';
   const title = document.createElement('strong');title.textContent = 'エフェクト画像';title.style.flex = '1';
   const close = document.createElement('button');close.type = 'button';close.textContent = '閉じる';heading.append(title, close);
+  close.setAttribute('autofocus','');
   const search = document.createElement('input');search.type = 'search';search.placeholder = '名前で検索';search.setAttribute('aria-label','エフェクト画像を検索');search.style.cssText = 'width:100%;flex:none';
   const gallery = document.createElement('div');gallery.className = 'v39-effect-image-modal-grid';
   gallery.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));align-content:start;gap:6px;min-height:0;overflow:auto;overscroll-behavior:contain;flex:1';
@@ -85,7 +86,7 @@ export function openEffectImagePicker({ catalog, selected, onSelect, returnFocus
   dialog.addEventListener('keydown',event=>event.stopPropagation());
   dialog.addEventListener('cancel',event=>{event.preventDefault();finish();});
   dialog.addEventListener('close',finish);
-  document.body.append(dialog);dialog.showModal();dialog.style.display = 'flex';dialog.style.flexDirection = 'column';dialog.style.gap = '8px';search.focus();
+  document.body.append(dialog);dialog.showModal();dialog.style.display = 'flex';dialog.style.flexDirection = 'column';dialog.style.gap = '8px';
   return finish;
 }
 

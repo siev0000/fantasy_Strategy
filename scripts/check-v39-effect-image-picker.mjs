@@ -31,6 +31,8 @@ try {
   const finish=openEffectImagePicker({catalog,selected:'竜巻',returnFocus:focus,onSelect:name=>{selected=name;},sourceFor:name=>({src:name})});
   const dialog=body.children[0],gallery=dialog.children[3],search=dialog.children[2],observer=observers.at(-1);
   assert.equal(dialog.open,true);assert.equal(gallery.children.length,6);
+  assert.equal(dialog.children[1].querySelector('button').attrs.autofocus,'');
+  assert.ok(!search.focused && !Object.hasOwn(search.attrs,'autofocus'),'search opens without requesting text input');
   assert.equal(gallery.children[2].attrs['aria-pressed'],'true');
   observer.callback(gallery.children.map(target=>({target,isIntersecting:true})));
   assert.equal(images.length,4,'at most four thumbnails load concurrently');
