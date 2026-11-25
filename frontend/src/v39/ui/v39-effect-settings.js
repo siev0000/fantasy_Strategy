@@ -916,6 +916,7 @@ function previewCurrentEffectOnMap() {
   closePanel();
   void Promise.resolve(play({
     effectName:selectedEffectName,
+    ...(editorActions.previewMapOptions?.() || {}),
     previewSequenceIndex:selectedPreviewOnly && activeSequenceIndex>=0 ? activeSequenceIndex : undefined,
     ...geometry,
     allowInFog:true,

@@ -318,7 +318,10 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
       scaleMultiplierPercent:100
     };
   }
-  const setting = getV39EffectSetting(rawName);
+  return playbackFromSetting(getV39EffectSetting(rawName), rawName);
+}
+
+function playbackFromSetting(setting, rawName) {
   return {
     grayscaleBase:setting.grayscaleBase === true,brightnessPercent:setting.brightnessPercent,
     requestedEffect:rawName,
@@ -338,6 +341,87 @@ export function resolveV39EffectPlaybackSettings(rawEffectName) {
     gradientSpeedPercentPerSecond:setting.gradientSpeedPercentPerSecond,
     scaleMultiplierPercent:setting.scaleMultiplierPercent
   };
+}
+
+// Magic-specific visual overrides never change shared categories or skill data.
+export const V39_MAGIC_EFFECT_STORAGE_KEY = "v39-magic-effect-settings-v1";
+const magicObject = value => !!value && typeof value === "object" && !Array.isArray(value);
+let magicSettings = new Map();
+try {
+  const saved = JSON.parse(window.localStorage.getItem(V39_MAGIC_EFFECT_STORAGE_KEY) || "null");
+  if (saved?.version === 1 && magicObject(saved.magic)) magicSettings = new Map(Object.entries(saved.magic));
+} catch {}
+
+export function normalizeV39MagicEffectSetting(raw) {
+  if (!magicObject(raw)) return null;
+  const base = text(raw.baseEffect);
+  if (!base || (effectCatalogSet.size && !effectCatalogSet.has(base))) return null;
+  const start = Math.round(clampNumber(raw.shakeStartPercent, 0, 100, 0));
+  return {
+    ...serializableSetting(normalizeSetting(base, raw)),
+    playbackSpeedPercent:Math.round(clampNumber(raw.playbackSpeedPercent,25,400,100)),
+    shakeStartPercent:start,
+    shakeEndPercent:Math.round(clampNumber(raw.shakeEndPercent,start,100,15)),
+    damageMomentPercent:Math.round(clampNumber(raw.damageMomentPercent,0,100,75))
+  };
+}
+
+export function getV39MagicEffectSetting(name) {
+  return normalizeV39MagicEffectSetting(magicSettings.get(text(name)));
+}
+
+function persistMagicSettings(next) {
+  window.localStorage.setItem(V39_MAGIC_EFFECT_STORAGE_KEY, JSON.stringify({version:1,magic:Object.fromEntries(next)}));
+  magicSettings = next;
+}
+
+export function saveV39MagicEffectSetting(name, raw) {
+  const key = text(name);
+  const normalized = normalizeV39MagicEffectSetting(raw);
+  if (!key || !normalized) throw new TypeError("魔法または基本エフェクトが不正です。");
+  const next = new Map(magicSettings);
+  next.set(key, normalized);
+  persistMagicSettings(next);
+  return normalized;
+}
+
+export function resetV39MagicEffectSetting(name) {
+  const next = new Map(magicSettings);
+  next.delete(text(name));
+  persistMagicSettings(next);
+}
+
+export function getV39MagicEffectSettingsSnapshot() {
+  return JSON.parse(JSON.stringify(Object.fromEntries(magicSettings)));
+}
+
+export function prepareV39MagicEffectImport(raw, knownNames) {
+  if (!magicObject(raw)) throw new TypeError("magic の形式が正しくありません。");
+  const known = new Set(knownNames);
+  const next = new Map();
+  let skippedCount = 0;
+  for (const [name, value] of Object.entries(raw)) {
+    if (!magicObject(value) || !text(value.baseEffect)) throw new TypeError("魔法設定の形式が正しくありません: " + name);
+    const normalized = normalizeV39MagicEffectSetting(value);
+    if (!known.has(name) || !normalized) { skippedCount++; continue; }
+    next.set(name, normalized);
+  }
+  return { next, importedCount:next.size, skippedCount };
+}
+
+export function applyV39MagicEffectImport(prepared) {
+  persistMagicSettings(prepared.next);
+}
+
+export function getV39MagicCombatEffect(skillRow = {}) {
+  if (text(skillRow.攻撃手段) !== "魔法") return null;
+  const setting = getV39MagicEffectSetting(skillRow.名前);
+  if (!setting) return null;
+  return { effectName:setting.baseEffect, reason:"魔法個別設定",
+    settings:{...playbackFromSetting(setting, setting.baseEffect),
+      playbackSpeedPercent:setting.playbackSpeedPercent,
+      shakeStartPercent:setting.shakeStartPercent, shakeEndPercent:setting.shakeEndPercent,
+      damageMomentPercent:setting.damageMomentPercent} };
 }
 
 export const V39_EFFECT_SETTINGS_STORAGE_KEY = STORAGE_KEY;

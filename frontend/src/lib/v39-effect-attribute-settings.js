@@ -38,6 +38,8 @@ const MOTION_MODES = new Set(["fixed", "scroll", "wave"]);
 
 let attributeNames = Object.keys(compositeDefaults.attributes);
 let attributesLoaded = false;
+let magicRows = [];
+export function getV39EffectMagicRows() { return magicRows.slice(); }
 let overrides = readState();
 
 function text(value, fallback = "") {
@@ -158,6 +160,7 @@ export async function loadV39EffectAttributes() {
   if (!response.ok) throw new Error(`属性一覧を読み込めません: ${response.status} ${response.statusText}`);
   const rows = await response.json();
   attributeNames = deriveAttributeNames(rows);
+  magicRows = (Array.isArray(rows) ? rows : []).filter(row => text(row?.攻撃手段) === "魔法" && text(row?.名前));
   attributesLoaded = true;
   return getV39EffectAttributes();
 }

@@ -1,5 +1,6 @@
 import { normalizeV39EffectTransform } from './v39-effect-transform.js';
 import { resolveV39EffectSequence } from './v39-effect-sequence.js';
+import { getV39MagicCombatEffect } from './v39-effect-settings.js';
 import weaponTypes from "../../../config/v39-weapon-effect-types.json";
 import { resolveV39DefenseKind } from "./v39-defense-rules.js";
 
@@ -8,6 +9,8 @@ const text = value => String(value ?? "").trim();
 
 // 設定を変更せず、今回の攻撃だけに使う形状と色を決定する。
 export function resolveV39CombatEffect(skillRow = {}, attacker = {}, categories = [], attributes = []) {
+  const magic = getV39MagicCombatEffect(skillRow);
+  if (magic) return magic;
   const explicit = text(skillRow.アニメ);
   const specifiedCategory=explicit?categories.find(item=>item.id===explicit):null;
   if (explicit&&!specifiedCategory) return { effectName:explicit, reason:"スキル指定" };

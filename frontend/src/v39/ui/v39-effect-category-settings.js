@@ -1,5 +1,11 @@
 import { createV39EffectDraftSync, V39_EFFECT_DRAFT_PATH } from '../../lib/v39-effect-local-draft.js';
-import { getV39EffectSettingsSnapshot, importV39EffectSettings } from '../../lib/v39-effect-settings.js';
+import { getV39EffectSettingsSnapshot, importV39EffectSettings,
+  getV39MagicEffectSetting, saveV39MagicEffectSetting, resetV39MagicEffectSetting,
+  getV39MagicEffectSettingsSnapshot, prepareV39MagicEffectImport, applyV39MagicEffectImport,
+  resolveV39EffectPlaybackSettings
+} from '../../lib/v39-effect-settings.js';
+import { resolveV39CombatEffect } from '../../lib/v39-combat-effect-rules.js';
+import { resolveV39EffectSequence } from '../../lib/v39-effect-sequence.js';
 import { normalizeV39EffectTransform } from "../../lib/v39-effect-transform.js";
 import { configureV39EffectSettingsEditor, selectV39EffectSettingsProxy,setV39EffectPreviewSpeed } from "./v39-effect-settings.js";
 import { installV39EffectSettingsUiState } from "./v39-effect-settings-ui-state.js";
@@ -20,6 +26,7 @@ import {
 } from "../../lib/v39-effect-category-settings.js";
 import {
   getV39EffectAttributes,
+  getV39EffectMagicRows,
   getV39EffectAttribute,
   getV39EffectAttributeSettingsSnapshot,
   importV39EffectAttributeSettings,
@@ -32,10 +39,16 @@ const EDITOR_SELECT_ID = "v39-effect-composite-selector";
 const MODE_ID = "v39-effect-composite-mode";
 const STYLE_ID = "v39-effect-category-style";
 const COMPOSITE_SCHEMA = "v39-effect-composite-settings";
-const COMPOSITE_VERSION = 2;
+const COMPOSITE_VERSION = 3;
+const VIEW_ID = "v39-effect-editor-view";
+const MAGIC_GROUP_ID = "v39-effect-magic-group";
+const TIMING_KEYS = ["playbackSpeedPercent","shakeStartPercent","shakeEndPercent","damageMomentPercent"];
 let installed = false;
 let installing = false;
 let editorMode = "category";
+let previousCommonMode = "category";
+let selectedMagicGroup = "";
+let selectedMagicName = "";
 let selectedCategoryId = "";
 let selectedAttributeName = "";
 let syncing = false;
@@ -50,6 +63,11 @@ function installStyles() {
   style.id = STYLE_ID;
   style.textContent = `
     #v39-effect-setting-source{display:none!important}
+    #${VIEW_ID},#${MAGIC_GROUP_ID}{min-width:0;min-height:32px;background:#0b1519;color:#eef5f2;border:1px solid #536a72;border-radius:6px;font:inherit;padding:4px 5px}
+    #${VIEW_ID}{max-width:48%;font-weight:800}
+    #${MAGIC_GROUP_ID}{flex:0 1 36%;max-width:36%;min-height:38px}
+    #${MODE_ID}[hidden],#${MAGIC_GROUP_ID}[hidden],#v39-effect-category-add[hidden]{display:none!important}
+    #v39-effect-settings-panel.is-magic-mode #v39-effect-attribute-base-row,#v39-effect-settings-panel.is-magic-mode #v39-effect-attribute-brightness-row{display:grid}
     #${EDITOR_SELECT_ID}{width:100%;min-width:0;min-height:38px;border:1px solid #536a72;border-radius:7px;background:#0b1519;color:#eef5f2;padding:4px 7px;font:inherit}
     #${MODE_ID}{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;flex:0 0 auto}
     #${MODE_ID} button{min-height:38px;border:1px solid #455c64;border-radius:7px;background:#111d22;color:#9eb0b3;padding:4px 9px;font:inherit;font-size:var(--font-secondary);font-weight:800;cursor:pointer}
@@ -66,6 +84,53 @@ function setStatus(message, isError = false) {
   status.classList.toggle("is-error", !!isError);
 }
 
+function magicGroup(row) { return String(row?.系統 || "").trim() || "系統なし"; }
+function magicRows() { return getV39EffectMagicRows(); }
+function currentMagic() { return magicRows().find(row => row.名前 === selectedMagicName && magicGroup(row) === selectedMagicGroup); }
+function magicProxy(row = currentMagic()) {
+  if (!row) return "";
+  const base = getV39MagicEffectSetting(row.名前)?.baseEffect || getV39EffectSettingsCatalog()[0];
+  return base ? registerV39EffectEditorProxy("@magic:" + row.名前, base) : "";
+}
+function magicDefaults(row) {
+  const resolved = resolveV39CombatEffect(row, {}, getV39EffectCategories(), getV39EffectAttributes());
+  const setting = {...resolveV39EffectPlaybackSettings(resolved.effectName), ...resolved.settings};
+  const steps = resolveV39EffectSequence(setting);
+  const catalog = getV39EffectSettingsCatalog();
+  const base = steps.find(step => catalog.includes(step.effectName))?.effectName || catalog[0];
+  return {...setting, baseEffect:base, sequenceSteps:steps.filter(step => catalog.includes(step.effectName)), decorationEffect:"",
+    playbackSpeedPercent:setting.playbackSpeedPercent ?? 100,
+    shakeStartPercent:setting.shakeStartPercent ?? 0, shakeEndPercent:setting.shakeEndPercent ?? 15,
+    damageMomentPercent:setting.damageMomentPercent ?? 75};
+}
+function magicTiming() {
+  return Object.fromEntries(TIMING_KEYS.map(key => [key, Number(element("v39-effect-timing-" + key)?.value)]));
+}
+function persistMagicFromProxy(patch = {}) {
+  const row = currentMagic(), proxy = magicProxy(row);
+  if (!row || !proxy || element("v39-effect-setting-source")?.value !== proxy) return;
+  try {
+    const updated = saveV39MagicEffectSetting(row.名前, {...getV39EffectSetting(proxy), ...magicTiming(), ...patch});
+    fillEditorSelector();
+    setV39EffectPreviewSpeed(updated.playbackSpeedPercent);
+    setStatus("魔法「" + row.名前 + "」を自動保存しました。");
+  } catch (error) { setStatus("魔法設定の保存失敗: " + String(error?.message || error), true); }
+}
+function activateMagic({announce=true}={}) {
+  fillEditorSelector();
+  const row = currentMagic(), proxy = magicProxy(row);
+  applyModeVisibility();
+  if (!row || !proxy) { setStatus("魔法一覧が空です。", true); return false; }
+  const setting = getV39MagicEffectSetting(row.名前) || magicDefaults(row);
+  syncing = true;
+  try {
+    selectV39EffectSettingsProxy(proxy, setting, row.名前, proxy);
+    for (const key of TIMING_KEYS) element("v39-effect-timing-" + key).value = String(setting[key]);
+  } finally { syncing = false; }
+  setV39EffectPreviewSpeed(setting.playbackSpeedPercent);
+  if (announce) setStatus("魔法「" + row.名前 + "」 / " + (getV39MagicEffectSetting(row.名前) ? "設定済み" : "未設定") + " / 自動保存 ON");
+  return true;
+}
 function currentCategory() {
   return getV39EffectCategory(selectedCategoryId) || getV39EffectCategories()[0] || null;
 }
@@ -148,8 +213,12 @@ function attributePatchFromEffect(setting) {
   };
 }
 
-function syncCurrentFromProxy() {
+function syncCurrentFromProxy(event) {
   if (syncing) return;
+  if (editorMode === "magic") {
+    if (event?.detail?.reason === "update" && event.detail.effectName === magicProxy()) persistMagicFromProxy();
+    return;
+  }
   const category = currentCategory();
   const proxy = proxyEffect(category);
   if (!proxy || element("v39-effect-setting-source")?.value !== proxy) return;
@@ -176,9 +245,14 @@ function hiddenRow(controlId, hidden) {
 
 function applyModeVisibility() {
   const attributeMode = editorMode === "attribute";
+  const magicMode = editorMode === "magic";
+  element("v39-effect-settings-panel").classList.toggle("is-magic-mode", magicMode);
+  element(MODE_ID).hidden = magicMode;
+  element(MAGIC_GROUP_ID).hidden = !magicMode;
+  element(VIEW_ID).value = magicMode ? "magic" : "common";
   for(const key of ['playbackSpeedPercent','shakeStartPercent','shakeEndPercent','damageMomentPercent']){
     const row=element(`v39-effect-timing-${key}`)?.closest('label');
-    if(row)row.hidden=attributeMode||(key!=='playbackSpeedPercent'&&currentCategory()?.group==='support');
+    if(row)row.hidden=attributeMode||(!magicMode&&key!=='playbackSpeedPercent'&&currentCategory()?.group==='support');
   }
   element("v39-effect-settings-panel").classList.toggle("is-attribute-mode", attributeMode);
   hiddenRow("v39-effect-setting-base", attributeMode);
@@ -189,33 +263,48 @@ function applyModeVisibility() {
   hiddenRow("v39-effect-setting-power-axis", attributeMode);
   element("v39-effect-setting-placement-hint").hidden=attributeMode;
 
-  hiddenRow("v39-effect-setting-decoration", !attributeMode);
+  hiddenRow("v39-effect-setting-decoration", !attributeMode && !magicMode);
 
   for (const tabName of ["color", "motion"]) {
     const tab = document.querySelector(`[data-v39-effect-tab="${tabName}"]`);
-    if (tab instanceof HTMLElement) tab.hidden = !attributeMode;
+    if (tab instanceof HTMLElement) tab.hidden = !attributeMode && !magicMode;
   }
   const selectedHidden = [...document.querySelectorAll("[data-v39-effect-tab]")]
     .some(tab => tab.getAttribute("aria-selected") === "true" && tab.hidden);
   if (selectedHidden) document.querySelector('[data-v39-effect-tab="basic"]')?.click();
 
   const reset = element("v39-effect-setting-reset");
-  if (element("v39-effect-category-add")) element("v39-effect-category-add").hidden = attributeMode;
+  if (element("v39-effect-category-add")) element("v39-effect-category-add").hidden = attributeMode || magicMode;
   const nameRow = element("v39-effect-category-name-row");
   if (nameRow) {
-    nameRow.hidden = attributeMode || !currentCategory()?.custom;
+    nameRow.hidden = attributeMode || magicMode || !currentCategory()?.custom;
     element("v39-effect-category-name").value = currentCategory()?.name || "";
   }
-  if (reset) reset.textContent = attributeMode ? "↺ この属性を初期化" : "↺ このカテゴリを初期化";
+  if (reset) reset.textContent = magicMode ? "↺ この魔法を初期化" : attributeMode ? "↺ この属性を初期化" : "↺ このカテゴリを初期化";
   const note = document.querySelector('[data-v39-effect-panel="data"] .v39-effect-settings-note');
-  if (note) note.textContent = "カテゴリは基本形状・Scale、属性は色・グラデーション・動き・属性装飾を共通保存します。JSON書き出しでは両方をまとめて出力します。";
+  if (note) note.textContent = magicMode ? "魔法別の変更はブラウザへ自動保存します。JSON書き出し・読み込みで設定を引き継げます。" : "カテゴリ・属性・魔法別設定をまとめてJSONへ出力します。";
 }
 
 function fillEditorSelector() {
   const select = element(EDITOR_SELECT_ID);
   if (!(select instanceof HTMLSelectElement)) return;
   select.replaceChildren();
-  if (editorMode === "category") {
+  if (editorMode === "magic") {
+    const rows = magicRows(), groups = [...new Set(rows.map(magicGroup))];
+    const group = element(MAGIC_GROUP_ID);
+    group.replaceChildren();
+    for (const name of groups) {
+      const items = rows.filter(row => magicGroup(row) === name);
+      group.add(new Option(name + " (" + items.filter(row => getV39MagicEffectSetting(row.名前)).length + "/" + items.length + ")", name));
+    }
+    if (!groups.includes(selectedMagicGroup)) selectedMagicGroup = groups[0] || "";
+    group.value = selectedMagicGroup;
+    const candidates = rows.filter(row => magicGroup(row) === selectedMagicGroup);
+    if (!candidates.some(row => row.名前 === selectedMagicName)) selectedMagicName = candidates[0]?.名前 || "";
+    for (const row of candidates) select.add(new Option((getV39MagicEffectSetting(row.名前) ? "✓ " : "○ ") + row.名前, row.名前));
+    select.value = selectedMagicName;
+    select.setAttribute("aria-label","魔法");
+  } else if (editorMode === "category") {
     const categories = getV39EffectCategories();
     for (const [group, label] of [["attack", "攻撃系"], ["support", "補助系"]]) {
       const optgroup = document.createElement("optgroup");
@@ -242,7 +331,8 @@ function fillEditorSelector() {
     select.value = selectedAttributeName;
   }
   const label = element("v39-effect-setting-source")?.closest?.("label")?.querySelector("span");
-  if (label) label.textContent = editorMode === "category" ? "カテゴリ" : "属性";
+  if (label) label.textContent = editorMode === "magic" ? "魔法" : editorMode === "category" ? "カテゴリ" : "属性";
+  select.setAttribute("aria-label", label?.textContent || "対象");
 }
 
 function updateModeButtons() {
@@ -253,6 +343,7 @@ function updateModeButtons() {
 }
 
 function activateCurrent({ announce = true } = {}) {
+  if (editorMode === "magic") return activateMagic({announce});
   const category = currentCategory();
   if (!category) return false;
   selectedCategoryId = category.id;
@@ -298,6 +389,22 @@ function ensureEditorUi() {
   const toolbar = source?.closest?.(".v39-effect-preview-toolbar");
   if (!(source instanceof HTMLSelectElement) || !(label instanceof HTMLElement) || !(toolbar instanceof HTMLElement)) return false;
   installStyles();
+  if (!element(VIEW_ID)) {
+    const view = document.createElement("select");
+    view.id = VIEW_ID; view.setAttribute("aria-label","エフェクト設定画面");
+    view.add(new Option("エフェクト設定","common"));
+    view.add(new Option("魔法一覧","magic"));
+    document.querySelector(".v39-effect-settings-head strong")?.replaceWith(view);
+    view.addEventListener("change", () => {
+      if (editorMode !== "magic") previousCommonMode = editorMode;
+      editorMode = view.value === "magic" ? "magic" : previousCommonMode;
+      activateCurrent();
+    });
+    const group = document.createElement("select");
+    group.id = MAGIC_GROUP_ID; group.hidden = true; group.setAttribute("aria-label","魔法系統");
+    group.addEventListener("change", () => { selectedMagicGroup = group.value; selectedMagicName = ""; activateCurrent(); });
+    toolbar.insertBefore(group,label);
+  }
   source.setAttribute("aria-hidden", "true");
   source.tabIndex = -1;
 
@@ -332,7 +439,8 @@ function ensureEditorUi() {
     label.appendChild(select);
     select.addEventListener("change", () => {
       syncCurrentFromProxy();
-      if (editorMode === "category") selectedCategoryId = select.value;
+      if (editorMode === "magic") selectedMagicName = select.value;
+      else if (editorMode === "category") selectedCategoryId = select.value;
       else selectedAttributeName = select.value;
       activateCurrent();
     });
@@ -384,6 +492,7 @@ function ensureEditorUi() {
       const input=document.createElement('input');input.type='number';input.id=`v39-effect-timing-${key}`;
       input.min=String(min);input.max=String(max);input.step=String(step);
       input.addEventListener('change',()=>{
+        if(editorMode==='magic'){persistMagicFromProxy({[key]:Number(input.value)});activateCurrent({announce:false});return;}
         if(editorMode!=='category')return;
         syncCurrentFromProxy();
         updateV39EffectCategory(selectedCategoryId,{[key]:Number(input.value)});
@@ -404,6 +513,7 @@ function exportCompositeJson() {
     version:COMPOSITE_VERSION,
     categories:categorySnapshot.categories,
     attributes:attributeSnapshot.attributes,
+    magic:getV39MagicEffectSettingsSnapshot(),
     exportedAt:new Date().toISOString()
   };
   const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type:"application/json;charset=utf-8" });
@@ -413,7 +523,7 @@ function exportCompositeJson() {
   anchor.download = "v39-effect-composite-settings.json";
   anchor.click();
   URL.revokeObjectURL(url);
-  setStatus(`カテゴリ ${Object.keys(payload.categories).length}件 / 属性 ${Object.keys(payload.attributes).length}件を書き出しました。`);
+  setStatus(`カテゴリ ${Object.keys(payload.categories).length}件 / 属性 ${Object.keys(payload.attributes).length}件 / 魔法 ${Object.keys(payload.magic).length}件を書き出しました。`);
 }
 
 async function importCompositeJson(file) {
@@ -421,6 +531,10 @@ async function importCompositeJson(file) {
   try {
     const parsed = JSON.parse(await file.text());
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new TypeError("設定JSONの形式が正しくありません。");
+    if (parsed.schema === COMPOSITE_SCHEMA && (!Number.isInteger(Number(parsed.version ?? 1)) || Number(parsed.version ?? 1) > COMPOSITE_VERSION)) throw new TypeError("対応していない設定バージョンです。");
+    const isComposite = parsed.schema === COMPOSITE_SCHEMA || (!parsed.schema && parsed.categories && parsed.attributes);
+    if (isComposite && (!parsed.categories || typeof parsed.categories !== "object" || Array.isArray(parsed.categories) || !parsed.attributes || typeof parsed.attributes !== "object" || Array.isArray(parsed.attributes))) throw new TypeError("カテゴリ・属性設定の形式が不正です。");
+    const magicImport = isComposite && Object.hasOwn(parsed,"magic") ? prepareV39MagicEffectImport(parsed.magic, magicRows().map(row=>row.名前)) : null;
     let categoryResult = { importedCount:0, skippedCount:0 };
     let attributeResult = { importedCount:0, skippedCount:0 };
     if (parsed.schema === 'v39-effect-local-draft') {
@@ -438,9 +552,10 @@ async function importCompositeJson(file) {
     } else {
       throw new TypeError(`対応していない設定形式です: ${parsed.schema || "不明"}`);
     }
+    if (magicImport) applyV39MagicEffectImport(magicImport);
     fillEditorSelector();
     activateCurrent({ announce:false });
-    setStatus(`設定JSONを読み込みました。カテゴリ ${categoryResult.importedCount}件 / 属性 ${attributeResult.importedCount}件`);
+    setStatus(`設定JSONを読み込みました。カテゴリ ${categoryResult.importedCount}件 / 属性 ${attributeResult.importedCount}件${magicImport ? ` / 魔法 ${magicImport.importedCount}件（スキップ ${magicImport.skippedCount}件）` : ""}`);
   } catch (error) {
     console.error("[エフェクト共通設定] JSON読み込み失敗", error);
     setStatus(`設定JSON読み込み失敗: ${String(error?.message || error)}`, true);
@@ -453,8 +568,14 @@ function configureSaveControls() {
   configureV39EffectSettingsEditor({
     exportJson:exportCompositeJson,
     importJsonFile:importCompositeJson,
+    previewMapOptions:() => editorMode === "magic" ? {totalDurationMs:1500*100/(magicTiming().playbackSpeedPercent||100)} : {},
     reset:() => {
-      if (editorMode === "category") {
+      if (editorMode === "magic") {
+        const row = currentMagic();
+        if (!row) return;
+        try { resetV39MagicEffectSetting(row.名前); activateCurrent({announce:false}); setStatus("魔法「" + row.名前 + "」を初期化しました。"); }
+        catch(error) { setStatus("魔法設定の初期化失敗: " + String(error?.message||error),true); }
+      } else if (editorMode === "category") {
         const category = currentCategory();
         if (!category) return;
         resetV39EffectCategory(category.id);
@@ -497,7 +618,7 @@ function installLocalDraft() {
       activateCurrent({ announce:false });
     }
   });
-  for (const event of ['v39:effect-settings-changed','v39:effect-category-settings-changed','v39:effect-attribute-settings-changed']) window.addEventListener(event, () => sync.changed());
+  for (const event of ['v39:effect-settings-changed','v39:effect-category-settings-changed','v39:effect-attribute-settings-changed']) window.addEventListener(event, change => { if (!String(change.detail?.effectName || '').startsWith('@magic:')) sync.changed(); });
   const actions = document.createElement('div'); actions.className = 'v39-effect-settings-actions';
   const save = document.createElement('button'); save.type = 'button'; save.textContent = 'JSONへ保存';
   save.addEventListener('click', async () => {
@@ -529,7 +650,7 @@ async function install() {
     installed = true;
     activateCurrent({ announce:false });
 
-    window.addEventListener("v39:effect-settings-changed", () => syncCurrentFromProxy());
+    window.addEventListener("v39:effect-settings-changed", syncCurrentFromProxy);
     window.addEventListener("v39:effect-category-settings-changed", event => {
       if (syncing) return;
       const changedId = event.detail?.category?.id;
