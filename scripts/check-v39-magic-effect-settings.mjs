@@ -71,12 +71,25 @@ assert.equal(result.importedCount,1);
 result.apply();
 assert.deepEqual(jsonSnapshot(),file);
 
+const legacy = {...settings,playbackSpeedPercent:210,shakeStartPercent:10,damageMomentPercent:35};
+const legacyImport = api.prepareV39MagicEffectImport({[spell.name]:legacy,"未登録魔法":legacy},{legacy:true});
+assert.equal(legacyImport.importedCount,1);
+assert.equal(legacyImport.skippedCount,1);
+legacyImport.apply();
+assert.equal(api.getV39MagicEffectSetting(spell.key).playbackSpeedPercent,210);
+assert.equal(api.resolveV39CombatEffect(explicit).settings.damageMomentPercent,75);
+values.set("v39-magic-effect-settings-v1",JSON.stringify({version:1,magic:{[spell.name]:legacy}}));
+const migrated = await import(moduleUrl+"#legacy");
+init(migrated);
+assert.equal(migrated.getV39MagicEffectSetting(spell.key).playbackSpeedPercent,210);
+
 const sameNames = [
   {名前:"同じ名前",行動:"A",攻撃手段:"魔法",系統:"炎"},
   {名前:"同じ名前",行動:"A",攻撃手段:"魔法",系統:"氷"}
 ];
 api.setV39MagicEffectSkillCatalog(sameNames);
 assert.equal(api.getV39MagicEffectSpells().length,2);
+assert.equal(api.prepareV39MagicEffectImport({"同じ名前":legacy},{legacy:true}).skippedCount,1);
 api.setV39MagicEffectSkillCatalog([...sameNames,sameNames[0]]);
 assert.equal(api.getV39MagicEffectSpells().length,1);
 console.log(`Magic effect settings OK for ${spells.length} skills`);

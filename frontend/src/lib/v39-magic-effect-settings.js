@@ -14,31 +14,49 @@ function magicKey(row) {
 }
 
 const spells = new Map();
+const legacySpellKeys = new Map();
 export function setV39MagicEffectSkillCatalog(rows) {
   spells.clear();
+  legacySpellKeys.clear();
   const ambiguous = new Set();
+  const nameCounts = new Map();
   for (const row of rows) {
     const key = magicKey(row);
-    if (!key || ambiguous.has(key)) continue;
+    if (!key) continue;
+    const name = text(row.名前);
+    nameCounts.set(name,(nameCounts.get(name) ?? 0)+1);
+    if (ambiguous.has(key)) continue;
     if (spells.has(key)) {
       spells.delete(key);
       ambiguous.add(key);
       continue;
     }
-    spells.set(key,{key,name:text(row.名前),system:text(row.系統),row});
+    spells.set(key,{key,name,system:text(row.系統),row});
   }
+  for (const {key,name} of spells.values()) {
+    if (nameCounts.get(name) === 1) legacySpellKeys.set(name,key);
+  }
+  // Earlier releases stored settings by display name. Only carry over unambiguous names.
+  const migrated = Object.entries(legacySettings).flatMap(([name,setting])=>{
+    const key = legacySpellKeys.get(name);
+    return key ? [[key,setting]] : [];
+  });
+  if (migrated.length) settings = {...Object.fromEntries(migrated),...settings};
+  legacySettings = {};
 }
 
 function readState() {
   try {
     const data = JSON.parse(globalThis.window?.localStorage?.getItem(STORAGE_KEY) ?? "null");
-    return data?.version === 1 && isRecord(data.spells) ? data.spells : {};
+    return data?.version === 1 ? data : {};
   } catch {
     return {};
   }
 }
 
-let settings = readState();
+const cached = readState();
+let settings = isRecord(cached.spells) ? cached.spells : {};
+let legacySettings = isRecord(cached.magic) ? cached.magic : {};
 function persist() {
   try {
     globalThis.window?.localStorage?.setItem(STORAGE_KEY,JSON.stringify({version:1,spells:settings}));
@@ -102,15 +120,17 @@ export function getV39MagicEffectSnapshot() {
 }
 
 // Validate first so an invalid spell does not partially overwrite the composite settings.
-export function prepareV39MagicEffectImport(data) {
+export function prepareV39MagicEffectImport(data, {legacy = false} = {}) {
   if (!isRecord(data)) throw new TypeError("魔法別設定の形式が正しくありません。");
   const catalog = getV39EffectSettingsCatalog();
   const base = catalog[0];
   const step = resolveV39EffectSequence({baseEffect:base})[0];
   const template = {...normalizeV39MagicEffect({baseEffect:base}),sequenceSteps:[step]};
+  if (legacy) Object.assign(template,{shakeStartPercent:0,shakeEndPercent:15,damageMomentPercent:75});
   const imports = new Map();
   let skippedCount = 0;
-  for (const [key,raw] of Object.entries(data)) {
+  for (const [identifier,raw] of Object.entries(data)) {
+    const key = legacy ? legacySpellKeys.get(identifier) : identifier;
     const spell = spells.get(key);
     if (!spell) {
       skippedCount++;

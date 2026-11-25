@@ -630,9 +630,14 @@ async function importCompositeJson(file) {
       validateVersion(parsed.version,COMPOSITE_VERSION);
       validateSettingsMap(parsed.categories,"カテゴリ");
       validateSettingsMap(parsed.attributes,"属性");
-      if (parsed.version === COMPOSITE_VERSION || Object.hasOwn(parsed,"spells")) {
+      const hasSpells = Object.hasOwn(parsed,"spells");
+      const hasLegacyMagic = Object.hasOwn(parsed,"magic");
+      if (parsed.version === COMPOSITE_VERSION || hasSpells || hasLegacyMagic) {
         if (parsed.schema !== COMPOSITE_SCHEMA || parsed.version !== COMPOSITE_VERSION) throw new TypeError("魔法別設定にはバージョン3が必要です。");
-        spellImport = prepareV39MagicEffectImport(parsed.spells);
+        if (hasSpells === hasLegacyMagic) throw new TypeError("魔法別設定には spells または magic のどちらか一方が必要です。");
+        spellImport = hasSpells
+          ? prepareV39MagicEffectImport(parsed.spells)
+          : prepareV39MagicEffectImport(parsed.magic,{legacy:true});
       }
       categoryResult = importV39EffectCategorySettings({ categories:parsed.categories });
       attributeResult = importV39EffectAttributeSettings({ attributes:parsed.attributes });
