@@ -18,6 +18,7 @@
 | 固定マップの編集・JSON | [固定マップエディター](../frontend/src/components/V39FixedMapEditor.vue)、[固定マップのデータ処理](../frontend/src/lib/v39-fixed-map.js) |
 | 村・外交・諜報 | [交流・クエスト仕様](rules/diplomacy/交流・クエスト仕様整理.md)、[統合タスク](ALL_TASKS_UNIFIED.md) のスパイ・諜報の確認項目 |
 | 画面・操作・テスト | [ゲーム画面共通ルール](rules/ui/GAME_UI_LAYOUT_RULES.md)、[専用テスト構成](tests/専用テスト構成.md) |
+| 魔法エフェクト制作（Lv別演出基準） | [戦闘エフェクトルール](rules/ui/戦闘エフェクトルール.md) の「魔法Lv別エフェクト制作基準」 |
 | 画像制作・素材 | [ユニット立ち絵生成ルール](UNIT_PORTRAIT_GENERATION_RULES.md)、[画像素材準備リスト](references/画像素材準備リスト.md) |
 
 ## 仕様を説明するとき
