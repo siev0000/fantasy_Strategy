@@ -1,4 +1,5 @@
 import {resolveV39UnitExpNeed,resolveV39UnitRaceCategory} from './v39-unit-experience.js';
+import {resolveV39RaceDefinition} from './v39-race-definitions.js';
 
 const text=value=>String(value??'').trim();
 const fail=reason=>({ok:false,reason});
@@ -8,7 +9,8 @@ export function collectV39FusionClassLevels(unit){
   if(!derived?.ok)return null;
   const levels={};
   const add=(name,value)=>{if(text(name)&&Number.isFinite(Number(value))&&Number(value)>=0)levels[text(name)]=(levels[text(name)]||0)+Math.floor(Number(value));};
-  add(derived.race||unit.race,derived.raceLevels);
+  const race=derived.race||unit.race;
+  add(resolveV39RaceDefinition(race)?.className||race,derived.raceLevels);
   add(derived.className||unit.className,derived.classLevels);
   for(const [name,value] of Object.entries(derived.prerequisiteClassLevels||{}))add(name,value);
   if(derived.strongAnimalClassName)add(derived.strongAnimalClassName,derived.strongAnimalClassLevel);

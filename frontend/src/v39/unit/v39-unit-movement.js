@@ -191,7 +191,7 @@ function formationFootprint(formation,group,data,state) {
   });
 }
 
-function buildReachablePlan(data, group, apBudget) {
+export function buildReachablePlan(data, group, apBudget, options = {}) {
   const w = Math.max(0, integer(data?.w));
   const h = Math.max(0, integer(data?.h));
   const sx = integer(group?.x, -1);
@@ -208,10 +208,10 @@ function buildReachablePlan(data, group, apBudget) {
   formations.set(startKey, (group?.positions || []).map(row => ({ ...row })));
   const queue = [{ x:sx, y:sy, cost:0 }];
   const worldWrapEnabled = isWorldWrapEnabled(data);
-  const movementState=window.getV39GameState?.({includeWorlds:false});
+  const movementState=options.state??window.getV39GameState?.({includeWorlds:false});
   const {blocked:occupied,stopBlocked}=collectV39MovementOccupancy(movementState,group?.participantIds,data, {
-    isVisible:unit=>window.isV39TileInCurrentVision?.(unit.x,unit.y)===true
-      &&window.isV39EntityDetected?.(unit)===true
+    isVisible:options.isVisible??(unit=>window.isV39TileInCurrentVision?.(unit.x,unit.y)===true
+      &&window.isV39EntityDetected?.(unit)===true)
   });
 
   while (queue.length) {
@@ -265,7 +265,7 @@ function buildReachablePlan(data, group, apBudget) {
   return { costs, parents, formations, stops, clickable };
 }
 
-function pathTo(plan, start, target) {
+export function pathTo(plan, start, target) {
   const startKey = coordKey(start.x, start.y);
   const targetKey = coordKey(target.x, target.y);
   if (!plan?.costs?.has(targetKey)) return [];

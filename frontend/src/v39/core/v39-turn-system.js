@@ -77,7 +77,7 @@ function normalizeTimeline(value = {}, players = [], fallbackActivePlayerId = ""
   };
 }
 
-function restoreUnitForTurn(unit, applyParalysis=false, state=null, recoveryTurn=0, apTurn=recoveryTurn) {
+export function restoreUnitForTurn(unit, applyParalysis=false, state=null, recoveryTurn=0, apTurn=recoveryTurn) {
   unit = finishV39RecoveryWait(unit);
   if (!unit || isDead(unit)) return { ...unit };
   const {sustainApPaid=0,timeDistortionAp:previousDistortion,...restoredUnit}=unit;
@@ -109,7 +109,7 @@ function clearExpiredGuard(unit, turnNumber) {
   return { ...unit, guard:0, guardExpiresAtTurn:0 };
 }
 
-function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide = false) {
+export function recoverUnitHp(unit, faction, playerId, state, activityTurn, enemySide = false) {
   if (!unit || isDead(unit)) return { ...unit };
   if (number(unit?.starvationStage) >= 3) return { ...unit };
   const maxHp = Math.max(1, Math.floor(number(unit.maxHp ?? unit?.status?.HP, 1)));

@@ -91,10 +91,16 @@ function techniqueDescription(row, source) {
 }
 
 
-export function renderV39UnitSkills(unit, {mapData, expandedName = "", interactive = false} = {}) {
+export function renderV39UnitSkills(unit, {
+  mapData,state:providedState,expandedName="",interactive=false
+} = {}) {
     const teleportPanel=interactive&&renderV39TeleportPanel(unit,mapData);
     if(teleportPanel)return teleportPanel;
-    const adjustedUnit = resolveV39CurrentUnitAbilities(unit,{mapData});
+    const state=providedState===undefined
+      ? globalThis.window?.getV39GameState?.({includeWorlds:false})
+      : providedState;
+    const adjustedUnit = resolveV39CurrentUnitAbilities(unit,{mapData,state});
+    const spatialPercent=resolveV39SpatialDistortionPercent(adjustedUnit,state)??100;
     const rows = techniqueEntries(adjustedUnit);
     const weaponAttackRows = resolveAttackRows(adjustedUnit).filter(row => row?.装備攻撃 === true);
     const bodyNames = new Set(weaponAttackRows.filter(row => row.身体武器).map(row => row.名前));
@@ -112,7 +118,6 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
           const powerValue = action === "A"
             ? resolveAttackPower(source, adjustedUnit)
             : num(source?.威力 ?? row?.power, null);
-          const spatialPercent=resolveV39SpatialDistortionPercent(adjustedUnit,globalThis.window?.getV39GameState?.({includeWorlds:false}))??100;
           const rangeValue = action === "A"
             ? Math.round(resolveAttackRawRange(source, adjustedUnit)*spatialPercent/100*10)/10
             : source?.射程補正 !== undefined

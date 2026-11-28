@@ -1,0 +1,94 @@
+.v39-gacha-screen {
+  position:fixed; inset:0; z-index:80; display:grid;
+  background:var(--bg); color:var(--text); padding:var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+}
+.v39-gacha-view { display:grid; grid-template-rows:repeat(2,minmax(0,1fr)); min-height:0; }
+.v39-gacha-view[hidden] { display:none; }
+.v39-gacha-field {
+  display:grid; grid-template-rows:auto minmax(0,1fr); gap:8px;
+  min-height:0; padding:12px; background:#0b171c;
+}
+.v39-gacha-field h2 { margin:0; font-size:var(--font-heading); }
+.v39-gacha-results {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:max-content;
+  align-content:start; gap:6px; min-height:0; overflow:auto;
+}
+.v39-gacha-empty { grid-column:1/-1; margin:0; color:var(--muted); }
+.v39-gacha-controls {
+  display:flex; flex-direction:column; align-items:flex-start; gap:8px; overflow:auto;
+  border-top:1px solid #435158; background:var(--panel); padding:12px;
+}
+.v39-gacha-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; width:100%; }
+.v39-gacha-actions [data-v39-gacha-battle] { grid-column:1/-1; }
+.v39-gacha-results [aria-pressed="true"] { outline:2px solid #73d7e7; outline-offset:-2px; }
+.v39-gacha-controls button { min-height:36px; padding:6px 10px; }
+.v39-gacha-controls button:disabled { opacity:.55; cursor:not-allowed; }
+.v39-gacha-controls [data-v39-gacha-back] { margin-top:auto; }
+.v39-gacha-controls output:empty { display:none; }
+.v39-gacha-battle-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.v39-gacha-battle-stage {
+  position:relative; isolation:isolate; overflow:hidden; border:1px solid #435158;
+  --v39-gacha-tile-size:0px;
+}
+.v39-gacha-battle-stage [data-layer] {
+  position:absolute; inset:0; background-position:center; background-size:cover;
+  background-repeat:no-repeat; pointer-events:none;
+}
+.v39-gacha-battle-stage [data-layer="ground"] {
+  top:auto; height:var(--v39-gacha-tile-size); background-size:auto 100%; background-repeat:repeat-x;
+}
+.v39-gacha-battle-world { position:absolute; inset:0 auto 0 0; width:100%; }
+.v39-gacha-battle-grid {
+  position:absolute; inset:auto 0 0; height:var(--v39-gacha-tile-size);
+  display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr);
+}
+.v39-gacha-battle-grid button {
+  min-width:0; min-height:0; padding:0; border:1px solid #6c939d; border-radius:0;
+  background:#0b171c55; color:#d4e4e7; font-size:var(--font-secondary);
+}
+.v39-gacha-battle-grid button:disabled { opacity:.5; }
+.v39-gacha-battle-grid [data-occupant="0"] { border-color:#74d4eb; background:#29607188; }
+.v39-gacha-battle-grid [data-occupant="1"] { border-color:#ef8d93; background:#72384588; }
+.v39-gacha-battle-grid .selected { box-shadow:inset 0 0 0 1px #f4d57b; }
+.v39-gacha-battle-grid .v39-gacha-targetable { border-color:#f4d57b; background-color:#8a662883; }
+.v39-gacha-battle-grid .v39-gacha-destination { box-shadow:inset 0 0 0 2px #f4d57b; }
+.v39-gacha-battle-stage [data-layer^="object"] {
+  bottom:var(--v39-gacha-tile-size); background-position:bottom center; background-size:contain;
+}
+.v39-gacha-battle-stage .v39-gacha-battle-unit {
+  position:absolute; bottom:var(--v39-gacha-tile-size); width:0; min-height:0; padding:0; border:0; aspect-ratio:1;
+  transform:translateX(-50%); background-color:transparent; background-position:center;
+  background-size:contain; background-repeat:no-repeat; box-shadow:none;
+}
+.v39-gacha-battle-stage .v39-gacha-battle-unit[data-v39-battle-sprite="1"] { transform:translateX(-50%) scaleX(-1); }
+.v39-gacha-battle-stage .v39-gacha-battle-unit[aria-pressed="true"] { filter:drop-shadow(0 0 2px #f4d57b); }
+.v39-gacha-battle-stage .v39-gacha-defeated { opacity:.3; }
+.v39-gacha-battle-effects { position:absolute; inset:0; pointer-events:none; }
+.v39-gacha-battle-effects canvas { display:block; }
+.v39-gacha-effect-playing .v39-gacha-battle-grid { cursor:wait; }
+.v39-gacha-battle-history {
+  position:absolute; top:6px; right:6px; z-index:1; max-width:calc(100% - 12px);
+  border:1px solid #435158; border-radius:6px; background:#0b171cf2;
+}
+.v39-gacha-battle-history summary { padding:5px 8px; cursor:pointer; }
+.v39-gacha-battle-history[open] { width:min(340px,calc(100% - 12px)); }
+.v39-gacha-battle-history p { margin:0; padding:6px 8px; }
+.v39-gacha-battle-history ol { margin:0; padding:0; max-height:min(24dvh,180px); overflow:auto; list-style:none; }
+.v39-gacha-battle-history li { padding:6px 8px; border-top:1px solid #435158; overflow-wrap:anywhere; }
+.v39-gacha-battle-footer {
+  display:grid; grid-template-rows:minmax(0,1fr) auto; gap:6px; min-height:0;
+  padding:6px; border-top:1px solid #435158; background:var(--panel);
+}
+.v39-gacha-battle-actions { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:6px; }
+.v39-gacha-battle-actions output { overflow-wrap:anywhere; color:var(--muted); font-size:var(--font-secondary); }
+.v39-gacha-reserves { display:grid; gap:4px; }
+.v39-gacha-battle-panes {
+  display:grid; grid-template-columns:minmax(0,4fr) minmax(0,6fr); gap:6px; min-height:0; height:100%;
+}
+.v39-gacha-battle-panes > .squad-list-pane { min-width:0; min-height:0; overflow:auto; align-content:start; }
+.v39-gacha-battle-panes > .squad-detail-pane {
+  display:grid; grid-template-rows:auto auto minmax(0,1fr); min-width:0; min-height:0; overflow:hidden;
+}
+.v39-gacha-battle-panes .squad-detail-tab-content { min-height:0; overflow:hidden; }
+.v39-gacha-battle-panes .squad-detail-tab-panel { height:100%; overflow:auto; }
+.v39-gacha-battle-movement { display:grid; gap:4px; }

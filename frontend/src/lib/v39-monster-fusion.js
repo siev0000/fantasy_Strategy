@@ -13,6 +13,7 @@ import {canUnitEnterV39Tile} from './v39-terrain-traversal.js';
 import {getV39StorageFacilities} from './v39-facility-storage.js';
 import {isV39InvalidDataToken} from './v39-class-rules.js';
 import {resolveV39FusionRequirementNames} from './v39-fusion-material-types.js';
+import {resolveV39RaceDefinition} from './v39-race-definitions.js';
 
 export function matchV39FusionMaterialRequirement(unit,name) {
   const levels=collectV39FusionClassLevels(unit);
@@ -47,6 +48,7 @@ export function isV39FusionTerritoryScope(state,playerId,actor,settings=defaults
 }
 export function inspectV39FusionAccess(state,playerId,actorId,mode='skill',skillName=''){
   const player=state.players?.find(p=>p.id===playerId),faction=player?.factionState,actor=faction?.units?.find(u=>u.id===actorId),reasons=[];
+  if(mode==='prebattle'&&state.gachaPreparation===true&&playerId===state.activePlayerId&&faction)return {actor,player,faction,cost:0,reasons};
   const runtime=faction?.combatRuntime||{},turn=state.timeline?.turnNumber;
   const skill=getV39FusionSkills(actor).find(row=>!skillName||row.名前===skillName);
   const cost=mode==='skill'?Math.max(0,Number(skill?.AP消費)||0):0;
@@ -66,8 +68,9 @@ export function inspectV39FusionAccess(state,playerId,actorId,mode='skill',skill
   }else reasons.push('合体の実行方法が不正');
   return {actor,player,faction,skill,cost,reasons};
 }
-export function inspectV39FusionMaterial(state,playerId,actor,unit,settings=defaults){
+export function inspectV39FusionMaterial(state,playerId,actor,unit,settings=defaults,mode){
   const faction=state.players?.find(p=>p.id===playerId)?.factionState,reasons=[];
+  const prebattle=mode==='prebattle'&&state.gachaPreparation===true;
   if(unit?.facilityStored){
     const entry=faction?.facilityStorage?.find(e=>e.unit?.id===unit.id);
     const facility=getV39StorageFacilities(state,playerId).find(f=>f.tileKey===entry?.tileKey&&f.name===entry?.facilityName&&f.worldId===entry?.worldId);
@@ -82,11 +85,11 @@ export function inspectV39FusionMaterial(state,playerId,actor,unit,settings=defa
     return reasons;
   }
   if(!unit||!faction?.units?.some(u=>u.id===unit.id)||!alive(unit))return ['自軍の生存ユニットが必要'];
-  if(unit.soulCollected||unit.id===actor?.id||unit.isSovereign||unit.isNamed||unit.isMob||unit.summon||unit.combatProfile?.memberCount>1)reasons.push('素材は実行者以外の無名・単体ユニットのみ');
+  if(unit.soulCollected||unit.id===actor?.id||unit.isSovereign||unit.isNamed||(!prebattle&&unit.isMob)||unit.summon||unit.combatProfile?.memberCount>1)reasons.push('素材は実行者以外の無名・単体ユニットのみ');
   const radius=resolveV39FusionMaterialRadius(actor);
   const territoryScope=isV39FusionTerritoryScope(state,playerId,actor,settings);
-  if(world(unit)!==world(actor)||!Number.isInteger(unit.x)||!Number.isInteger(unit.y)
-    ||(territoryScope?state.territoryOwnerByTile?.[`${unit.x},${unit.y}`]!==playerId:getHexDistance(actor,unit)>radius))
+  if(!prebattle&&(world(unit)!==world(actor)||!Number.isInteger(unit.x)||!Number.isInteger(unit.y)
+    ||(territoryScope?state.territoryOwnerByTile?.[`${unit.x},${unit.y}`]!==playerId:getHexDistance(actor,unit)>radius)))
     reasons.push(territoryScope?'同じワールドの自領内にいる素材が必要':`同じワールドの周囲${radius}マス以内が必要`);
   const squads=faction.squads||[];
   if(unit.equipment?.length||hasCargo(unit.equipmentInventory)||hasCargo(unit.cargo)||hasCargo(unit.expeditionCargoByType)||hasCargo(unit.toolStockByType)||squads.some(s=>s.unitIds?.includes(unit.id)&&(hasCargo(s.cargo)||hasCargo(s.cargoByUnitId?.[unit.id]))))reasons.push('装備・荷物を先に預けてください');
@@ -119,7 +122,7 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
   if(materialIds.length!==slots.length||materials.some(u=>!u))reasons.push('素材をすべて選択してください');
   if(new Set(materialIds).size!==materialIds.length)reasons.push('同じ素材を重複使用できません');
   materials.forEach((unit,index)=>{
-    reasons.push(...inspectV39FusionMaterial(state,playerId,access.actor,unit));
+    reasons.push(...inspectV39FusionMaterial(state,playerId,access.actor,unit,defaults,mode));
     if(unit&&!matchV39FusionMaterialRequirement(unit,slots[index]))reasons.push(`素材${index+1}に${slots[index]}が必要`);
   });
   let origin=materials.find(unit=>unit&&!unit.soulStored&&!unit.facilityStored);
@@ -141,6 +144,7 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
     else {
       for(const name of Object.keys(growth.levelsByClass))if(!classes.has(name))reasons.push(`継承クラス未登録: ${name}`);
       const race=materials[0].race,className=acquiredClasses[0]||materials[0].className;
+      const raceClass=resolveV39RaceDefinition(race)?.className||race;
       const levels=growth.levelsByClass;
       preview=applyV39DerivedCharacterData({id:'fusion-preview',name:recipe.合成結果,race,className,level:growth.level,
         isNamed:false,isMob:false,unitType:'通常ユニット',state:'生存',equipment:[],squadId:'solo',worldId:world(access.actor),
@@ -149,7 +153,7 @@ export function inspectV39MonsterFusion(state,{playerId,actorId,recipeId,materia
         fusionGrowth:{levelsByClass:{...levels},baseLevel:Math.floor(growth.baseValue),baseExp:growth.baseProgress.exp,baseNeed:growth.baseProgress.need,
           classExp:Object.fromEntries(Object.entries(growth.acquiredProgress).map(([name,p])=>[name,p.exp])),
           recipeName:recipe.合成結果,sourceIds:[...materialIds],skippedClasses:[...skippedClasses],acquiredSkillNames},
-        prerequisiteClassLevels:Object.fromEntries(Object.entries(levels).filter(([name])=>name!==race&&name!==className))});
+        prerequisiteClassLevels:Object.fromEntries(Object.entries(levels).filter(([name])=>name!==race&&name!==raceClass&&name!==className))});
       const exp=growth.baseProgress.exp,totalExp=resolveV39UnitTotalExpForLevel(growth.level,resolveV39UnitRaceCategory(preview))+exp;
       preview={...preview,exp,totalExp,status:{...preview.status,exp,totalExp},hp:preview.maxHp,currentHp:preview.maxHp,ap:0,currentAp:0,maxAp:100};
       if(!preview.derivedCharacter?.ok)reasons.push('結果の能力を生成できません');
@@ -166,7 +170,7 @@ export function executeV39MonsterFusion(state,request){
   const created={...check.preview,id};
   const runtime={...faction.combatRuntime};
   for(const [key,value] of Object.entries(runtime))if(key.endsWith('ByUnitId'))runtime[key]=Object.fromEntries(Object.entries(value||{}).filter(([key])=>!ids.has(key)));
-  if(request.mode!=='facility')runtime.cooldownsByUnitId={...runtime.cooldownsByUnitId,[request.actorId]:{...runtime.cooldownsByUnitId?.[request.actorId],[check.skill.名前]:state.timeline.turnNumber+resolveV39SkillCooldownTurns(check.skill)}};
+  if((request.mode??'skill')==='skill')runtime.cooldownsByUnitId={...runtime.cooldownsByUnitId,[request.actorId]:{...runtime.cooldownsByUnitId?.[request.actorId],[check.skill.名前]:state.timeline.turnNumber+resolveV39SkillCooldownTurns(check.skill)}};
   const squads=(faction.squads||[]).map(s=>{
     const unitIds=(s.unitIds||[]).filter(id=>!ids.has(id));if(s.id==='solo')unitIds.push(id);
     const next={...s,unitIds};

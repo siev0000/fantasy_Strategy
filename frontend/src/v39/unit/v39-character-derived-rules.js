@@ -161,6 +161,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   const isHumanRace = text(raceRow.種類) === "人族";
+  const raceOnly = unit.raceOnly === true && raceRow === classRow;
   const facilityGrowth = unit.summonGrowth||unit.fusionGrowth||unit.promotionGrowthStart||unit.undeadGrowthStart||unit.reincarnationGrowthStart?null:resolveV39FacilityClassGrowth({...unit,level},raceRow.種類);
   if (facilityGrowth) level = Math.min(level,facilityGrowth.levelCap);
   const strongAnimalClassName = text(unit.strongAnimalClassName);
@@ -168,7 +169,9 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   const strongAnimalClassLevel = strongAnimalClassRow
     ? Math.max(0, Math.min(level - 1, Math.round(number(unit.strongAnimalClassLevel)))) : 0;
   const baseLevel = level - strongAnimalClassLevel;
-  let { raceLevels, classLevels:totalClassLevels } = internalLevels(baseLevel, isHumanRace);
+  let { raceLevels, classLevels:totalClassLevels } = raceOnly
+    ? {raceLevels:baseLevel,classLevels:0}
+    : internalLevels(baseLevel, isHumanRace);
   const prerequisiteClasses = Object.entries(unit.prerequisiteClassLevels || {})
     .filter(([name,levels]) => name !== className && (!(unit.summonGrowth||unit.fusionGrowth)||name!==race) && (classByName.has(name)||(testMode&&testClassByName.has(name))) && Number(levels) > 0)
     .map(([name,levels]) => ({name,levels:Math.floor(Number(levels)),row:classByName.get(name)||(testMode?testClassByName.get(name):null)}));
@@ -198,7 +201,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
   }
 
   if(unit.fusionGrowth?.levelsByClass) {
-    raceLevels=Math.max(0,number(unit.fusionGrowth.levelsByClass[race]));
+    raceLevels=Math.max(0,number(unit.fusionGrowth.levelsByClass[race]??unit.fusionGrowth.levelsByClass[raceRow.名前]));
     classLevels=race===className?0:Math.max(0,number(unit.fusionGrowth.levelsByClass[className]));
   }
   if(unit.summonGrowth?.levelsByClass) {
@@ -234,7 +237,7 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
     skillLevelFields: SKILL_LEVEL_FIELDS,
     statusGrowthDivisor: STATUS_GROWTH_DIVISOR
   });
-  const resistances = buildUnitResistances(raceRow, classRow, { resistanceFields:RESISTANCE_FIELDS });
+  const resistances = buildUnitResistances(raceRow, raceOnly ? null : classRow, { resistanceFields:RESISTANCE_FIELDS });
 
   for (const prior of prerequisiteClasses) {
     const growth = rowStatusVector(prior.row,{statusGrowthFields:STATUS_GROWTH_FIELDS,statusGrowthDivisor:STATUS_GROWTH_DIVISOR});

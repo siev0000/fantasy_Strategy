@@ -599,7 +599,7 @@ export function resolveV39StateInfliction(attacker,target,row,stateKey,options={
   return SKILL_STATE_KEYS.includes(key)?resolveV39HarmfulEffectPower(attacker,target,row,number(base),key,options):0;
 }
 
-export function computeAttackDamage({ attacker, target, skillRow, scale = 1, powerScale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '', onlyDamageType = '', gameSettings, deferRounding = false, landedAttack }) {
+export function computeAttackDamage({ attacker, target, skillRow, scale = 1, powerScale = 1, friendly = false, random = Math.random, isCounter = false, damageType = '', onlyDamageType = '', gameSettings, deferRounding = false, landedAttack, hitChanceBonus=0 }) {
   if (onlyDamageType) damageType = onlyDamageType;
   const damageMultiplier=resolveV39DamageMultiplier(gameSettings);
   if(hasV39CityAuraSources()||attacker?.cityAuraSkillNames?.length||target?.cityAuraSkillNames?.length){
@@ -650,7 +650,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
   const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey])-(spiritAccuracy?0:resolveV39PerceptionDamage(adjusted.attacker)))*weatherAccuracy*(spiritAccuracy?(adjusted.attacker.restraintAppliedMultiplier||1):1)*attackerDiseaseScale;
   const evasion = Math.max(1, number(target?.status?.速度, 1) * (target?.knockedDown ? 0.75 : 1)*targetDiseaseScale);
   const guaranteedHit=hasV39SkillEffect(skillRow,"必中");
-  const hitRate = guaranteedHit ? 1 : Math.max(V39_HIT_RATE_MIN, Math.min(V39_HIT_RATE_MAX, (accuracy / evasion) * 0.75));
+  const hitRate = guaranteedHit ? 1 : Math.max(V39_HIT_RATE_MIN, Math.min(V39_HIT_RATE_MAX, (accuracy / evasion) * 0.75 + hitChanceBonus));
   const hits = [];
   const hitResults = [];
   let barrierRemaining = Math.max(0, number(target?.barrier?.remaining));

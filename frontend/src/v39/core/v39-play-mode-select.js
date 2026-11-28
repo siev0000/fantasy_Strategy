@@ -2,6 +2,7 @@
 import "./v39-cave-test.js";
 import {openV39EnchantmentColorSettings} from "../unit/v39-enchantment-color-settings.js";
 import {openV39AudioSettings} from "../ui/v39-audio-settings.js";
+import {openV39GachaScreen} from "../ui/v39-gacha-screen.js";
 const PLAY_MODE_OPTIONS = Object.freeze({
   "single-normal":{ label:"通常プレイ", description:"テストデータを使わず、新規ゲームとして開始します。" },
   "single-test":{ label:"テストプレイ", description:"通常プレイと同じ流れ・ルールで開始し、テストデータとテスト操作を追加します。" },
@@ -71,6 +72,7 @@ function createModal() {
           <button type="button" data-v39-play-mode="multiplayer"><strong>${PLAY_MODE_OPTIONS.multiplayer.label}</strong><small>${PLAY_MODE_OPTIONS.multiplayer.description}</small></button>
           <button type="button" data-v39-play-mode="single-normal"><strong>${PLAY_MODE_OPTIONS["single-normal"].label}</strong><small>${PLAY_MODE_OPTIONS["single-normal"].description}</small></button>
           <button type="button" data-v39-play-mode="single-test"><strong>${PLAY_MODE_OPTIONS["single-test"].label}</strong><small>${PLAY_MODE_OPTIONS["single-test"].description}</small></button>
+          <button type="button" data-v39-start-gacha><strong>ガチャバトル</strong><small>抽選したユニットを確認します。</small></button>
         </div>
         <input id="v39-start-save-file" type="file" accept="application/json,.json" hidden>
         <output id="v39-start-save-status" class="v39-play-mode-reference-status" role="status"></output>
@@ -160,6 +162,10 @@ function createModal() {
     }
     if (event.target instanceof Element && event.target.closest("[data-v39-start-load]")) {
       saveInput.click();
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest("[data-v39-start-gacha]")) {
+      if (openV39GachaScreen()) closePlayModeSelection();
       return;
     }
     if (event.target instanceof Element && event.target.closest("[data-v39-test-tools]")) {

@@ -173,7 +173,8 @@ export function buildV39UnitEntity({
   settlementId = "",
   equipment = [],
   prerequisiteClassLevels = {},
-  classGrowthStart = null
+  classGrowthStart = null,
+  raceOnly = false
 } = {}) {
   const unit = applyV39DerivedCharacterData({
     id:text(id),
@@ -195,6 +196,7 @@ export function buildV39UnitEntity({
     settlementId:text(settlementId),
     prerequisiteClassLevels:{...prerequisiteClassLevels},
     ...(classGrowthStart ? {classGrowthStart:{...classGrowthStart}} : {}),
+    ...(raceOnly ? {raceOnly:true} : {}),
     equipment:Array.isArray(equipment) ? equipment.map(row => ({ ...row })) : []
   });
   const maxHp = Math.max(1, number(unit.maxHp, number(unit?.status?.HP, 1)));

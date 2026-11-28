@@ -147,14 +147,19 @@ function requestValue(request, key, fallback) {
   return Object.prototype.hasOwnProperty.call(request, key) ? request[key] : fallback;
 }
 
-export async function playV39MapEffect(request = {}) {
-  const targetPlayer = effectPlayer();
+export async function playV39MapEffect(request = {}, context) {
+  const targetPlayer = context ? context.player : effectPlayer();
   if (!targetPlayer) return false;
+  const getScene=context ? context.getScene : activeScene;
+  const sceneAtStart=getScene();
+  const emit=(type,detail)=>{
+    if(!context)window.dispatchEvent(new CustomEvent(type,{detail}));
+  };
   const x = number(request.x ?? request.tileX, Number.NaN);
   const y = number(request.y ?? request.tileY, Number.NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
   const areaTiles=request.areaTiles || [];
-  const tileVisible = tile => window.isV39TileInCurrentVision?.(tile.x,tile.y) !== false;
+  const tileVisible = tile => Boolean(context) || window.isV39TileInCurrentVision?.(tile.x,tile.y) !== false;
   if (request.allowInFog !== true && !(areaTiles.length ? areaTiles.some(tileVisible) : tileVisible({x,y}))) return false;
   const area=areaTiles.length>1 || (request.fitArea && areaTiles.length)
     ? resolveV39EffectAreaGeometry(areaTiles,MAP_ENTITY_SIZE_RULES.defenseField.coverageScale) : null;
@@ -197,7 +202,9 @@ export async function playV39MapEffect(request = {}) {
   const requestedScalePercent = Math.max(10, number(request.scalePercent, V39_EFFECT_BASE_SCALE_PERCENT * (perTile ? 1 : 1 + splash)));
   let power=number(request.power,0);
   if(request.power==null&&request.skillRow){
-    const actor=resolveV39CurrentUnitAbilities(request.attacker||{}, {mapData:window.__v39FieldRuntime?.mapData});
+    const actor=resolveV39CurrentUnitAbilities(request.attacker||{}, context
+      ? {mapData:context.mapData,state:context.state}
+      : {mapData:window.__v39FieldRuntime?.mapData});
     if(!isV39SupportSkill(request.skillRow,actor))power=resolveAttackPower(request.skillRow,actor);
   }
   const powerScale=resolveV39PowerEffectScale(power,request.powerScaleEnabled!==false&&isV39PowerEffectSkillEnabled(request.skillRow?.名前));
@@ -244,7 +251,7 @@ export async function playV39MapEffect(request = {}) {
   const playbackSequence = isolatedSource ? [isolatedSource] : sequence;
   const presentationKey=request.attacker?.id&&request.skillRow
     ? String(request.attacker.id)+'|'+String(request.skillRow.名前||'') : '';
-  if(presentationKey)window.dispatchEvent(new CustomEvent('v39:attack-effect-queued',{detail:{key:presentationKey}}));
+  if(presentationKey)emit('v39:attack-effect-queued',{key:presentationKey});
   let impactTimer;
   let impactDueAt;
   let shakeTimer;
@@ -252,7 +259,7 @@ export async function playV39MapEffect(request = {}) {
   let minimumAttackMotion;
   const magic = isV39CastingMagic(request.skillRow);
   const startPortrait = () => {
-    if (portrait || !request.attacker?.namedUnit || !request.skillRow) return;
+    if (context || portrait || !request.attacker?.namedUnit || !request.skillRow) return;
     const special = resolveV39NamedUnitSpecialPose(request.attacker.namedUnit.name,{row:request.skillRow});
     const weaponAttack = (request.skillRow.装備攻撃 || isV39WeaponAttackMethod(request.skillRow.攻撃手段))
       && !isV39SupportSkill(request.skillRow,request.attacker);
@@ -278,13 +285,13 @@ export async function playV39MapEffect(request = {}) {
   const markImpactLate=()=>{
     if(impactLate)return;
     impactLate=true;
-    if(presentationKey)window.dispatchEvent(new CustomEvent('v39:attack-effect-late',{detail:{key:presentationKey}}));
+    if(presentationKey)emit('v39:attack-effect-late',{key:presentationKey});
     request.onImpactLate?.();
   };
-  const endRender = activeScene()?.game?.v39BeginEffectRender?.();
+  const endRender = getScene()?.game?.v39BeginEffectRender?.();
   try {
     if(request.attackerTile&&magic){
-      const scene=activeScene(),circle=resolveV39FieldEffectDescriptor('magic_cast','魔法陣');
+      const scene=getScene(),circle=resolveV39FieldEffectDescriptor('magic_cast','魔法陣');
       if(scene&&circle){
         const caster=tileCenter(request.attackerTile.x,request.attackerTile.y);
         const castPlayer=new V39AreaEffectPlayer(scene,{totalDurationMs:EFFECT_TOTAL_DURATION_MS,depth:1000001});
@@ -300,7 +307,7 @@ export async function playV39MapEffect(request = {}) {
           .then(()=>markStarted(false),()=>markStarted(false)).finally(()=>castPlayer.destroy());
         await started;
         await new Promise(resolve=>setTimeout(resolve,castDurationMs/2));
-        if(activeScene()!==scene)return false;
+        if(getScene()!==scene)return false;
       }
     }
     let impactStarted=false;
@@ -342,13 +349,13 @@ export async function playV39MapEffect(request = {}) {
           impactStarted=true;
           startPortrait();
           if(presentationKey){
-            window.dispatchEvent(new CustomEvent('v39:attack-effect-started',{detail:{key:presentationKey}}));
+            emit('v39:attack-effect-started',{key:presentationKey});
             const delay=Math.round(impactDurationMs*number(playbackSettings.damageMomentPercent,75)/100);
             impactDueAt=Date.now()+delay;
             impactTimer=setTimeout(markImpactLate,delay);
           }
           if(request.skillRow&&!isV39SupportSkill(request.skillRow,request.attacker)&&power>=500){
-            const camera=activeScene()?.cameras?.main;
+            const camera=getScene()?.cameras?.main;
             if(power>1000)camera?.flash?.(130,0,0,0);
             const shakeStart=Math.max(0,number(playbackSettings.shakeStartPercent,0));
             const shakeEnd=Math.max(shakeStart,number(playbackSettings.shakeEndPercent,15));
@@ -365,17 +372,17 @@ export async function playV39MapEffect(request = {}) {
     const generation=targetPlayer.requestId;
     const played=await playback;
     if(played && combatEffect?.defaultSpeedPercent != null && !impactLate && impactDueAt &&
-      generation===targetPlayer.requestId && activeScene()===playerScene){
+      generation===targetPlayer.requestId && getScene()===sceneAtStart){
       await new Promise(resolve=>setTimeout(resolve,Math.max(0,impactDueAt-Date.now())));
     }
     finishPortrait();
-    const hitTiles=resolveV39HitTargets(request.hitEntries).filter(tile=>request.allowInFog===true || window.isV39TileInCurrentVision?.(tile.x,tile.y)!==false);
-    if(played && generation===targetPlayer.requestId && hitTiles.length && activeScene()===playerScene && playbackSettings.hitEffectMode!=='none'){
+    const hitTiles=resolveV39HitTargets(request.hitEntries).filter(tile=>request.allowInFog===true || tileVisible(tile));
+    if(played && generation===targetPlayer.requestId && hitTiles.length && getScene()===sceneAtStart && playbackSettings.hitEffectMode!=='none'){
       const descriptor=playbackSettings.hitEffectMode==='common'
         ? resolveV39FieldEffectDescriptor('hit','小打撃')
         : sources.has(playbackSettings.hitEffectName)?resolveV39EffectPlaybackDescriptor(playbackSettings.hitEffectName):null;
       if(descriptor){
-        const scene=activeScene(),hitPlayer=new V39AreaEffectPlayer(scene,{totalDurationMs:EFFECT_TOTAL_DURATION_MS,depth:1000001});
+        const scene=getScene(),hitPlayer=new V39AreaEffectPlayer(scene,{totalDurationMs:EFFECT_TOTAL_DURATION_MS,depth:1000001});
         const transform=normalizeV39EffectTransform(descriptor);
         const release=()=>hitPlayer.destroy();scene.events?.once('sleep',release);scene.events?.once('shutdown',release);
         try{await hitPlayer.play({...descriptor,instances:hitTiles.map(tile=>resolveV39EffectTransform(descriptor,tileCenter(tile.x,tile.y),attackAngle)),
@@ -391,7 +398,7 @@ export async function playV39MapEffect(request = {}) {
     if(shakeTimer)clearTimeout(shakeTimer);
     if(presentationKey){
       markImpactLate();
-      window.dispatchEvent(new CustomEvent('v39:attack-effect-finished',{detail:{key:presentationKey}}));
+      emit('v39:attack-effect-finished',{key:presentationKey});
     }
     endRender?.();
   }

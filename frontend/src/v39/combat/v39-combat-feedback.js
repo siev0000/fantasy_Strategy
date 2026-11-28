@@ -116,7 +116,7 @@ function playFeedbackTween(scene, config, cleanup, waitUntil, tailMs = 0) {
   }
 }
 
-function showOutcomePopup(scene, center, message, waitUntil) {
+export function showOutcomePopup(scene, center, message, waitUntil) {
   const label = addV39FieldSymbol(scene,null,message==='Miss'?'miss':'blocked',center.x,center.y-24,22,
     {color:0xbde8ff,name:'v39-combat-outcome-icon',label:message}).setDepth(POPUP_DEPTH);
   playFeedbackTween(scene, { targets:label, y:center.y-42, alpha:{ from:1, to:0 }, duration:1400 },
@@ -154,9 +154,9 @@ function showNamedUnitReaction(entry, {dodged = false, guarded = false, damage =
   if (pose) window.setTimeout(() => pose.finish(), dodged || guarded ? 1000 : 260);
 }
 
-function showDamagePopups(scene, entry, center, waitUntil) {
+function showDamagePopups(scene, entry, center, waitUntil, react=showNamedUnitReaction) {
   if (number(entry?.missCount) > 0 && number(entry?.missCount) >= (Array.isArray(entry?.hits) ? entry.hits.length : 1)) {
-    showNamedUnitReaction(entry,{dodged:true});
+    react(entry,{dodged:true});
     showOutcomePopup(scene, center, "Miss", waitUntil);
     return;
   }
@@ -188,12 +188,12 @@ function showDamagePopups(scene, entry, center, waitUntil) {
       duration:220,
       hold:1250,
       yoyo:true,
-      onStart:() => showNamedUnitReaction(entry,{dodged:entry.hitResults?.[index]?.hit === false,guarded:index === guardedIndex,damage:hit})
+      onStart:() => react(entry,{dodged:entry.hitResults?.[index]?.hit === false,guarded:index === guardedIndex,damage:hit})
     }, () => label.destroy(), waitUntil);
   });
 }
 
-function showDelayedHpBar(scene, entry, center, waitUntil) {
+export function showDelayedHpBar(scene, entry, center, waitUntil) {
   if (number(entry?.total) <= 0) return;
   const maxHp = Math.max(1, number(entry?.maxHp, 1));
   const beforeRate = Math.max(0, Math.min(1, number(entry?.beforeHp) / maxHp));
@@ -229,8 +229,12 @@ function showEntryDamage(entry,waitUntil){
   if(!scene||!Number.isFinite(Number(entry?.x))||!Number.isFinite(Number(entry?.y)))return;
   const center=tileCenter(entry.x,entry.y);
   flashMarker(entry.targetId);
+  showV39CombatEntryPopups(scene,entry,center,waitUntil);
+}
+
+export function showV39CombatEntryPopups(scene,entry,center,waitUntil,react){
   if(entry.popupType)showTypedPopup(scene,entry,center,waitUntil);
-  else showDamagePopups(scene,entry,center,waitUntil);
+  else showDamagePopups(scene,entry,center,waitUntil,react);
   for(const popup of entry.statusPopups||[])showTypedPopup(scene,{...popup,targetId:entry.targetId},center,waitUntil);
 }
 

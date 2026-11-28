@@ -87,9 +87,12 @@ export function renderV39UnitAchievements(unit){
     <details class="v39-char-note"><summary>集計ルール</summary><p>攻撃は範囲・連撃も1行動で1回。反撃も含みます。暗殺は系統「暗殺」の使用時に1回（撃破不要）。クリティカルは敵への物理攻撃で成立したヒット数です。治療は他者の実HP回復を対象ごとに記録。自己・自然回復は除外。状態異常解除の統合は未接続です。調査は完了したマス数、移動は実際に歩いた距離（転移・強制移動を除外）。強敵は自分以上のLvです。仲間を守る回数は、効果「守護」を自分以外の味方に使った対象数です。</p><p>破壊内訳：地形 ${number(values.terrain)} / 壁・結界 ${number(values.walls)} / 施設 未接続。土地/壁は壊れた時だけ記録します。</p><p>状態異常・施設破壊、クラス取得条件への使用は未接続です。</p></details>`;
 }
 
-export function renderV39UnitConditions(unit,{interactive=false}={}){
+export function renderV39UnitConditions(unit,{interactive=false,state:providedState}={}){
+  const state=providedState===undefined
+    ? globalThis.window?.getV39GameState?.({includeWorlds:false})
+    : providedState;
   const buffs=[],debuffs=[],bleed=describeV39Bleeding(unit);
-  const state=globalThis.window?.getV39GameState?.({includeWorlds:false}),turn=Number(state?.timeline?.turnNumber)||1;
+  const turn=Number(state?.timeline?.turnNumber)||1;
   const remaining=expires=>expires?'残り'+Math.max(0,Number(expires)-turn)+'T':'期限なし';
   const active=expires=>!expires||Number(expires)>turn;
   const durationLabel=(effect)=>{
@@ -194,8 +197,8 @@ export function renderV39UnitConditions(unit,{interactive=false}={}){
   return section('強化・保護',buffs)+section('状態異常・弱体',debuffs);
 }
 
-export function renderV39UnitAbility(unit, { mapData, fieldIds = false, statusOnly = false, interactive = false } = {}) {
-  const {current:adjusted,baseline,deltas}=resolveV39UnitAbilityDisplay(unit,{mapData});
+export function renderV39UnitAbility(unit, { mapData, state, fieldIds = false, statusOnly = false, interactive = false } = {}) {
+  const {current:adjusted,baseline,deltas}=resolveV39UnitAbilityDisplay(unit,{mapData,state});
   const baselineWeather=resolveV39UnitWeatherMovement(baseline,mapData);
   const weatherMovement=resolveV39UnitWeatherMovement(adjusted,mapData);
   const id = value => fieldIds ? ` id="${value}"` : "";
@@ -241,7 +244,7 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false, statusOn
   return status
     + renderV39DetailSection("技能", `<div class="proficiency-grid"${id("detailProficiencyList")}>${skills || empty("技能データなし")}</div>`)
     + renderV39DetailSection("軽減・耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("軽減・耐性データなし")}</div>`)
-    + renderV39UnitConditions(unit,{interactive});
+    + renderV39UnitConditions(unit,{interactive,state});
 }
 
 export function updateV39UnitAbility(host, unit, options) {

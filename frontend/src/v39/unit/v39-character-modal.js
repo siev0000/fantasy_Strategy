@@ -27,6 +27,7 @@ let pinnedResistanceElement = null;
 let expandedSkillName = "";
 let equipmentMessage = "";
 let pendingRender = 0;
+let rosterView = null;
 const renderedMarkup = new WeakMap();
 
 function updateMarkup(host, markup) {
@@ -128,12 +129,13 @@ function rowsForTab(current) {
 
 function statusPanel(unit) {
   const stored=storageOf(unit);
-  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAbility(unit, {mapData:stored?null:window.__v39FieldRuntime?.mapData,interactive:!stored})}</div>`;
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAbility(unit, {mapData:stored||rosterView?null:window.__v39FieldRuntime?.mapData,state:rosterView?null:undefined,interactive:!stored&&!rosterView})}</div>`;
 }
 function skillsPanel(unit) {
-  return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><div class="technique-list v39-char-technique-list">${renderV39UnitSkills(unit, {mapData:storageOf(unit)?null:window.__v39FieldRuntime?.mapData, expandedName:expandedSkillName})}</div></div>`;
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><div class="technique-list v39-char-technique-list">${renderV39UnitSkills(unit, {mapData:storageOf(unit)||rosterView?null:window.__v39FieldRuntime?.mapData,state:rosterView?null:undefined,expandedName:rosterView?.skillName??expandedSkillName})}</div></div>`;
 }
 function equipmentPanel(unit) {
+  if(rosterView)return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitEquipment(unit)}</div>`;
   if(storageOf(unit))return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><p class="v39-char-note">保管中は閲覧のみです。変更する場合は施設から取り出してください。</p>${renderV39UnitEquipment(unit)}</div>`;
   const fixed = isDead(unit) || !EQUIPMENT_SLOT_KEYS.some(slot=>canV39ChangeUnitEquipmentSlot(unit,slot));
   return `<div class="squad-detail-tab-panel v39-char-detail-scroll">
@@ -190,14 +192,17 @@ function growthPanel(unit) {
 }
 
 function detailTabs(unit) {
-  const tabs = [["status", "能力"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"],['achievements','実績']];
-  const coordination=activeTab==='corpse'||activeTab==='dead'||storageOf(unit)?'':renderV39SquadCoordination(unit,faction());
+  const tabs = [["status", "能力"], ["skills", "スキル"], ["equipment", "装備"], ["growth", "成長"]];
+  if(!rosterView)tabs.push(['achievements','実績']);
+  const coordination=rosterView||activeTab==='corpse'||activeTab==='dead'||storageOf(unit)?'':renderV39SquadCoordination(unit,faction());
   if(coordination)tabs.splice(1,0,['basic','基本']);
-  const active=tabs.some(([key])=>key===detailTab)?detailTab:'status';
+  const requested=rosterView?.tab??detailTab;
+  const active=tabs.some(([key])=>key===requested)?requested:'status';
   const panel = active === "skills" ? skillsPanel(unit)
     : active === "basic" ? `<div class="v39-char-detail-scroll">${coordination}</div>`
     : active === "equipment" ? equipmentPanel(unit)
-    : active === "growth" ? growthPanel(unit)
+    : active === "growth" ? rosterView
+      ? `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitGrowth(unit)}</div>` : growthPanel(unit)
     : active === "achievements" ? `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAchievements(unit)}</div>`
     : statusPanel(unit);
   return `${renderV39DetailTabs(tabs, active, "data-v39-character-detail-tab")}
@@ -211,10 +216,10 @@ function unitDetail(unit,current=faction()) {
       <div class="squad-detail-minihead v39-char-unit-meta">
         ${renderV39UnitHeading(unit)}
       </div>
-      ${activeTab === "corpse" ? `<p>消滅まで ${remainingTurns}ターン / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
-      ${activeTab === "dead"&&!storageOf(unit) ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
+      ${!rosterView&&activeTab === "corpse" ? `<p>消滅まで ${remainingTurns}ターン / 座標 (${number(unit.x)}, ${number(unit.y)})</p>` : ""}
+      ${!rosterView&&activeTab === "dead"&&!storageOf(unit) ? `<p>回収: ${new Date(number(unit?.reserveEntry?.storedAtMs, Date.now())).toLocaleTimeString("ja-JP")}</p>` : ""}
       ${storageOf(unit)?`<p class="v39-char-storage-location">${escapeHtml(storageLabel(unit))}${isDead(unit)?' / 遺体保管・消滅停止':' / 施設格納中'}</p>`:''}
-      ${!isDead(unit)&&activeTab!=='dead'?renderV39AnimalArmyControls(unit):''}
+      ${!rosterView&&!isDead(unit)&&activeTab!=='dead'?renderV39AnimalArmyControls(unit):''}
     </div>
     ${detailTabs(unit)}
   </div>`;
@@ -234,8 +239,19 @@ function render({preserveDrafts=true} = {}) {
   pendingRender = 0;
   const modal = document.getElementById("characterModal");
   const body = modal?.querySelector(".modal-body");
-  const current = faction();
   if (!(body instanceof HTMLElement)) return false;
+  if(rosterView){
+    const visible=rosterView.units;
+    const selected=visible.find(unit=>unit.id===rosterView.selectedId)||visible[0];
+    const list=visible.map(unit=>renderV39UnitCard(unit,{
+      character:true,portrait:true,snapshot:true,selected:unit===selected,collapseUnselected:false,
+      position:unit.gachaRarity==null?"合体":unit.raceOnly?`★${unit.gachaRarity}`:`★${unit.gachaRarity} ${unit.className}`
+    })).join("");
+    updateMarkup(body,`<div class="v39-char-modal-nav"><p class="v39-char-note">ガチャ結果 ${visible.length}体</p></div>
+      <div class="character-layout"><div class="list-pane">${list}</div>${unitDetail(selected,null)}</div>`);
+    return true;
+  }
+  const current = faction();
   if (!current) {
     updateMarkup(body, '<div class="detail-pane v39-char-empty-panel"><p class="v39-char-empty">ゲーム開始後にキャラクター情報を表示します。</p></div>');
     return false;
@@ -312,6 +328,12 @@ function render({preserveDrafts=true} = {}) {
 function openCharacterModal(options={}) {
   const modal = document.getElementById("characterModal");
   if (!(modal instanceof HTMLElement)) return false;
+  rosterView=Array.isArray(options.roster)
+    ? {units:options.roster,selectedId:options.roster[0]?.id,tab:"status",skillName:""} : null;
+  if(rosterView){
+    const settlement=modal.querySelector("#v39-create-settlement-host");
+    if(settlement)settlement.hidden=true;
+  }
   if(options.tab&&['character','squad','create','corpse','dead'].includes(options.tab))activeTab=options.tab;
   modal.classList.add("open");
   render();
@@ -514,9 +536,12 @@ function install() {
     }
     const skill = element?.closest("[data-v39-character-skill]");
     if (skill) {
-      expandedSkillName = expandedSkillName === skill.dataset.v39CharacterSkill ? "" : skill.dataset.v39CharacterSkill;
+      const selectedSkill=(rosterView?.skillName??expandedSkillName)===skill.dataset.v39CharacterSkill
+        ? "" : skill.dataset.v39CharacterSkill;
+      if(rosterView)rosterView.skillName=selectedSkill;
+      else expandedSkillName=selectedSkill;
       for (const card of skill.parentElement.querySelectorAll("[data-v39-character-skill]")) {
-        const expanded = card.dataset.v39CharacterSkill === expandedSkillName;
+        const expanded = card.dataset.v39CharacterSkill === selectedSkill;
         card.classList.toggle("is-expanded", expanded);
         card.setAttribute("aria-expanded", String(expanded));
       }
@@ -555,12 +580,20 @@ function install() {
     }
     const detail = element?.closest("[data-v39-character-detail-tab]");
     if (detail) {
-      detailTab = text(detail.dataset.v39CharacterDetailTab, "status");
+      const tabName=text(detail.dataset.v39CharacterDetailTab, "status");
+      if(rosterView)rosterView.tab=tabName;
+      else detailTab=tabName;
       render();
       return;
     }
     const row = element?.closest("[data-v39-character-row]");
     if (row) {
+      if(rosterView){
+        rosterView.selectedId=text(row.dataset.v39CharacterRow);
+        rosterView.skillName="";
+        render();
+        return;
+      }
       selectedId = text(row.dataset.v39CharacterRow);
       expandedSkillName = "";
       equipmentMessage = "";

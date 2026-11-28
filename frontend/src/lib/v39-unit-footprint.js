@@ -15,6 +15,7 @@ export function v39MapHexDistance(map,from,to) {
 }
 
 export function v39FootprintForSiz(anchor,siz,map) {
+  if(map?.resolveUnitFootprint)return map.resolveUnitFootprint(anchor,siz);
   const top={x:anchor.x,y:anchor.y};
   if(!(Number(siz)>=V39_SIZ_STATUS_BALANCE.largeUnitMinSiz))return [top];
   const bottom=getHexOffsetNeighbors(top.x,top.y).slice(4,6);
