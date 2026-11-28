@@ -23,7 +23,7 @@ try{
   await window.waitForV39MapRenderSettled();window.refreshV39MapEntities();
   const marker=window.getV39MapEntityMarker(ids[0]);
   scene.cameras.main.setZoom(1.2);scene.cameras.main.centerOn(marker.x,marker.y);
-  return {before,after,expected:{x:u.x,y:u.y},tileEvents,owner:!!marker.getByName('v39-unit-owner-border'),ring:!!marker.getByName('v39-cast-ring'),icon:marker.getByName('v39-cast-icon')?.getData('fieldSymbol'),circleStrokes:marker.list.filter(o=>o.type==='Arc'&&o.isStroked&&o.name!=='v39-cast-badge').length};
+  return {before,after,expected:{x:u.x,y:u.y},tileEvents,owner:!!marker.getData('ownerFrame'),ring:!!marker.getByName('v39-cast-ring'),icon:marker.getByName('v39-cast-icon')?.getData('fieldSymbol'),circleStrokes:marker.list.filter(o=>o.type==='Arc'&&o.isStroked&&o.name!=='v39-cast-badge').length};
  },ids);
  assert.deepEqual(result.before,result.expected);assert.deepEqual(result.after,result.expected);assert.equal(result.tileEvents,0);assert(result.owner);assert(!result.ring);assert.equal(result.circleStrokes,0);
  assert.equal(result.icon,'cast');

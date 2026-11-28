@@ -3,7 +3,7 @@ import {build} from 'esbuild';
 import {readFileSync,readdirSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 process.on('uncaughtException',error=>{console.error(String(error.stack||error.message).replace(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g,'[bundle]').slice(0,1200));process.exit(1);});
-const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-forced-movement.js';export * from './frontend/src/lib/v39-skill-forced-movement.js';export * from './frontend/src/lib/v39-disaster-knockback.js';export * from './frontend/src/lib/hex-grid.js';export {reconcileV39Casting} from './frontend/src/lib/v39-casting-rules.js';export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack,runNeutralVillageDefenseTurn} from './frontend/src/v39/combat/v39-combat.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/combat.js"'},plugins:[{name:'registry',setup(builder){builder.onLoad({filter:/[\\/]combat[\\/]v39-combat\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/\binstall\(\);\s*$/,'export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack,runNeutralVillageDefenseTurn};'),resolveDir:dirname(args.path),loader:'js'}));builder.onLoad({filter:/game-data-registry\.js$/},args=>{
+const bundle=await build({stdin:{contents:`export * from './frontend/src/lib/v39-forced-movement.js';export * from './frontend/src/lib/v39-skill-forced-movement.js';export * from './frontend/src/lib/v39-disaster-knockback.js';export * from './frontend/src/lib/hex-grid.js';export * from './frontend/src/lib/v39-unit-footprint.js';export {resolveV39FootprintStepCost} from './frontend/src/lib/v39-terrain-traversal.js';export {reconcileV39Casting} from './frontend/src/lib/v39-casting-rules.js';export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack,runNeutralVillageDefenseTurn,buildAreaScaleMap} from './frontend/src/v39/combat/v39-combat.js';`,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'node',define:{'import.meta.url':'"file:///test/combat.js"'},plugins:[{name:'registry',setup(builder){builder.onLoad({filter:/[\\/]combat[\\/]v39-combat\.js$/},args=>({contents:readFileSync(args.path,'utf8').replace(/\binstall\(\);\s*$/,'export {performEnemyAttack,performAttack,performNeutralVillageGuardAttack,startAttack,runNeutralVillageDefenseTurn,buildAreaScaleMap};'),resolveDir:dirname(args.path),loader:'js'}));builder.onLoad({filter:/game-data-registry\.js$/},args=>{
   const dir=resolve('data/source/export/json');const modules=Object.fromEntries(readdirSync(dir).filter(n=>n.endsWith('.json')).map(n=>[`../../../data/source/export/json/${n}`,JSON.parse(readFileSync(`${dir}/${n}`,'utf8'))]));
   return {contents:readFileSync(args.path,'utf8').replace(/import\.meta\.glob\([^;]+\);/,`${JSON.stringify(modules)};`),resolveDir:dirname(args.path),loader:'js'};
 });}}]});
@@ -366,4 +366,44 @@ console.log('PASS: casting pays AP once, invalid target retains cast, release co
  assert.equal(cleansed.hp,800);
  assert.equal(live.players[0].factionState.units[0].ap,70);
  console.log('PASS: real cleanse removes only numeric statuses below its power and does not heal HP.');
+}
+
+{
+ const field={w:20,h:20,worldWrapEnabled:false,grid:Array.from({length:20},()=>Array(20).fill('平地')),defenseStructures:[]};
+ window.__v39FieldRuntime.mapData=field;
+ const base=unit('large',8,8),large={...base,status:{...base.status,SIZ:1050}};
+ assert.deepEqual(m.getV39UnitFootprint({...base,status:{SIZ:1049}},field),[{x:8,y:8}]);
+ assert.deepEqual(m.getV39UnitFootprint(large,field),[{x:8,y:8},{x:7,y:9},{x:8,y:9}]);
+ assert.deepEqual(m.getV39UnitFootprint({...large,y:9},field),[{x:8,y:9},{x:8,y:10},{x:9,y:10}]);
+ assert.equal(m.resolveV39FootprintStepCost(field,large,{x:8,y:18},{x:8,y:19}),Infinity);
+ const nearby=unit('edge-target',9,10);
+ const row={名前:'大型試験の打撃',行動:'A',対象:'相手',範囲:'単体',射程:10,効果:'必中',打撃:10,AP消費:10};
+ const setCombat=(attacker,enemies,turn=80)=>{live={...world,timeline:{turnNumber:turn},players:[{id:'p',factionState:{units:[attacker],squads:[],combatRuntime:{}}}],enemies,enemyNests:[],settlements:[],groundLootByTile:{}};};
+ setCombat(large,[nearby]);
+ assert.equal(m.getV39UnitFootprintDistance(large,nearby,field,live),1);
+ assert.equal(m.buildAreaScaleMap(field,large,nearby,row).origin.y,9);
+ assert.equal(m.performAttack(nearby,{playerId:'p',unitId:large.id,skillName:row.名前,skillRow:row}),true);
+ assert.ok(live.enemies[0].hp<nearby.hp);
+ setCombat(nearby,[large]);
+ const bottom={x:8,y:9};
+ const farther=unit('farther',6,8);
+ const blocked=m.buildAreaScaleMap(field,nearby,farther,{...row,射程:80});
+ assert.equal(blocked.ray.reason,'ユニット');
+ assert.ok(m.v39UnitOccupiesTile(large,blocked.impact,field,live));
+ const area=m.buildAreaScaleMap(field,nearby,bottom,{...row,範囲:'円',炸裂:10});
+ assert.equal(m.getV39UnitFootprint(large,field).filter(tile=>area.has(m.v39FootprintKey(tile))).length,3);
+ assert.equal(area.guardAssignments.get(large.id).length,1);
+ setCombat(base,[unit('blocker',8,9)]);
+ const morph={名前:'大型化試験',行動:'A',系統:'竜化',効果:'変身_竜',対象:'自身',変身SIZ:1050,効果時間:'3t',AP消費:10,射程:0};
+ const session={playerId:'p',unitId:base.id,skillName:morph.名前,skillRow:morph};
+ assert.equal(m.performAttack(base,session),false);
+ assert.equal(live.players[0].factionState.units[0].ap,base.ap);
+ setCombat(base,[]);
+ assert.equal(m.performAttack(base,session),true);
+ assert.equal(m.getV39UnitFootprint(live.players[0].factionState.units[0],field,live).length,3);
+ const forcedWorld={...world,enemies:[large,unit('body-blocker',9,9)]};
+ const stopped=m.applyV39ForcedMovement(forcedWorld,field,[{...req,targetIds:[large.id]}],()=>.5);
+ assert.deepEqual(stopped.enemies[0].position,large.position);
+ assert.equal(stopped.damageEntries.length,2);
+ console.log('PASS: SIZ 1050 triangle, edge combat, one area hit, space-checked transformation and body collision.');
 }

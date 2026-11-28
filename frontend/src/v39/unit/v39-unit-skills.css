@@ -29,7 +29,11 @@
         filter:drop-shadow(0 1px 1px rgba(0,0,0,.55))
       }
       .squad-detail-pane .technique-icon-content{
-        position:absolute;inset:0;display:grid;place-items:center;line-height:1
+        display:grid;place-items:center;align-self:stretch;justify-self:stretch;
+        margin:0;padding:0;position:static;line-height:1;text-align:center
+      }
+      .squad-detail-pane .technique-icon-content > span:not(.v39-resource-item-sprite){
+        margin:0;padding:0;line-height:1;font-family:"Segoe UI Symbol","Noto Sans Symbols 2",sans-serif
       }
       .squad-detail-pane .technique-icon-glyph{
         position:absolute!important;inset:0!important;grid-area:auto!important;text-align:center!important;

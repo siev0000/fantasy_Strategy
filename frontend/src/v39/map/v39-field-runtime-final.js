@@ -1,4 +1,6 @@
 import {captureV39PointerTap} from '../../lib/v39-pointer-tap-selection.js';
+import {V39_MAP_FRAME_ALPHA} from '../../lib/map-entity-size-rules.js';
+import {v39UnitOccupiesTile} from '../../lib/v39-unit-footprint.js';
 import Phaser from "phaser";
 import {normalizeV39MapQuality} from '../../lib/v39-map-quality.js';
 import {addV39FieldSymbol} from './v39-field-symbols.js';
@@ -464,15 +466,17 @@ function installInput(scene, data) {
     if (focus) {
       focusV39MapTile(tile);
     }
-    selection.clear().lineStyle(4, 0xffdd72, 1).strokePoints([
+    selection.clear().lineStyle(4, 0xffdd72, V39_MAP_FRAME_ALPHA).strokePoints([
       {x:hp[0],y:hp[1]},{x:hp[2],y:hp[3]},{x:hp[4],y:hp[5]},
       {x:hp[6],y:hp[7]},{x:hp[8],y:hp[9]},{x:hp[10],y:hp[11]}
     ], true);
     scene.v39SelectedTile = selected;
     const landTerrain = document.getElementById("landTerrain"); if (landTerrain) landTerrain.textContent = visibleV39CaveTerrainLabel(window.getV39ActiveFactionState?.(),selectionMap,selected.x,selected.y);
     if(notify&&!window.getV39AttackSession?.()&&!window.getV39UnitMovePreview?.()){
-      const faction=window.getV39ActiveFactionState?.(),worldId=window.getV39GameState?.({includeWorlds:false})?.activeWorldId||'surface';
-      const unit=faction?.units?.find(row=>row.x===tile.x&&row.y===tile.y&&(row.worldId||'surface')===worldId);
+      const faction=window.getV39ActiveFactionState?.(),state=window.getV39GameState?.({includeWorlds:false});
+      const worldId=state?.activeWorldId||'surface';
+      const unit=faction?.units?.find(row=>(row.worldId||'surface')===worldId&&
+        (row.x===tile.x&&row.y===tile.y||Number(row.hp??row.currentHp)>0&&v39UnitOccupiesTile(row,tile,selectionMap,state)));
       if(unit&&unit.id!==faction.selectedUnitId){
         window.updateV39ActiveFactionState?.({selectedUnitId:unit.id},{reason:'map-tile-unit-selected'});
         window.dispatchEvent(new CustomEvent('v39:unit-selected',{detail:{unitId:unit.id,unit}}));
@@ -514,7 +518,7 @@ function installInput(scene, data) {
     for(const tile of tiles){
       const active=selected.has(`${tile.x},${tile.y}`),color=active?0xffdd72:0x72cbd6,points=hexPoints(tile.x,tile.y);
       const polygon=Array.from({length:6},(_,i)=>({x:points[i*2],y:points[i*2+1]}));
-      actionTiles.fillStyle(color,active?0.3:0.12).lineStyle(active?4:2,color,1).fillPoints(polygon,true).strokePoints(polygon,true);
+      actionTiles.fillStyle(color,active?0.3:0.12).lineStyle(active?4:2,color,V39_MAP_FRAME_ALPHA).fillPoints(polygon,true).strokePoints(polygon,true);
     }
   };
   scene.v39Input = { selectTile, selectTileAt:selectAt, zoomAt, showPlacementTiles,showActionTiles };

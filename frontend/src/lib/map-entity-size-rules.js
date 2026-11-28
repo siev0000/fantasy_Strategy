@@ -1,4 +1,7 @@
 import { HEX_TILE_CONFIG } from "./phaser-map-panel-config.js";
+import { V39_SIZ_STATUS_BALANCE } from "./v39-gameplay-balance.js";
+
+export const V39_MAP_FRAME_ALPHA = 0.72;
 
 // マップ上オブジェクトの基本表示ルール。
 // 1. 大きさは固定画面pxではなくタイル寸法を基準にする。
@@ -43,13 +46,17 @@ export const MAP_ENTITY_SIZE_RULES = Object.freeze({
     iconTiles: 0.62
   }),
   unit: Object.freeze({
-    // 1ユニットは1タイル内をほぼいっぱいに使う。
+    // 通常ユニットの基準は1タイル。大型ユニットには独立した拡大倍率を使う。
     // 選択状態でも大きさは変えず、枠線だけで区別する。
     diameterTiles: 1.0,
     imageFill: 0.95, // フィールドとエフェクト設定で共通の画像占有率。
     sizScalePoints:Object.freeze([
       Object.freeze({siz:0,scale:0}),Object.freeze({siz:85,scale:0.5}),
       Object.freeze({siz:170,scale:0.75}),Object.freeze({siz:500,scale:1})
+    ]),
+    largeSizScalePoints:Object.freeze([
+      Object.freeze({siz:V39_SIZ_STATUS_BALANCE.largeUnitMinSiz,scale:1.5}),
+      Object.freeze({siz:1500,scale:1.75})
     ]),
     minimumImageScale:0.1,
     previewSiz:170,
@@ -73,7 +80,9 @@ export function resolveV39SettlementImageScale(definition) {
 export function resolveV39UnitImageScale(unit) {
   const raw=unit?.status?.SIZ??unit?.SIZ;
   if(raw==null||raw===''||!Number.isFinite(Number(raw)))return 1;
-  const points=MAP_ENTITY_SIZE_RULES.unit.sizScalePoints,siz=Math.max(0,Number(raw));
+  const siz=Math.max(0,Number(raw));
+  const largePoints=MAP_ENTITY_SIZE_RULES.unit.largeSizScalePoints;
+  const points=siz>=largePoints[0].siz?largePoints:MAP_ENTITY_SIZE_RULES.unit.sizScalePoints;
   for(let i=1;i<points.length;i++){
     if(siz>points[i].siz)continue;
     const low=points[i-1],high=points[i];

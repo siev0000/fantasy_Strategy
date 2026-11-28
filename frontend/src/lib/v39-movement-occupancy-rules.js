@@ -1,4 +1,5 @@
 import { getV39DiplomacyRelation, hasV39ActiveTreaty, canV39EnterFactionTerritory } from "./v39-diplomacy-rules.js";
+import {getV39UnitFootprint,v39FootprintKey} from './v39-unit-footprint.js';
 
 const key=unit=>`${Math.floor(Number(unit.x))},${Math.floor(Number(unit.y))}`;
 const alive=unit=>unit?.state!=="死亡"&&Number(unit?.hp??unit?.currentHp)>0;
@@ -9,11 +10,14 @@ export function collectV39MovementOccupancy(state, excludedIds=[], mapData=null,
   const add=(unit,friendly,checkWorld=true)=>{
     if(excluded.has(unit.id)||!alive(unit)||(checkWorld&&(unit.worldId||"surface")!==world))return;
     if(!friendly&&isVisible&&!isVisible(unit))return;
-    stopBlocked.add(key(unit));
-    if(!friendly){
-      blocked.add(key(unit));
-      const blockers=blockersByTile.get(key(unit))||[];
-      blockers.push(unit);blockersByTile.set(key(unit),blockers);
+    for(const point of getV39UnitFootprint(unit,mapData,state)){
+      const tile=v39FootprintKey(point);
+      stopBlocked.add(tile);
+      if(!friendly){
+        blocked.add(tile);
+        const blockers=blockersByTile.get(tile)||[];
+        blockers.push(unit);blockersByTile.set(tile,blockers);
+      }
     }
   };
   for(const player of state?.players||[]) {

@@ -7,7 +7,8 @@ import { focusV39MapTile } from '../map/v39-map-focus.js';
 import { resolveV39BaseMoveApCost, resolveV39MovementMultiplier } from "../../lib/v39-gameplay-balance.js";
 import { resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { renderV39UnitCard } from "./v39-unit-card.js";
-import { updateV39UnitAbility } from "./v39-unit-detail.js";
+import { renderV39GeneratedWeaponMove,updateV39UnitAbility } from "./v39-unit-detail.js";
+import { getV39EffectiveEquipment } from "../../lib/v39-generated-weapon.js";
 import {renderV39SquadCoordination,renderV39GolemBoarding} from './v39-squad-coordination-ui.js';
 import {renderV39RubbleActions} from '../world/v39-terrain-destruction.js';
 import {renderV39UnitHeading} from './v39-unit-heading.js';
@@ -159,13 +160,14 @@ function renderEquipment(unit) {
     if (unit?.id && unit.hp > 0) target?.setAttribute("data-v39-equip-hold-unit", unit.id);
     else target?.removeAttribute("data-v39-equip-hold-unit");
   }
-  const equipment = Array.isArray(unit?.equipment) ? unit.equipment.filter(Boolean) : [];
-  if (!equipment.length) {
+  const equipment = getV39EffectiveEquipment(unit).filter(Boolean);
+  const moveControl = unit && !unit.boardingHost ? renderV39GeneratedWeaponMove(unit) : '';
+  if (!equipment.length && !moveControl) {
     updateMarkup(host, '<div class="equipment-empty">装備なし</div>');
     expandedEquipmentKey = "";
     return;
   }
-  updateMarkup(host, equipment.map((item, index) => {
+  updateMarkup(host, moveControl + equipment.map((item, index) => {
     const key = equipmentKey(item, index);
     return renderV39EquipmentDisplayRow(item,{expandKey:key,expanded:key===expandedEquipmentKey,detail:equipmentDetailMarkup(item),changeUnitId:unit.hp > 0 && canV39ChangeUnitEquipmentSlot(unit,item.slot) ? unit.id : undefined});
   }).join(""));
@@ -395,7 +397,7 @@ function renderDetail() {
   }
   const ability = document.getElementById("detailAbilitySections");
   updateV39UnitAbility(ability, unit, {
-    mapData:window.__v39FieldRuntime?.mapData, fieldIds:true
+    mapData:window.__v39FieldRuntime?.mapData, fieldIds:true, interactive:!unit.boardingHost
   });
   renderEquipment(unit);
   updateMarkup(document.getElementById('v39-rubble-actions'),unit.boardingHost?'':renderV39RubbleActions(unit));

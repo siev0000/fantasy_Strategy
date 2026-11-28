@@ -1,5 +1,6 @@
 import {getHexNeighborCoords} from './hex-grid.js';
-import {canUnitEnterV39Tile} from './v39-terrain-traversal.js';
+import {canPlaceV39UnitFootprint} from './v39-terrain-traversal.js';
+import {getV39UnitFootprint,v39FootprintKey} from './v39-unit-footprint.js';
 
 const living=unit=>unit&&unit.state!=='死亡'&&Number(unit.hp??unit.currentHp)>0;
 const worldOf=unit=>unit.worldId||'surface';
@@ -24,16 +25,17 @@ export function advanceV39WorldExits(state,worlds,turn){
     const positions=new Map();
     if(!reason){
       const occupied=new Set([...players.flatMap(row=>row.factionState.units).filter(unit=>living(unit)&&worldOf(unit)===request.destination),
-        ...(destination.spatial?.enemies||[]).filter(living)].map(unit=>`${unit.x},${unit.y}`));
+        ...(destination.spatial?.enemies||[]).filter(living)].flatMap(unit=>getV39UnitFootprint(unit,destination.map,state).map(v39FootprintKey)));
       const queue=[request.anchor],seen=new Set([`${request.anchor.x},${request.anchor.y}`]);
       for(const unit of [...outgoing].sort((a,b)=>Number(b.id===actor.id)-Number(a.id===actor.id))){
         for(let i=0;i<queue.length;i++)for(const next of getHexNeighborCoords(destination.map.w,destination.map.h,queue[i].x,queue[i].y)){
           if(seen.has(next.key)||destination.map.grid?.[next.y]?.[next.x]==='岩壁')continue;
           seen.add(next.key);queue.push(next);
         }
-        const point=queue.find(tile=>!occupied.has(`${tile.x},${tile.y}`)&&canUnitEnterV39Tile(destination.map,tile.x,tile.y,unit));
+        const point=queue.find(tile=>canPlaceV39UnitFootprint(destination.map,unit,tile,state,occupied));
         if(!point){reason='地上の出口が塞がれているため退出を中止';break;}
-        positions.set(unit.id,point);occupied.add(`${point.x},${point.y}`);
+        positions.set(unit.id,point);
+        for(const tile of getV39UnitFootprint(unit,destination.map,state,point))occupied.add(v39FootprintKey(tile));
       }
     }
     players=players.map(row=>row.id!==playerId?row:{...row,factionState:{...row.factionState,units:row.factionState.units.map(unit=>{

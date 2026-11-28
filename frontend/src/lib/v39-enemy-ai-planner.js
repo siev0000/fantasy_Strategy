@@ -4,7 +4,9 @@ import { getHexDistance, getHexNeighborCoords } from "./hex-grid.js";
 import {v39HazardRiskAt} from './v39-hazard-zones.js';
 import { hasV39CaveLineOfSight, isV39UnitInWorld } from "./v39-cave-spatial-rules.js";
 import { isDetectedByScout, resolveDetectionGroupSense, resolveDetectionScoutValue, resolveV39UnitVisionRange } from "./v39-detection-rules.js";
-import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "./v39-terrain-traversal.js";
+import { canUnitEnterV39Tile, resolveV39FootprintStepCost } from "./v39-terrain-traversal.js";
+import {getV39UnitFootprint,getV39UnitFootprintDistance,v39FootprintKey} from "./v39-unit-footprint.js";
+import {resolveV39TransformedUnitSiz} from "./v39-transformation.js";
 import { DEFAULT_MAGIC_CAST_TURNS, parseV39TurnCount, remainingV39Turns, resolveV39DeadlineTurn } from "./v39-turn-timing.js";
 import { mergeV39EnemyExplorationInformation, normalizeV39EnemyExplorerState } from "./v39-enemy-exploration.js";
 import { resolveV39EnemyFleeHpRate, V39_ENEMY_AI_CONFIG } from "./v39-enemy-ai-config.js";
@@ -207,9 +209,8 @@ function selectEnemyTarget(state, enemy, targets, turnNumber, mapData) {
   return candidates.sort((a, b) => distance(enemy, a)-distance(enemy, b))[0] || null;
 }
 
-function enemyMoveStepCost(mapData, enemy, tile) {
-  return resolveV39UnitMovementStepCost(mapData, enemy.x, enemy.y, tile.x, tile.y,
-    {...enemy, status:{...enemy.status, 移動:enemyMovementStat(enemy)}});
+function enemyMoveStepCost(state,mapData,enemy,tile) {
+  return resolveV39FootprintStepCost(mapData,{...enemy,status:{...enemy.status,移動:enemyMovementStat(enemy)}},enemy,tile,state);
 }
 
 function availableEnemyMoves(state, mapData, enemy) {
@@ -219,15 +220,15 @@ function availableEnemyMoves(state, mapData, enemy) {
     ...(state.players || []).flatMap(player => player?.factionState?.units || []).filter(unit=>isAliveEnemyAiUnit(unit)&&isV39UnitInWorld(unit,state.activeWorldId)),
     ...(state.neutralVillages || []).flatMap(village => village?.defenseUnits || []).filter(isAliveEnemyAiUnit),
     ...(state.settlements || [])
-  ].map(row => coordKey(row.x, row.y)));
+  ].flatMap(row=>getV39UnitFootprint(row,mapData,state).map(v39FootprintKey)));
   const cache = planningCaches.get(mapData)?.movement;
   // Remaining AP gates valid steps below, but does not change the terrain's AP cost.
-  const profile = cache && JSON.stringify({ ...enemy, ap:undefined, currentAp:undefined, explorationState:undefined });
+  const profile = cache && JSON.stringify({ ...enemy, ap:undefined, currentAp:undefined, explorationState:undefined,
+    movementSiz:resolveV39TransformedUnitSiz(enemy,state) });
   const steps = () => getHexNeighborCoords(mapData.w, mapData.h, enemy?.x, enemy?.y, mapData?.worldWrapEnabled !== false)
-    .filter(tile => cache || !occupied.has(tile.key))
-    .map(tile => ({ ...tile, cost:enemyMoveStepCost(mapData, enemy, tile), hazardRisk:v39HazardRiskAt(mapData,enemy,tile.x,tile.y) }));
+    .map(tile => ({ ...tile, cost:enemyMoveStepCost(state,mapData,enemy,tile), hazardRisk:v39HazardRiskAt(mapData,enemy,tile.x,tile.y) }));
   const neighbors = cache ? remember(cache, profile, steps, 2048) : steps();
-  return neighbors.filter(tile => (!cache || !occupied.has(tile.key))
+  return neighbors.filter(tile => getV39UnitFootprint(enemy,mapData,state,tile).every(point=>!occupied.has(v39FootprintKey(point)))
     && Number.isFinite(tile.cost) && tile.cost <= number(enemy.ap)&&tile.hazardRisk<number(enemy.hp??enemy.currentHp)*0.5);
 }
 
@@ -471,12 +472,13 @@ function explorerMovePlan(state, mapData, enemy, nest, turnNumber, explorerState
 
 function attackSkillsFor(state, enemy, target, turnNumber, mapData) {
   const cooldowns = state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(enemy.id)] || {};
-  const targetDistance = distance(enemy, target);
+  const targetDistance = getV39UnitFootprintDistance(enemy,target,mapData,state);
   return resolveActionSkillRows(enemy).filter(skillRow => !isV39SupportSkill(skillRow, enemy)
     && !getV39ActionBlock(enemy,turnNumber,'skill',skillRow)
     && resolveAttackApCost(skillRow, enemy) <= number(enemy.ap)
     && resolveAttackRange(skillRow, enemy, mapData) >= targetDistance
-    && hasV39CaveLineOfSight(mapData,enemy,target)
+    && getV39UnitFootprint(enemy,mapData,state).some(from=>getV39UnitFootprint(target,mapData,state)
+      .some(to=>hasV39CaveLineOfSight(mapData,from,to)))
     && remainingV39Turns(cooldowns[text(skillRow?.名前)], turnNumber) <= 0);
 }
 

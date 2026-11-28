@@ -13,7 +13,8 @@ import { groupV39SurfaceCaves, isV39UnitInWorld } from "../../lib/v39-cave-spati
 import { getV39Rubble } from "../../lib/v39-terrain-destruction.js";
 import { isV39CaveEntranceDiscovered } from "../../lib/v39-cave-entrance-rules.js";
 import { getHexNeighborCoords } from "../../lib/hex-grid.js";
-import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
+import {canPlaceV39UnitFootprint,resolveV39FootprintStepCost} from "../../lib/v39-terrain-traversal.js";
+import {getV39UnitFootprint,v39FootprintKey} from "../../lib/v39-unit-footprint.js";
 import { resolveV39MovementLeader, unitCurrentAp } from "../../lib/v39-squad-movement-rules.js";
 import { resolveV39CaveFormation, V39_CAVE_FORMATIONS } from "../../lib/v39-cave-formation-rules.js";
 import { isV39UnitWaiting } from "../../lib/v39-unit-action-rules.js";
@@ -145,7 +146,8 @@ export function enterV39Cave(options={}){
   const leaderId=resolveV39MovementLeader(squad,incoming)?.id;
   if(!leaderId)throw new Error("探索できる生存ユニットがいません。");
   const entryOrder=[leaderId,...(squad?.unitIds||incoming.map(unit=>unit.id)).filter(id=>id!==leaderId&&incoming.some(unit=>unit.id===id))];
-  const occupied=new Set([...world.spatial.enemies,...state.players.flatMap(row=>row.factionState.units).filter(unit=>isV39UnitInWorld(unit,worldId)&&!ids.has(unit.id))].filter(unit=>Number(unit.hp??unit.currentHp)>0).map(unit=>`${unit.x},${unit.y}`));
+  const occupied=new Set([...world.spatial.enemies,...state.players.flatMap(row=>row.factionState.units).filter(unit=>isV39UnitInWorld(unit,worldId)&&!ids.has(unit.id))]
+    .filter(unit=>Number(unit.hp??unit.currentHp)>0).flatMap(unit=>getV39UnitFootprint(unit,world.map,state).map(v39FootprintKey)));
   if(world.map.caveEventNpc)occupied.add(`${world.map.caveEventNpc.x},${world.map.caveEventNpc.y}`);
   const queue=[...path.slice(0,entryOrder.length).reverse()],seen=new Set(queue.map(tile=>`${tile.x},${tile.y}`));
   if(!queue.length){queue.push(entry);seen.add(entry.key);}
@@ -156,10 +158,11 @@ export function enterV39Cave(options={}){
   const positions=new Map();
   for(const id of entryOrder){
     const unit=incoming.find(row=>row.id===id),saved=!options.entrySurface&&unit.locationsByWorld?.[worldId];
-    const position=saved&&!occupied.has(`${saved.x},${saved.y}`)&&canUnitEnterV39Tile(world.map,saved.x,saved.y,unit)?saved:
-      queue.find(tile=>!occupied.has(`${tile.x},${tile.y}`)&&canUnitEnterV39Tile(world.map,tile.x,tile.y,unit));
+    const position=saved&&canPlaceV39UnitFootprint(world.map,unit,saved,state,occupied)?saved:
+      queue.find(tile=>canPlaceV39UnitFootprint(world.map,unit,tile,state,occupied));
     if(!position)throw new Error("入口付近に部隊を配置できる空きマスがありません。");
-    positions.set(id,position);occupied.add(`${position.x},${position.y}`);
+    positions.set(id,position);
+    for(const tile of getV39UnitFootprint(unit,world.map,state,position))occupied.add(v39FootprintKey(tile));
   }
   const players=state.players.map(row=>row.id!==player.id?row:{...row,factionState:{...row.factionState,
     selectedUnitId:incoming.some(unit=>unit.id===selected?.id)?selected.id:leaderId,
@@ -211,16 +214,17 @@ window.recoverV39MissingCaves=(input,activeMap)=>{
       if(seen.has(tile.key)||map.grid[tile.y][tile.x]!=='洞窟')continue;
       seen.add(tile.key);queue.push(tile);
     }
-    const occupied=new Set(world.spatial.enemies.map(u=>`${u.x},${u.y}`));
+    const occupied=new Set(world.spatial.enemies.flatMap(unit=>getV39UnitFootprint(unit,map,input).map(v39FootprintKey)));
     if(map.caveEventNpc)occupied.add(`${map.caveEventNpc.x},${map.caveEventNpc.y}`);
     const moved=[];
     players=players.map(player=>{
       const ids=new Set();
       const units=player.factionState.units.map(unit=>{
         if(!isV39UnitInWorld(unit,id)||Number(unit.hp??unit.currentHp)<=0)return unit;
-        const tile=queue.find(tile=>!occupied.has(`${tile.x},${tile.y}`)&&canUnitEnterV39Tile(map,tile.x,tile.y,unit));
+        const tile=queue.find(tile=>canPlaceV39UnitFootprint(map,unit,tile,input,occupied));
         if(!tile)throw new Error('再生成した洞窟の入口付近にユニットを配置できません。');
-        occupied.add(`${tile.x},${tile.y}`);ids.add(unit.id);
+        for(const point of getV39UnitFootprint(unit,map,input,tile))occupied.add(v39FootprintKey(point));
+        ids.add(unit.id);
         moved.push({playerId:player.id,unitId:unit.id,name:unit.name,from:{x:unit.x,y:unit.y},to:{x:tile.x,y:tile.y}});
         return {...unit,x:tile.x,y:tile.y,pendingWorldExit:null,
           locationsByWorld:{...unit.locationsByWorld,[id]:{x:tile.x,y:tile.y}}};
@@ -320,20 +324,25 @@ export function leaveV39Cave(){
     window.showV39TurnBanner?.(`退出準備中 ⌛${V39_HEGEMONY_EXIT_TURNS}：敵の行動後に地上へ戻ります。`);
     return {pending:true,readyTurn:request.readyTurn};
   }
-  const occupied=new Set([...state.players.flatMap(player=>player.factionState.units).filter(unit=>isV39UnitInWorld(unit,destination)),...worlds[destination].spatial.enemies].filter(unit=>Number(unit.hp??unit.currentHp)>0).map(unit=>`${unit.x},${unit.y}`));
-  const queue=anchor?[anchor]:[],positions=[];
+  const destinationMap=worlds[destination].map;
+  const occupied=new Set([...state.players.flatMap(player=>player.factionState.units).filter(unit=>isV39UnitInWorld(unit,destination)),...worlds[destination].spatial.enemies]
+    .filter(unit=>Number(unit.hp??unit.currentHp)>0).flatMap(unit=>getV39UnitFootprint(unit,destinationMap,state).map(v39FootprintKey)));
+  const queue=anchor?[anchor]:[],exitPositions=new Map();
+  outgoing.sort((a,b)=>Number(b.id===actor.id)-Number(a.id===actor.id));
   const seen=new Set(queue.map(tile=>`${tile.x},${tile.y}`));
-  for(let i=0;i<queue.length&&positions.length<outgoing.length;i++){
+  for(let i=0;i<queue.length&&exitPositions.size<outgoing.length;i++){
     const tile=queue[i];
-    if(!occupied.has(`${tile.x},${tile.y}`)&&outgoing.every(unit=>canUnitEnterV39Tile(worlds[destination].map,tile.x,tile.y,unit)))positions.push(tile);
-    for(const next of getHexNeighborCoords(worlds[destination].map.w,worlds[destination].map.h,tile.x,tile.y)){
-      if(seen.has(next.key)||worlds[destination].map.grid[next.y][next.x]==="岩壁")continue;
+    const unit=outgoing.find(unit=>!exitPositions.has(unit.id)&&canPlaceV39UnitFootprint(destinationMap,unit,tile,state,occupied));
+    if(unit){
+      exitPositions.set(unit.id,tile);
+      for(const point of getV39UnitFootprint(unit,destinationMap,state,tile))occupied.add(v39FootprintKey(point));
+    }
+    for(const next of getHexNeighborCoords(destinationMap.w,destinationMap.h,tile.x,tile.y)){
+      if(seen.has(next.key)||destinationMap.grid[next.y][next.x]==="岩壁")continue;
       seen.add(next.key);queue.push(next);
     }
   }
-  if(anchor&&positions.length<outgoing.length)throw new Error("出口付近に部隊を配置できる空きマスがありません。");
-  outgoing.sort((a,b)=>Number(b.id===actor.id)-Number(a.id===actor.id));
-  const exitPositions=new Map(outgoing.map((unit,index)=>[unit.id,positions[index]]));
+  if(anchor&&exitPositions.size<outgoing.length)throw new Error("出口付近に部隊を配置できる空きマスがありません。");
   const players=state.players.map(player=>player.id!==state.activePlayerId?player:{...player,factionState:{...player.factionState,units:player.factionState.units.map(unit=>{
     if(!outgoing.some(member=>member.id===unit.id))return unit;
     const position=anchor?exitPositions.get(unit.id):unit.locationsByWorld?.[destination];
@@ -384,13 +393,17 @@ window.advanceV39NpcHegemonyTravel=()=>{
       }
       const party=faction.units.filter(unit=>living(unit)&&(unit.worldId||'surface')==='surface'&&unit.squadId===approaching.squadId);
       const occupied=new Set([...world.spatial.enemies,...players.flatMap(p=>p.factionState.units).filter(unit=>unit.worldId===landmark.hegemonyWorldId)]
-        .filter(living).map(unit=>`${unit.x},${unit.y}`));
+        .filter(living).flatMap(unit=>getV39UnitFootprint(unit,world.map,initial).map(v39FootprintKey)));
       const tiles=[];
       for(let y=0;y<world.map.h;y++)for(let x=0;x<world.map.w;x++)if(world.map.grid[y][x]!=='岩壁')tiles.push({x,y});
       tiles.sort((a,b)=>getHexDistance(a,exit)-getHexDistance(b,exit));
       const positions=new Map();
-      for(const unit of party){const tile=tiles.find(tile=>!occupied.has(`${tile.x},${tile.y}`)&&canUnitEnterV39Tile(world.map,tile.x,tile.y,unit));
-        if(!tile)break;positions.set(unit.id,tile);occupied.add(`${tile.x},${tile.y}`);}
+      for(const unit of party){
+        const tile=tiles.find(tile=>canPlaceV39UnitFootprint(world.map,unit,tile,initial,occupied));
+        if(!tile)break;
+        positions.set(unit.id,tile);
+        for(const point of getV39UnitFootprint(unit,world.map,initial,tile))occupied.add(v39FootprintKey(point));
+      }
       if(positions.size!==party.length)continue;
       world.map.parentExit={x:approaching.x,y:approaching.y};
       world.map.hegemonyVisited=true;
@@ -609,8 +622,8 @@ async function applyCavePartyOrder(faction,squad,order,keepHeld=false){
     for(let cursor=0;cursor<queue.length&&!previous.has(key(target));cursor++) {
       const current=queue[cursor];
       for(const next of getHexNeighborCoords(map.w,map.h,current.x,current.y,map.worldWrapEnabled===true)) {
-        if(previous.has(next.key)||blocked.has(next.key)||!canUnitEnterV39Tile(map,next.x,next.y,unit)
-          ||!Number.isFinite(resolveV39UnitMovementStepCost(map,current.x,current.y,next.x,next.y,unit)))continue;
+        if(previous.has(next.key)||!canPlaceV39UnitFootprint(map,unit,next,state,blocked)
+          ||!Number.isFinite(resolveV39FootprintStepCost(map,unit,current,next,state)))continue;
         previous.set(next.key,current);queue.push(next);
       }
     }
@@ -619,11 +632,17 @@ async function applyCavePartyOrder(faction,squad,order,keepHeld=false){
     for(let cursor=target;cursor;cursor=previous.get(key(cursor)))path.unshift({x:cursor.x,y:cursor.y});
     return path;
   });
-  if(routes.some((path,index)=>!path.length||path.some(tile=>!canUnitEnterV39Tile(map,tile.x,tile.y,changed[index].unit)))){
+  const destinations=new Set(blocked);
+  const fits=changed.every(({unit,target})=>{
+    if(!canPlaceV39UnitFootprint(map,unit,target,state,destinations))return false;
+    for(const tile of getV39UnitFootprint(unit,map,state,target))destinations.add(v39FootprintKey(tile));
+    return true;
+  });
+  if(!fits||routes.some((path,index)=>!path.length||path.some(tile=>!canPlaceV39UnitFootprint(map,changed[index].unit,tile,state,blocked)))){
     showV39Feedback("交換先までの通路が塞がれているため隊列を変更できません");return false;
   }
   const costs=routes.map((path,index)=>path.slice(1).reduce((total,tile,step)=>total+
-    resolveV39UnitMovementStepCost(map,path[step].x,path[step].y,tile.x,tile.y,changed[index].unit),0));
+    resolveV39FootprintStepCost(map,changed[index].unit,path[step],tile,state),0));
   const insufficient=changed.findIndex(({unit},index)=>unitCurrentAp(unit)<costs[index]);
   if(insufficient>=0){showV39Feedback(`${changed[insufficient].unit.name}のAPが不足しています（隊列変更 ${costs[insufficient]}）`);return false;}
   window.cancelV39SelectedUnitMove?.();window.cancelV39SelectedUnitAttack?.("party-order-changed");

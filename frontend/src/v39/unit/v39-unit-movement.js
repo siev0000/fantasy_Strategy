@@ -7,6 +7,7 @@ import { canUnitEnterV39Tile, resolveV39UnitMovementStepCost } from "../../lib/v
 import { advanceV39CaveFormation, applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { V39_MOVEMENT_PRESENTATION_BALANCE } from "../../lib/v39-gameplay-balance.js";
 import { collectV39MovementOccupancy } from "../../lib/v39-movement-occupancy-rules.js";
+import {getV39UnitFootprint,isV39FootprintOnMap,v39FootprintKey} from "../../lib/v39-unit-footprint.js";
 import { isV39UnitInWorld } from "../../lib/v39-cave-spatial-rules.js";
 import { V39_TURN_PHASE } from "../../lib/v39-turn-timing.js";
 
@@ -160,18 +161,34 @@ function movementStepCostForGroup(data, formation, nextFormation, group, occupie
   let cost = 0, previous=formation;
   for(const frame of nextFormation.transitionFrames||[nextFormation]) {
     let frameCost=0;
+    const destinations=new Set();
     for (let index = 0; index < previous.length; index += 1) {
       const current = previous[index];
       const next = frame[index];
       const member = membersById.get(current.id);
-      if (!member || occupied.has(coordKey(next.x, next.y))) return Number.POSITIVE_INFINITY;
-      const memberCost = movementStepCost(data, current.x, current.y, next.x, next.y, member, state);
-      if (!Number.isFinite(memberCost)) return Number.POSITIVE_INFINITY;
-      frameCost = Math.max(frameCost, memberCost);
+      if (!member) return Number.POSITIVE_INFINITY;
+      const from=getV39UnitFootprint(member,data,state,current);
+      const to=getV39UnitFootprint(member,data,state,next);
+      if(!isV39FootprintOnMap(to,data))return Infinity;
+      for(const [i,point] of to.entries()){
+        const key=v39FootprintKey(point);
+        if(destinations.has(key)||occupied.has(key)||!isPassableTile(data,point.x,point.y,member))return Infinity;
+        destinations.add(key);
+        const memberCost=movementStepCost(data,from[i].x,from[i].y,point.x,point.y,member,state);
+        if(!Number.isFinite(memberCost))return Infinity;
+        frameCost=Math.max(frameCost,memberCost);
+      }
     }
     cost+=frameCost;previous=frame;
   }
   return cost;
+}
+
+function formationFootprint(formation,group,data,state) {
+  return formation.flatMap(point=>{
+    const member=group.participants.find(unit=>unitId(unit)===point.id);
+    return member?getV39UnitFootprint(member,data,state,point):[point];
+  });
 }
 
 function buildReachablePlan(data, group, apBudget) {
@@ -230,8 +247,22 @@ function buildReachablePlan(data, group, apBudget) {
     }
   }
 
-  for(const [key,formation] of formations)if(formation.every(tile=>!stopBlocked.has(coordKey(tile.x,tile.y))))stops.add(key);
-  return { costs, parents, formations, stops };
+  const clickable=new Map(),startFormation=formations.get(startKey);
+  const currentTiles=new Set(formationFootprint(startFormation,group,data,movementState).map(v39FootprintKey));
+  const leader=group.participants.find(member=>unitId(member)===startFormation[0]?.id);
+  for(const [key,formation] of formations){
+    if(!formationFootprint(formation,group,data,movementState).every(tile=>!stopBlocked.has(v39FootprintKey(tile))))continue;
+    stops.add(key);
+    if(key===startKey)continue;
+    clickable.set(key,key);
+    const leaderPosition=formation.find(point=>point.id===startFormation[0]?.id);
+    if(!leader||!leaderPosition)continue;
+    for(const tile of getV39UnitFootprint(leader,data,movementState,leaderPosition)){
+      const tileKey=v39FootprintKey(tile),existing=clickable.get(tileKey);
+      if(!currentTiles.has(tileKey)&&existing!==tileKey&&(!existing||costs.get(key)<costs.get(existing)))clickable.set(tileKey,key);
+    }
+  }
+  return { costs, parents, formations, stops, clickable };
 }
 
 function pathTo(plan, start, target) {
@@ -263,8 +294,7 @@ function drawReachable(plan, start) {
   if (!ctx) return;
   if (rangeGraphics?.destroy) rangeGraphics.destroy();
   rangeGraphics = ctx.scene.add.graphics().setDepth(RANGE_DEPTH);
-  for (const key of plan.costs.keys()) {
-    if(!plan.stops.has(key))continue;
+  for (const key of (plan.clickable||plan.stops).keys()) {
     if (key === coordKey(start.x, start.y)) continue;
     const [x, y] = key.split(",").map(Number);
     const points = hexPoints(x, y);
@@ -441,6 +471,11 @@ function previewTarget(tile) {
   let y = integer(tile?.y, Number.NaN);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   let key = coordKey(x, y);
+  const assigned=moveSession.plan.clickable?.get(key);
+  if(assigned&&assigned!==key){
+    key=assigned;
+    [x,y]=key.split(',').map(Number);
+  }
   const startKey = coordKey(moveSession.start.x, moveSession.start.y);
 
   if (key === startKey) {
@@ -474,7 +509,7 @@ function previewTarget(tile) {
   moveSession.path = path;
   drawPath(path);
   setMoveConfirm(true, `距離 ${path.length - 1} / 消費AP ${cost} / 残AP ${remaining}`);
-  setBanner(key === coordKey(tile?.x, tile?.y)
+  setBanner(assigned || key === coordKey(tile?.x, tile?.y)
     ? "経路を確認してください"
     : "目的地へ到達できないため、表示位置で停止します");
 }
@@ -488,15 +523,17 @@ export async function playV39UnitMovementPath(scene, formations, data) {
       const marker = window.getV39MapEntityMarker?.(position.id);
       if (!marker?.scene || !scene?.tweens || usedMarkers.has(marker)) return;
       usedMarkers.add(marker);
+      const frame = marker.getData?.("ownerFrame");
       const previous = formations[i - 1].find(row => row.id === position.id);
       const center = tileCenter(position.x, position.y);
       // ワールド端をまたぐ1歩は画面全体を横切らせない。
       if (previous && (Math.abs(position.x - previous.x) > data.w / 2 || Math.abs(position.y - previous.y) > data.h / 2)) {
         marker.setPosition(center.x, center.y);
+        frame?.setPosition(center.x,center.y);
         return;
       }
       return new Promise(resolve => {
-        scene.tweens.add({ targets:marker, x:center.x, y:center.y, duration, ease:"Linear", onComplete:resolve, onStop:resolve });
+        scene.tweens.add({ targets:frame?[marker,frame]:marker, x:center.x, y:center.y, duration, ease:"Linear", onComplete:resolve, onStop:resolve });
         // シーン破棄時にも操作ロックが残らない。
         window.setTimeout(resolve, duration + 100);
       });
@@ -553,18 +590,20 @@ async function applyMovement() {
   }
 
   let path = pathTo(freshPlan, currentStart, session.target);
-  const actualOccupancy=collectV39MovementOccupancy(window.getV39GameState?.({includeWorlds:false}),currentGroup.participantIds,ctx.data);
+  const actualState=window.getV39GameState?.({includeWorlds:false});
+  const actualOccupancy=collectV39MovementOccupancy(actualState,currentGroup.participantIds,ctx.data);
   let lastStop=0,contactUnits=[];
   for(let index=1;index<path.length;index++){
     const formation=freshPlan.formations.get(coordKey(path[index].x,path[index].y))||[];
-    const contactTiles=(formation.transitionFrames||[formation]).flat()
+    const contactTiles=(formation.transitionFrames||[formation]).flatMap(frame=>formationFootprint(frame,currentGroup,ctx.data,actualState))
       .filter(tile=>actualOccupancy.blocked.has(coordKey(tile.x,tile.y)));
     if(contactTiles.length){
       contactUnits=contactTiles.flatMap(tile=>actualOccupancy.blockersByTile.get(coordKey(tile.x,tile.y))||[]);
       path=path.slice(0,lastStop+1);
       break;
     }
-    if(formation.every(tile=>!actualOccupancy.stopBlocked.has(coordKey(tile.x,tile.y))))lastStop=index;
+    if(currentGroup.participants&&formationFootprint(formation,currentGroup,ctx.data,actualState)
+      .every(tile=>!actualOccupancy.stopBlocked.has(v39FootprintKey(tile))))lastStop=index;
   }
   if(contactUnits.length){
     // 接触による発見は操作プレイヤーだけに保持し、攻撃後の隠密低下とは分ける。

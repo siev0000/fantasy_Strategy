@@ -44,12 +44,9 @@ export function replaceV39TransformationEffect(effects,nextEffect){
 export function resolveV39ActiveTransformationEffect(unit,state) {
   if(!unit?.id||!state)return null;
   const turn=Number(state.timeline?.turnNumber)||0;
-  for(const player of state.players||[]){
-    if(!(player.factionState?.units||[]).some(row=>text(row.id)===text(unit.id)))continue;
-    const effects=player.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit.id]||[];
-    return effects.find(effect=>effect.stackGroup==='transformation'&&Number(effect.expiresAtTurn)>turn)||null;
-  }
-  return null;
+  const effects=(state.players||[]).map(player=>player.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit.id])
+    .find(Boolean)||state.enemyCombatRuntime?.activeEffectsByEnemyId?.[unit.id]||[];
+  return effects.find(effect=>effect.stackGroup==='transformation'&&Number(effect.expiresAtTurn)>turn)||null;
 }
 
 export function resolveV39ActiveTransformationAppearance(unit,state){

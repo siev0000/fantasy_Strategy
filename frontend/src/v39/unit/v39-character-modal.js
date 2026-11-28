@@ -7,7 +7,6 @@ import {canV39ChangeUnitEquipmentSlot} from "../../lib/v39-equipment-rules.js";
 import {EQUIPMENT_SLOT_KEYS} from "../../constants/unitCommon.js";
 import { currentV39TurnNumber, remainingV39Turns } from "../../lib/v39-turn-timing.js";
 import { renderV39UnitAbility, renderV39DetailTabs, renderV39UnitEquipment, renderV39UnitGrowth,renderV39UnitAchievements } from "./v39-unit-detail.js";
-import {scaleV39TransformationHp} from '../../lib/v39-transformation.js';
 import { renderV39UnitCard } from "./v39-unit-card.js";
 import {resolveV39ToolSlots,getV39ToolLoadout,getV39ConsumableDefinitions,setV39ToolLoadout} from "../../lib/v39-consumables.js";
 import {getV39ClassPromotionOptions,getV39BaseClassAcquisitionOptions,acquireV39UpperClass} from "../../lib/v39-class-progression.js";
@@ -128,7 +127,8 @@ function rowsForTab(current) {
 }
 
 function statusPanel(unit) {
-  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAbility(unit, {mapData:storageOf(unit)?null:window.__v39FieldRuntime?.mapData})}</div>`;
+  const stored=storageOf(unit);
+  return `<div class="squad-detail-tab-panel v39-char-detail-scroll">${renderV39UnitAbility(unit, {mapData:stored?null:window.__v39FieldRuntime?.mapData,interactive:!stored})}</div>`;
 }
 function skillsPanel(unit) {
   return `<div class="squad-detail-tab-panel v39-char-detail-scroll"><div class="technique-list v39-char-technique-list">${renderV39UnitSkills(unit, {mapData:storageOf(unit)?null:window.__v39FieldRuntime?.mapData, expandedName:expandedSkillName})}</div></div>`;
@@ -361,7 +361,7 @@ function installStyles() {
     #characterModal .modal-body:has(.v39-char-squad-toolbar[hidden]){grid-template-rows:auto minmax(0,1fr)}
     #characterModal .v39-char-detail-scroll{height:100%;overflow:auto;padding:8px}
     #characterModal .v39-char-detail-scroll h4{margin:5px 0 7px}
-    #v39ResistancePopover{position:fixed;z-index:100000;display:none;max-width:min(220px,calc(100vw - 24px));padding:5px 9px;border:1px solid rgba(112,144,153,.9);border-radius:6px;background:#0d171b;color:#eef7f6;box-shadow:0 5px 16px rgba(0,0,0,.36);font-size:var(--font-compact);font-weight:800;line-height:1.2;white-space:nowrap;pointer-events:none;transform:translate(-50%,-100%)}
+    #v39ResistancePopover{position:fixed;z-index:100000;display:none;max-width:min(220px,calc(100vw - 24px));padding:5px 9px;border:1px solid rgba(112,144,153,.9);border-radius:6px;background:#0d171b;color:#eef7f6;box-shadow:0 5px 16px rgba(0,0,0,.36);font-size:var(--font-compact);font-weight:800;line-height:1.2;white-space:pre-line;pointer-events:none;transform:translate(-50%,-100%)}
     #characterModal .v39-char-equipment-list,#characterModal .v39-char-growth-list{display:grid;gap:6px}
     #characterModal .v39-char-equipment-row,#characterModal .v39-char-growth-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #31464d;border-radius:6px;background:#17252a;padding:7px 9px;min-width:0}
     #characterModal .v39-char-equipment-row span,#characterModal .v39-char-growth-row span{color:#a8b8ba}
@@ -407,7 +407,9 @@ function showResistancePopover(element) {
   const popover = resistancePopoverElement();
   const rect = element.getBoundingClientRect();
   const useBottom = rect.top < 52;
-  popover.textContent = label;
+  const current = element.getAttribute("aria-label") || label;
+  const detail = element.dataset.v39ResistanceDetail;
+  popover.textContent = detail ? current + "\n" + detail : current;
   popover.style.left = `${Math.max(12, Math.min(window.innerWidth - 12, rect.left + rect.width / 2))}px`;
   popover.style.top = `${useBottom ? rect.bottom + 7 : rect.top - 7}px`;
   popover.style.transform = useBottom ? "translate(-50%,0)" : "translate(-50%,-100%)";
@@ -457,28 +459,6 @@ function install() {
   });
 
   document.addEventListener("click", (event) => {
-    const sustainCancel=event.target instanceof Element?event.target.closest('#characterModal [data-v39-sustain-cancel]'):null;
-    if(sustainCancel){
-      const state=window.getV39GameState({includeWorlds:false});
-      const unitId=sustainCancel.dataset.v39SustainUnit;
-      const skillName=sustainCancel.dataset.v39SustainCancel;
-      if(unitId!==detailUnitId())return;
-      const players=state.players.map(player=>{
-        if(player.id!==state.activePlayerId)return player;
-        const faction=player.factionState,runtime=faction.combatRuntime||{};
-        const effects=runtime.activeEffectsByUnitId?.[unitId]||[];
-        const removed=effects.find(effect=>effect.sustained&&effect.skillName===skillName);
-        if(!removed)return player;
-        const activeEffectsByUnitId={...runtime.activeEffectsByUnitId};
-        const remaining=effects.filter(effect=>effect!==removed);
-        if(remaining.length)activeEffectsByUnitId[unitId]=remaining;else delete activeEffectsByUnitId[unitId];
-        const units=faction.units.map(unit=>unit.id===unitId&&removed.stackGroup==='transformation'&&removed.baseMaxHp
-          ?scaleV39TransformationHp(unit,removed.baseMaxHp):unit);
-        return {...player,factionState:{...faction,units,combatRuntime:{...runtime,activeEffectsByUnitId}}};
-      });
-      window.setV39GameState({players},{reason:'sustained-effect-cancel'});
-      render();return;
-    }
     const army=event.target.closest?.('#characterModal [data-animal-army-open]');
     if(army){openV39AnimalArmyEditor(army.dataset.animalArmyOpen,openCharacterModal);return;}
     const promotion=event.target instanceof Element?event.target.closest('[data-v39-class-acquire],[data-v39-base-class-acquire]'):null;

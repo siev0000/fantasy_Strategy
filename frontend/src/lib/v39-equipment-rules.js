@@ -1,4 +1,5 @@
 import {resolveV39WeaponPhysicalPower,sumV39WeaponPhysicalPower,V39_WEAPON_PHYSICAL_TYPES} from "./v39-weapon-physical-power.js";
+import {getV39GeneratedWeapon} from "./v39-generated-weapon.js";
 import {readV39ReductionField,normalizeV39ReductionFields} from './v39-reduction-keys.js';
 import { getGameDataRows } from "./game-data-registry.js";
 import { MATERIAL_RESOURCE_KEYS, normalizeV39Village } from "./v39-economy-rules.js";
@@ -332,6 +333,7 @@ export function reserveV39EquipmentCraft(state, playerId, request = {}) {
 
 export function canV39ChangeUnitEquipmentSlot(unit,slot) {
   if(!unit||unit.summon)return false;
+  if(getV39GeneratedWeapon(unit)?.slot === slot)return false;
   if(unit.namedUnit && unit.namedUnit.weaponSlot===slot)return false;
   if(unit.golemBuild){
     if(slot!=='武器1'&&slot!=='武器2')return false;
@@ -351,6 +353,7 @@ export function changeV39UnitEquipment(state, playerId, request = {}) {
   const slot = normalizeV39EquipmentSlot(request.slot);
   if (!slot) return { ok:false, reason:"装備部位が不正です", state };
   if (unit.namedUnit?.weaponSlot === slot) return {ok:false,state,reason:"ネームド化に使った武器は外せません"};
+  if (getV39GeneratedWeapon(unit)?.slot === slot) return {ok:false,state,reason:"魔力の剣を持ち替えるか解除してください"};
   if (!canV39ChangeUnitEquipmentSlot(unit,slot)) return {ok:false,state,reason:unit.golemBuild?"この装備枠は変更できません":"モブは固定装備です。レア度一新を使用してください"};
   const village = selectedVillage(player);
   if (!village?.placed) return { ok:false, reason:"装備変更には拠点配置が必要です", state };

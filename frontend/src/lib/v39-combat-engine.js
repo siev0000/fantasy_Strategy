@@ -1,3 +1,4 @@
+import {getV39EffectiveEquipment,isV39WeaponGeneration,normalizeV39WeaponGenerationSkill} from "./v39-generated-weapon.js";
 import {resolveV39WeaponPhysicalPower} from "./v39-weapon-physical-power.js";
 import {normalizeV39ReductionKey,normalizeV39ReductionFields,readV39UnitResistance} from './v39-reduction-keys.js';
 import {resolveV39PerceptionDamage,V39_ELEMENTAL_CONTROL_RESISTANCES} from './v39-control-status.js';
@@ -52,11 +53,12 @@ const number = (value, fallback = 0) => {
 
 export function resolveActionSkillRows(unit) {
   const rows = (Array.isArray(unit?.techniques) ? unit.techniques : [])
-    .map((technique) => technique?.source || technique)
+    .map((technique) => normalizeV39WeaponGenerationSkill(technique?.source || technique))
     .filter((row) => text(row?.名前) && text(row?.行動).toUpperCase() === "A" && row.条件 !== "ゴーレム作成時"
       && (row.条件 !== "搭乗" || unit?.boardingPilot));
   const names = new Set(rows.map(row => text(row?.名前)));
-  for (const row of getV39UnitTestSkillRows(unit)) {
+  for (const source of getV39UnitTestSkillRows(unit)) {
+    const row = normalizeV39WeaponGenerationSkill(source);
     if (text(row?.行動).toUpperCase() !== "A" || names.has(text(row?.名前))
       || row.条件 === "搭乗" && !unit?.boardingPilot) continue;
     names.add(text(row?.名前));
@@ -89,12 +91,12 @@ const requiredWeaponMethods = new Set(["武器","弓","銃","剣","槍","斧","�
 export const isV39WeaponAttackMethod = value => requiredWeaponMethods.has(text(value));
 
 function equippedWeaponForMethod(unit, method) {
-  return (unit?.equipment || []).find(item => ["武器1","武器2"].includes(text(item?.slot)) && weaponMatchesMethod(item, method));
+  return getV39EffectiveEquipment(unit).find(item => ["武器1","武器2"].includes(text(item?.slot)) && weaponMatchesMethod(item, method));
 }
 
 export function resolveV39EquipmentActionRows(unit, learnedNames = new Set()) {
   const granted = new Map();
-  for (const item of unit?.equipment ?? []) {
+  for (const item of getV39EffectiveEquipment(unit)) {
     for (const name of getV39EquipmentSkillNames(item)) {
       if (learnedNames.has(name)) continue;
       const skill = findGameDataRow("スキル一覧", "名前", name);
@@ -112,7 +114,7 @@ export function hasV39SkillWeapon(unit, row) {
   const method = text(row?.攻撃手段);
   if (row?.獲得元装備) {
     const origin = row.獲得元装備;
-    const equipped = unit?.equipment?.find(item => item.slot === origin.slot && item.name === origin.name
+    const equipped = getV39EffectiveEquipment(unit).find(item => item.slot === origin.slot && item.name === origin.name
       && (!origin.instanceId || item.instanceId === origin.instanceId)
       && getV39EquipmentSkillNames(item).includes(row.名前));
     if (!equipped) return false;
@@ -123,7 +125,7 @@ export function hasV39SkillWeapon(unit, row) {
   }
   if (row?.身体武器 || !requiredWeaponMethods.has(method) || isV39TimedWeaponEnhancement(row)) return true;
   if (row?.装備攻撃 && row.装備元) {
-    return (unit?.equipment || []).some(item => item.slot === row.装備スロット
+    return getV39EffectiveEquipment(unit).some(item => item.slot === row.装備スロット
       && text(item.name ?? item.equipmentName ?? item.source?.装備名) === text(row.装備元.name ?? row.装備元.equipmentName ?? row.装備元.source?.装備名));
   }
   if (equippedWeaponForMethod(unit, method)) return true;
@@ -183,7 +185,7 @@ export function buildWeaponAttackRow(item) {
   const range = toSafeNumber(item?.range, toSafeNumber(source?.射程, null));
   const enchantAttack = item?.enchantAttackFields && typeof item.enchantAttackFields === "object" ? item.enchantAttackFields : {};
   return {
-    名前:name,
+    名前:item?.generated ? `${name}（${item.slot}）` : name,
     行動:"A",
     攻撃手段:equipmentAttackMethod(item),
     対象:"相手",
@@ -217,7 +219,7 @@ export function buildWeaponAttackRow(item) {
 }
 
 export function resolveAttackRows(unit) {
-  const weapons = (Array.isArray(unit?.equipment) ? unit.equipment : [])
+  const weapons = getV39EffectiveEquipment(unit)
     .filter((item) => ["武器1", "武器2"].includes(text(item?.slot)))
     .map(buildWeaponAttackRow);
   const bodyWeapons = resolveV39BodyWeaponAttackRows(unit);
@@ -278,14 +280,14 @@ function equipmentMagicAp(item) {
 }
 
 export function resolveEquipmentMagicApCost(unit) {
-  const items = Array.isArray(unit?.equipment) ? unit.equipment : [];
+  const items = getV39EffectiveEquipment(unit);
   return items.reduce((sum, item) => sum + equipmentMagicAp(item), 0);
 }
 
 export function resolveAttackApCost(skillRow, attacker = null) {
   if (attacker) skillRow=applyV39PassiveCombatSkills(attacker,skillRow).skillRow;
   const skillAp = Math.max(0, Math.floor(number(skillRow?.AP消費, 0)));
-  if (skillRow?.装備攻撃 === true) return skillAp;
+  if (skillRow?.装備攻撃 === true || isV39WeaponGeneration(skillRow)) return skillAp;
   const method = text(skillRow?.攻撃手段);
   if (method === "武器") {
     const weaponAp = Math.max(0, Math.floor(number(primaryWeaponRow(attacker)?.AP消費, 0)));
@@ -361,7 +363,7 @@ export function applyV39ActiveCombatEffects(unit, effects) {
 }
 
 export function isV39SupportSkill(skillRow, attacker) {
-  return isV39TimedWeaponEnhancement(skillRow) || !!resolveV39TransformationSpec(skillRow) || (hasV39SkillEffect(skillRow,"魂回収") && resolveAttackPower(skillRow,attacker)<=0) || hasV39SkillEffect(skillRow,"アンデッド化") || hasV39SkillEffect(skillRow,"遮断") || hasV39SkillEffect(skillRow,"守護") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
+  return isV39WeaponGeneration(skillRow) || isV39TimedWeaponEnhancement(skillRow) || !!resolveV39TransformationSpec(skillRow) || (hasV39SkillEffect(skillRow,"魂回収") && resolveAttackPower(skillRow,attacker)<=0) || hasV39SkillEffect(skillRow,"アンデッド化") || hasV39SkillEffect(skillRow,"遮断") || hasV39SkillEffect(skillRow,"守護") || !!resolveV39DefenseKind(skillRow) || !!resolveV39RevivalSpec(skillRow)
     || resolveSkillHealing(skillRow, attacker) > 0
     || (resolveAttackPower(skillRow, attacker) <= 0
       && (hasV39SkillEffect(skillRow,'浄化') || Object.keys(resolveSkillTimedModifiers(skillRow)).length > 0 || resolveSkillGuard(skillRow, attacker) > 0));
@@ -399,7 +401,7 @@ export function applyV39GuardToDamage(target, damage) {
 }
 
 function primaryWeaponRow(unit) {
-  const items = Array.isArray(unit?.equipment) ? unit.equipment : [];
+  const items = getV39EffectiveEquipment(unit);
   const item = items.find((entry) => text(entry?.slot) === "武器1")
     || items.find((entry) => text(entry?.slot) === "武器2");
   return item ? buildWeaponAttackRow(item) : null;
@@ -480,6 +482,7 @@ function strongestDamageType(skillRow) {
 }
 
 export function resolveAttackPower(skillRow, attacker, options = {}) {
+  if (isV39WeaponGeneration(skillRow)) return 0;
   const adjusted = applyV39PassiveCombatSkills(attacker, skillRow, options);
   const onlyDamageType = options.onlyDamageType;
   const effectiveSkill = Number(adjusted.skillRow.毒)>0&&!options.damageType&&!onlyDamageType?{...adjusted.skillRow,毒:0}:adjusted.skillRow;
@@ -627,7 +630,7 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
   const resistance = forceField?0:Math.max(0, number(readV39UnitResistance(target,resistanceKey)));
   const resistancePenetration = Math.max(0, number(adjusted.attacker?.status?.耐性貫通, 0));
   const {effectiveResistance,resistanceRate,targetLevel,levelReduction,reducedPower}=resolveV39ResistanceReduction(power,number(target?.level,target?.status?.Lv||1),resistance,resistancePenetration,resistanceKey);
-  const attackCount = onlyDamageType ? 1 : landedAttack?.hitResults.length ?? (Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)))
+  const attackCount = onlyDamageType || skillRow.生成武器追撃 === true ? 1 : landedAttack?.hitResults.length ?? (Math.max(1, Math.floor(number(adjusted.skillRow?.攻撃回数, 1)))
     * Math.max(1,Math.floor(number(adjusted.attacker?.combatProfile?.attackCount,1)))
     + Math.max(0,Math.floor(number(adjusted.attacker?.status?.攻撃回数))));
   const magicalAttack = text(adjusted.skillRow?.攻撃手段) === "魔法" || magicalJudge;
@@ -641,9 +644,10 @@ export function computeAttackDamage({ attacker, target, skillRow, scale = 1, pow
     number(weapon?.criticalPower,number(weapon?.source?.Cr威力,100))
     +number(adjusted.attacker?.status?.Cr威力)+number(adjusted.skillRow?.Cr威力)
     -number(target?.status?.Cr威力耐性,number(target?.resistances?.Cr威力耐性)))/100);
-  const accuracyKey = magicalAttack ? "精神" : "命中";
+  const spiritAccuracy = magicalAttack || skillRow.生成武器追撃 === true;
+  const accuracyKey = spiritAccuracy ? "精神" : "命中";
   const weatherAccuracy=ranged?Math.min(getV39DisasterFieldAt(fieldMap,attacker?.x,attacker?.y).rangedAccuracyMultiplier,getV39DisasterFieldAt(fieldMap,target?.x,target?.y).rangedAccuracyMultiplier):1;
-  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey])-(magicalAttack?0:resolveV39PerceptionDamage(adjusted.attacker)))*weatherAccuracy*(magicalAttack?(adjusted.attacker.restraintAppliedMultiplier||1):1)*attackerDiseaseScale;
+  const accuracy = Math.max(0, number(adjusted.attacker?.status?.[accuracyKey])-(spiritAccuracy?0:resolveV39PerceptionDamage(adjusted.attacker)))*weatherAccuracy*(spiritAccuracy?(adjusted.attacker.restraintAppliedMultiplier||1):1)*attackerDiseaseScale;
   const evasion = Math.max(1, number(target?.status?.速度, 1) * (target?.knockedDown ? 0.75 : 1)*targetDiseaseScale);
   const guaranteedHit=hasV39SkillEffect(skillRow,"必中");
   const hitRate = guaranteedHit ? 1 : Math.max(V39_HIT_RATE_MIN, Math.min(V39_HIT_RATE_MAX, (accuracy / evasion) * 0.75));

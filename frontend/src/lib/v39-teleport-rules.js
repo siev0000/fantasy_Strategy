@@ -3,7 +3,8 @@ import {getHexDistance,getHexNeighborCoords} from './hex-grid.js';
 import {getFactionSettlements} from './settlement-state.js';
 import {resolveAttackApCost,resolveAttackRange} from './v39-combat-engine.js';
 import {getV39UnitTestTechniques} from './v39-test-skill-rules.js';
-import {canUnitEnterV39Tile} from './v39-terrain-traversal.js';
+import {canPlaceV39UnitFootprint} from './v39-terrain-traversal.js';
+import {getV39UnitFootprint} from './v39-unit-footprint.js';
 import {isV39UnitWaiting} from './v39-unit-action-rules.js';
 import {resolveV39SkillCooldownTurns,parseV39TurnCount} from './v39-turn-timing.js';
 import {canV39FactionAttack} from './v39-diplomacy-rules.js';
@@ -79,7 +80,7 @@ function placements(state,map,target,units,worldId,requiredTerrain,from,range){
   const ignored=new Set(units.map(u=>u.id));
   const spatial=worldId===(state.activeWorldId||'surface')?state:state.explorationWorlds?.[worldId]?.spatial||{};
   const occupied=new Set([...(state.players||[]).flatMap(p=>p.factionState?.units||[]),...(spatial.enemies||[]).map(u=>({...u,worldId:u.worldId||worldId})),...(spatial.neutralVillages||[]).flatMap(v=>v.defenseUnits||[]).map(u=>({...u,worldId:u.worldId||worldId}))]
-    .filter(u=>alive(u)&&world(u)===worldId&&!ignored.has(u.id)).map(pos));
+    .filter(u=>alive(u)&&world(u)===worldId&&!ignored.has(u.id)).flatMap(u=>getV39UnitFootprint(u,map,state).map(pos)));
   if(map?.caveEventNpc)occupied.add(pos(map.caveEventNpc));
   const tiles=[{x:target.x,y:target.y,key:pos(target)}],seen=new Set([pos(target)]);
   for(let i=0;i<tiles.length;i++){
@@ -87,12 +88,20 @@ function placements(state,map,target,units,worldId,requiredTerrain,from,range){
     for(const t of getHexNeighborCoords(map.w,map.h,tiles[i].x,tiles[i].y,map.worldWrapEnabled===true))if(!seen.has(t.key)){seen.add(t.key);tiles.push(t);}
   }
   const walls=new Set((map.defenseStructures||[]).filter(w=>w.kind==='壁'&&w.hp>0&&!w.edge).flatMap(w=>w.tiles||[]).map(pos));
-  const options=units.map(u=>tiles.filter(t=>!occupied.has(pos(t))&&!walls.has(pos(t))&&distance(map,from,t)<=range&&terrain(map,t)&&(!requiredTerrain||terrain(map,t)===requiredTerrain)&&canUnitEnterV39Tile(map,t.x,t.y,u)));
+  for(const wall of walls)occupied.add(wall);
+  const options=units.map(u=>tiles.filter(t=>distance(map,from,t)<=range&&terrain(map,t)&&
+    (!requiredTerrain||terrain(map,t)===requiredTerrain)&&canPlaceV39UnitFootprint(map,u,t,state,occupied)));
   // Assign scarce terrain-compatible slots first; never stack the arriving party.
   const order=units.map((u,i)=>i).sort((a,b)=>options[a].length-options[b].length),assigned=new Map();
   function assign(n,used){
     if(n===order.length)return true;
-    const i=order[n];for(const t of options[i])if(!used.has(pos(t))){assigned.set(units[i].id,t);if(assign(n+1,new Set([...used,pos(t)])))return true;}
+    const i=order[n];
+    for(const t of options[i]){
+      const keys=getV39UnitFootprint(units[i],map,state,t).map(pos);
+      if(keys.some(key=>used.has(key)))continue;
+      assigned.set(units[i].id,t);
+      if(assign(n+1,new Set([...used,...keys])))return true;
+    }
     return false;
   }
   return assign(0,new Set())?assigned:null;

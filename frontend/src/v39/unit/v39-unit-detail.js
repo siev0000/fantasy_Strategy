@@ -1,10 +1,11 @@
 import {inspectV39Restraint,getV39RestraintPenalty,resolveV39RestraintRecovery} from '../../lib/v39-restraint.js';
 import {V39_NUMERIC_STATUSES,readV39NumericStatus,resolveV39FatigueApLoss} from '../../lib/v39-control-status.js';
-import {getHexDistance} from '../../lib/hex-grid.js';
+import {getV39UnitFootprintDistance} from '../../lib/v39-unit-footprint.js';
 import {resolveAttackRange,applyV39ActiveCombatEffects} from '../../lib/v39-combat-engine.js';
 import {describeV39Bleeding} from '../../lib/v39-bleeding.js';
 import {resolveV39UnitAbilityDisplay} from '../../lib/v39-current-unit-abilities.js';
 import {v39SustainCost} from '../../lib/v39-sustained-effects.js';
+import {getV39EffectiveEquipment,getV39GeneratedWeapon} from '../../lib/v39-generated-weapon.js';
 import { RESISTANCE_FIELDS } from "../../constants/unitCommon.js";
 import { formatResistanceValue, getResistanceIconSrc, resistanceValueTone } from "../../lib/resistance-display.js";
 import "./v39-unit-detail.css";
@@ -16,6 +17,9 @@ import {V39_UNIT_ACHIEVEMENT_FIELDS} from '../../lib/v39-unit-achievements.js';
 import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
 import {describeV39SkillCounters} from '../../lib/v39-skill-counters.js';
 import {normalizeV39SkillCounterHoldTurns} from '../../lib/v39-combat-settings.js';
+import {getGameDataRows} from '../../lib/game-data-registry.js';
+import {getV39TestSkillRows} from '../../lib/v39-test-skill-rules.js';
+import {parseV39TurnCount,remainingV39Turns} from '../../lib/v39-turn-timing.js';
 
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -39,9 +43,18 @@ export function renderV39DetailTabs(tabs, active, attribute) {
   ).join("")}</div>`;
 }
 
+export function renderV39GeneratedWeaponMove(unit) {
+  const weapon=getV39GeneratedWeapon(unit);
+  if (!weapon) return '';
+  const label=weapon.slot ? `生成武器（${weapon.slot}）` : `${weapon.name}（浮遊）`;
+  return `<div class="v39-generated-weapon-equipment"><span>${escapeHtml(label)}</span>
+    <button type="button" data-v39-generated-weapon-move="${escapeHtml(unit.id)}">持ち替え</button></div>`;
+}
+
 export function renderV39UnitEquipment(unit,{readOnly=true,disabled=false}={}){
-  const equipment=Array.isArray(unit?.equipment)?unit.equipment:[];
-  return `<div class="v39-char-equipment-list">${EQUIPMENT_SLOT_KEYS.map(slot=>{
+  const equipment=getV39EffectiveEquipment(unit);
+  const moveControl=!readOnly&&!disabled ? renderV39GeneratedWeaponMove(unit) : '';
+  return `<div class="v39-char-equipment-list">${moveControl}${EQUIPMENT_SLOT_KEYS.map(slot=>{
     const item=equipment.find(row=>row.slot===slot);
     const content=item?renderV39EquipmentDisplayRow(item,{slot,inline:true}):`<span>${escapeHtml(slot)}</span><b>なし</b>`;
     return readOnly?`<div class="v39-char-equipment-row">${content}</div>`
@@ -74,11 +87,22 @@ export function renderV39UnitAchievements(unit){
     <details class="v39-char-note"><summary>集計ルール</summary><p>攻撃は範囲・連撃も1行動で1回。反撃も含みます。暗殺は系統「暗殺」の使用時に1回（撃破不要）。クリティカルは敵への物理攻撃で成立したヒット数です。治療は他者の実HP回復を対象ごとに記録。自己・自然回復は除外。状態異常解除の統合は未接続です。調査は完了したマス数、移動は実際に歩いた距離（転移・強制移動を除外）。強敵は自分以上のLvです。仲間を守る回数は、効果「守護」を自分以外の味方に使った対象数です。</p><p>破壊内訳：地形 ${number(values.terrain)} / 壁・結界 ${number(values.walls)} / 施設 未接続。土地/壁は壊れた時だけ記録します。</p><p>状態異常・施設破壊、クラス取得条件への使用は未接続です。</p></details>`;
 }
 
-export function renderV39UnitConditions(unit){
+export function renderV39UnitConditions(unit,{interactive=false}={}){
   const buffs=[],debuffs=[],bleed=describeV39Bleeding(unit);
   const state=globalThis.window?.getV39GameState?.({includeWorlds:false}),turn=Number(state?.timeline?.turnNumber)||1;
   const remaining=expires=>expires?'残り'+Math.max(0,Number(expires)-turn)+'T':'期限なし';
   const active=expires=>!expires||Number(expires)>turn;
+  const durationLabel=(effect)=>{
+    if(effect.sustained)return '持続';
+    if(!effect.expiresAtTurn)return '';
+    const left=remainingV39Turns(effect.expiresAtTurn,turn);
+    const skill=effect.skillRow||(!effect.durationTurns&&effect.skillName
+      ? getGameDataRows('スキル一覧').find(row=>row.名前===effect.skillName)
+        || (unit?.testOnly?getV39TestSkillRows().find(row=>row.名前===effect.skillName):null)
+      : null);
+    const total=effect.durationTurns||parseV39TurnCount(skill?.効果時間)||(effect.stackGroup==='oneTurn'?1:0);
+    return total>=left&&total>0?`${left}/${total}`:remaining(effect.expiresAtTurn);
+  };
   const counterHoldTurns=normalizeV39SkillCounterHoldTurns(state?.gameSettings?.skillCounterHoldTurns ?? globalThis.window?.getV39GameSettings?.()?.skillCounterHoldTurns);
   for(const {name,count,remainingTurns} of describeV39SkillCounters(unit,counterHoldTurns)){
     if(Number(count)>0)buffs.push([`${name}カウンター`,`${count} / ${remainingTurns===null?'期限なし':`残り${remainingTurns}T`}`]);
@@ -110,51 +134,74 @@ export function renderV39UnitConditions(unit){
   if(hold.value)debuffs.push(['拘束',hold.value+' / '+hold.cap+'（段階'+hold.stage+'） / 自然抵抗 '+resolveV39RestraintRecovery(resolveV39UnitAbilityDisplay(unit,{state}).current.status)+'/T']);
   if(holdPenalty)debuffs.push(['命中・回避','-'+Math.round(holdPenalty*100)+'%'+(unit.restraint?.grapplerId?' / 組み付かれ中':'' )]);
   if(bleed)debuffs.push(['出血',bleed.value+' / 次回の内訳 '+Number(bleed.damage.toFixed(4))+' / 残り'+bleed.remainingTurns+'T']);
-  if(Number(unit?.guard)>0&&active(unit.guardExpiresAtTurn))buffs.push(['ガード',unit.guard+' / '+remaining(unit.guardExpiresAtTurn)]);
+  if(Number(unit?.guard)>0&&active(unit.guardExpiresAtTurn))buffs.push(['ガード',String(unit.guard),null,null,null,
+    durationLabel({expiresAtTurn:unit.guardExpiresAtTurn,durationTurns:1})]);
   for(const [key,label]of [['shield','盾'],['barrier','障壁']]){
     const effect=unit?.[key];
-    if(effect&&(key==='shield'||Number(effect.remaining)>0)&&active(effect.expiresAtTurn))buffs.push([effect.skillName||label,label+' '+effect.remaining+'/'+(effect.maximum??effect.remaining)+' / '+remaining(effect.expiresAtTurn)]);
+    if(effect&&(key==='shield'||Number(effect.remaining)>0)&&active(effect.expiresAtTurn))buffs.push([effect.skillName||label,
+      label+' '+effect.remaining+'/'+(effect.maximum??effect.remaining),null,null,null,durationLabel(effect)]);
   }
   if(unit?.guardedBy&&active(unit.guardedBy.expiresAtTurn)){
     const link=unit.guardedBy;
     const guardian=[...(state?.players||[]).flatMap(p=>p.factionState?.units||[]),...(state?.enemies||[]),...(state?.neutralVillages||[]).flatMap(v=>v.defenseUnits||[])].find(row=>row.id===link.guardianId);
+    const map=globalThis.window?.__v39FieldRuntime?.mapData;
     const valid=guardian&&Number(guardian.hp??guardian.currentHp)>0&&(guardian.worldId||'surface')===(unit.worldId||'surface')
-      &&getHexDistance(unit,guardian)<=resolveAttackRange({射程:link.range},guardian,globalThis.window?.__v39FieldRuntime?.mapData);
-    buffs.push(['守護',(guardian?.name||link.guardianId)+' / '+(valid?'有効':'無効（射程外・守護者不在）')+' / '+remaining(link.expiresAtTurn)]);
+      &&getV39UnitFootprintDistance(unit,guardian,map,state)<=resolveAttackRange({射程:link.range},guardian,map);
+    buffs.push(['守護',(guardian?.name||link.guardianId)+' / '+(valid?'有効':'無効（射程外・守護者不在）'),null,null,null,durationLabel(link)]);
   }
   const player=state?.players?.find(p=>p.factionState?.units?.some(row=>row.id===unit?.id));
-  const effects=(player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[unit?.id]||[]).filter(effect=>active(effect.expiresAtTurn));
+  const rawEffects=player?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||state?.enemyCombatRuntime?.activeEffectsByEnemyId?.[unit?.id]||[];
+  const effects=rawEffects.filter(effect=>active(effect.expiresAtTurn));
+  const canCancel=interactive&&player?.id===state?.activePlayerId&&!!player&&state?.timeline?.phase==='player'&&Number(unit?.hp??unit?.currentHp)>0;
+  const weapon=getV39GeneratedWeapon(unit);
+  if(weapon)buffs.push([weapon.name,`生成武器 / ${weapon.slot||'浮遊'}`,
+    canCancel?'weapon':null,{AP消費:weapon.activationAp},weapon.name,'持続']);
   const maximum=applyV39ActiveCombatEffects({status:{},skillLevels:{},resistances:{}},effects.filter(effect=>!['oneTurn','transformation'].includes(effect.stackGroup)));
   const maxima={...maximum.status,...maximum.skillLevels,...maximum.resistances};
   for(const effect of effects){
     const stacked=['oneTurn','transformation'].includes(effect.stackGroup),positive=[],negative=[];
-    const durationLabel=effect.sustained?'持続':remaining(effect.expiresAtTurn);
+    const duration=durationLabel(effect);
     if(effect.skillRow?.攻撃手段==='武器'&&Number(effect.skillRow?.物理)>0){
       const amount=Number(effect.skillRow.物理)*(1+(Number(effect.judgeValue)||0)/100);
-      buffs.push([effect.skillName||'武器強化','武器攻撃時 物理+'+(Math.round(amount*10)/10)+' / '+durationLabel]);
+      positive.push({label:'武器攻撃時 物理+'+(Math.round(amount*10)/10),applied:true});
     }
     for(const [name,value]of Object.entries(effect.modifiers||{})){
       if(!Number(value))continue;
       const applied=stacked||Number(value)===Number(maxima[name]);
-      const text=name+(Number(value)>0?'+':'')+value+'（'+(applied?'適用中':'待機中')+'）';
-      (Number(value)>0?positive:negative).push(text);
+      const label=name+(Number(value)>0?'+':'')+value;
+      (Number(value)>0?positive:negative).push({label,applied});
     }
-    const suffix=' / '+durationLabel+(stacked?' / '+(effect.stackGroup==='oneTurn'?'1ターン強化':'変身・別枠'):'');
-    if(positive.length)buffs.push([effect.skillName||'継続強化',positive.join(' / ')+suffix]);
-    if(negative.length)debuffs.push([effect.skillName||'継続弱体',negative.join(' / ')+suffix]);
+    if(positive.length||effect.sustained){
+      const owned=canCancel&&player.factionState.units.some(row=>row.id===(effect.sustainOwnerId||unit.id));
+      buffs.push([effect.skillName||'継続強化',positive,effect.sustained&&owned?rawEffects.indexOf(effect):null,effect.skillRow,effect.skillName,duration]);
+    }
+    if(negative.length)debuffs.push([effect.skillName||'継続弱体',negative,null,null,null,duration]);
   }
-  const section=(title,rows)=>renderV39DetailSection(title,rows.length?rows.map(([name,value])=>'<div class="v39-char-growth-row v39-status-effect-row"><span>'+escapeHtml(name)+'</span><b>'+escapeHtml(value)+'</b></div>').join(''):'<div class="squad-empty">なし</div>');
+  const section=(title,rows)=>renderV39DetailSection(title,rows.length?rows.map(([name,value,key,skill,skillName,duration])=>{
+    const values=Array.isArray(value)?value.map(({label,applied})=>
+      `<span class="v39-effect-value ${applied?'is-applied':'is-waiting'}" aria-label="${escapeHtml(label)} ${applied?'適用中':'待機中'}">${escapeHtml(label)}</span>`).join(''):escapeHtml(value);
+    const content=`<small class="v39-status-effect-duration"${duration?'':' aria-hidden="true"'}>${escapeHtml(duration)}</small>
+      <span class="v39-status-effect-body"><strong>${escapeHtml(name)}</strong>${values?`<span class="v39-status-effect-values">${values}</span>`:''}</span>`;
+    const rowClass='v39-status-effect-row';
+    if(key==null)return `<div class="${rowClass}">${content}</div>`;
+    const {ap,hp}=v39SustainCost(skill);
+    return `<details class="v39-sustained-effect" data-v39-detail-section="sustain-${escapeHtml(key)}-${escapeHtml(skillName)}">
+      <summary class="${rowClass}">${content}</summary>
+      <div>維持 AP ${ap}/T${hp?` / HP ${hp}/T`:''}
+        <button type="button" data-v39-sustain-key="${escapeHtml(key)}" data-v39-sustain-unit="${escapeHtml(unit.id)}" data-v39-sustain-cancel="${escapeHtml(skillName)}">解除</button>
+      </div></details>`;
+  }).join(''):'<div class="squad-empty">なし</div>');
   return section('強化・保護',buffs)+section('状態異常・弱体',debuffs);
 }
 
-export function renderV39UnitAbility(unit, { mapData, fieldIds = false, statusOnly = false } = {}) {
+export function renderV39UnitAbility(unit, { mapData, fieldIds = false, statusOnly = false, interactive = false } = {}) {
   const {current:adjusted,baseline,deltas}=resolveV39UnitAbilityDisplay(unit,{mapData});
   const baselineWeather=resolveV39UnitWeatherMovement(baseline,mapData);
   const weatherMovement=resolveV39UnitWeatherMovement(adjusted,mapData);
   const id = value => fieldIds ? ` id="${value}"` : "";
   const valueHtml=(value,delta=0,fieldId='')=>{
     const amount=Math.round(Number(delta||0)*10)/10;
-    const annotation=amount?'('+ (amount>0?'+':'')+amount+')':'';
+    const annotation=amount?(amount>0?'+':'')+amount:'';
     return '<span class="v39-ability-value"><b'+(fieldId?id(fieldId):'')+'>'+escapeHtml(value)+'</b>'+(annotation?'<small class="v39-ability-delta '+(amount>0?'is-up':'is-down')+'" aria-label="一時補正 '+escapeHtml(annotation)+'">'+escapeHtml(annotation)+'</small>':'')+'</span>';
   };
   const stats = STATUS_FIELDS.map(([label, key, fieldId]) => {
@@ -183,33 +230,29 @@ export function renderV39UnitAbility(unit, { mapData, fieldIds = false, statusOn
     const value = Number(adjusted?.resistances?.[key]);
     if (!Number.isFinite(value) || value === 0) return [];
     const icon = getResistanceIconSrc(key);
-    return [`<button type="button" class="v39-resistance-indicator ${resistanceValueTone(value)}" data-v39-resistance-label="${escapeHtml(key)}" aria-label="${escapeHtml(key)} ${escapeHtml(formatResistanceValue(value))}">
+    const current = formatResistanceValue(value);
+    const delta = Number(deltas.resistances?.[key]) || 0;
+    const detail = delta ? `基礎 ${formatResistanceValue(baseline.resistances?.[key] ?? 0)} / 一時補正 ${formatResistanceValue(delta)}` : '';
+    return [`<button type="button" class="v39-resistance-indicator ${resistanceValueTone(value)}" data-v39-resistance-label="${escapeHtml(key)}"${detail?` data-v39-resistance-detail="${escapeHtml(detail)}"`:''} aria-label="${escapeHtml(key)} ${escapeHtml(current)}">
       ${icon ? `<img src="${escapeHtml(icon)}" alt="" aria-hidden="true" class="v39-resistance-icon">` : '<span class="v39-resistance-icon-fallback" aria-hidden="true">?</span>'}
-      ${valueHtml(formatResistanceValue(value),deltas.resistances?.[key])}</button>`];
+      <span class="v39-resistance-name">${escapeHtml(key)}</span><b>${escapeHtml(current)}</b></button>`];
   }).join("");
   const empty = message => `<div class="squad-empty">${message}</div>`;
-  const state=globalThis.window?.getV39GameState?.({includeWorlds:false});
-  const owner=state?.players?.find(player=>player.factionState?.units?.some(row=>row.id===unit?.id));
-  const sustained=(owner?.factionState?.combatRuntime?.activeEffectsByUnitId?.[unit?.id]||[]).filter(effect=>effect.sustained);
-  const ongoing=sustained.length?renderV39DetailSection('持続中',sustained.map(effect=>{
-    const cost=v39SustainCost(effect.skillRow);
-    return `<div class="v39-char-growth-row"><span>${escapeHtml(effect.skillName)}</span><b>毎ターン AP${cost.ap} / HP${cost.hp}</b><button type="button" data-v39-sustain-cancel="${escapeHtml(effect.skillName)}" data-v39-sustain-unit="${escapeHtml(unit.id)}">解除</button></div>`;
-  }).join('')):'';
-  return ongoing+status
+  return status
     + renderV39DetailSection("技能", `<div class="proficiency-grid"${id("detailProficiencyList")}>${skills || empty("技能データなし")}</div>`)
     + renderV39DetailSection("軽減・耐性", `<div class="v39-resistance-grid"${id("detailResistanceList")}>${resistances || empty("軽減・耐性データなし")}</div>`)
-    + renderV39UnitConditions(unit);
+    + renderV39UnitConditions(unit,{interactive});
 }
 
 export function updateV39UnitAbility(host, unit, options) {
   if (!host) return;
   const markup = renderV39UnitAbility(unit, options);
   if (host.__v39AbilityMarkup === markup) return;
-  const closed = new Set(Array.from(host.querySelectorAll("details:not([open])"),
-    section => section.dataset.v39DetailSection));
+  const openStates = new Map(Array.from(host.querySelectorAll("details[data-v39-detail-section]"),
+    section => [section.dataset.v39DetailSection,section.open]));
   host.innerHTML = markup;
   host.__v39AbilityMarkup = markup;
   for (const section of host.querySelectorAll("details")) {
-    if (closed.has(section.dataset.v39DetailSection)) section.open = false;
+    if (openStates.has(section.dataset.v39DetailSection)) section.open = openStates.get(section.dataset.v39DetailSection);
   }
 }

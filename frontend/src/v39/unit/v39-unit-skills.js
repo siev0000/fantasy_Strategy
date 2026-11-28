@@ -3,6 +3,7 @@ import {resolveV39CurrentUnitAbilities} from '../../lib/v39-current-unit-abiliti
 import {getV39UnitCast,describeV39Cast} from '../../lib/v39-casting-rules.js';
 import { getIconSrcByName } from "../../lib/icon-library.js";
 import { hasV39SkillWeapon, resolveAttackApCost, resolveAttackPower, resolveAttackRawRange, resolveAttackRows, resolveSkillGuard, resolveSkillHealing, resolveV39EquipmentActionRows, resolveV39SkillStatePower } from "../../lib/v39-combat-engine.js";
+import {normalizeV39WeaponGenerationSkill} from "../../lib/v39-generated-weapon.js";
 import {describeV39SkillCounters,inspectV39SkillCounterRequirements,getV39SkillCounterBlock} from "../../lib/v39-skill-counters.js";
 import {normalizeV39SkillCounterHoldTurns} from "../../lib/v39-combat-settings.js";
 import {resolveV39SpatialDistortionPercent} from '../../lib/v39-spatial-distortion.js';
@@ -104,7 +105,7 @@ export function renderV39UnitSkills(unit, {mapData, expandedName = "", interacti
     ];
     const passiveRows = rows.filter(row => text(techniqueSource(row)?.行動 ?? row?.action).toUpperCase() === "P");
     const renderTechnique = row => {
-          const source = techniqueSource(row) || {};
+          const source = normalizeV39WeaponGenerationSkill(techniqueSource(row)) || {};
           const name = text(source?.名前 ?? row?.name, "名称未設定");
           const action = text(source?.行動 ?? row?.action).toUpperCase();
           const apValue = action === "A" ? resolveAttackApCost(source, adjustedUnit) : num(row?.apCost ?? source?.AP消費, null);

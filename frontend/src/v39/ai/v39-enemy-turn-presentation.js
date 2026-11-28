@@ -109,6 +109,7 @@ async function playMove(event, duration) {
   if (!isAliveEnemyAiUnit((window.getV39EnemyTurnState?.()?.enemies || []).find(enemy => String(enemy?.id) === String(event.enemyId)))) return;
   const marker = window.getV39MapEntityMarker?.(event.enemyId);
   if (!marker || !event.from || !event.to) return;
+  const frame = marker.getData?.("ownerFrame");
   const scene = activeScene();
   const from = tileCenter(event.from);
   const to = tileCenter(event.to);
@@ -117,11 +118,13 @@ async function playMove(event, duration) {
   if (!visibleTile(event.from) || !visibleTile(event.to)
     || Math.abs(event.to.x-event.from.x) > map?.w / 2 || Math.abs(event.to.y-event.from.y) > map?.h / 2) {
     marker.setPosition(to.x, to.y);
+    frame?.setPosition(to.x,to.y);
     return;
   }
   marker.setPosition(from.x, from.y);
+  frame?.setPosition(from.x,from.y);
   await new Promise(resolve => {
-    scene?.tweens?.add?.({ targets:marker, x:to.x, y:to.y, duration, ease:"Linear", onComplete:resolve, onStop:resolve });
+    scene?.tweens?.add?.({ targets:frame?[marker,frame]:marker, x:to.x, y:to.y, duration, ease:"Linear", onComplete:resolve, onStop:resolve });
     window.setTimeout(resolve, duration + 100);
     if (!scene?.tweens) resolve();
   });

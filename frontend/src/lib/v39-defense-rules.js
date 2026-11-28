@@ -22,7 +22,7 @@ export function grantV39PersonalDefense(row, caster, turn) {
     * (kind === "盾" ? 1 + Math.max(0, number(caster?.status?.精神)) / 100 : 1)));
   const duration = parseV39TurnCount(row?.効果時間, V39_DEFENSE_BALANCE.personalDefaultTurns);
   const effect = { skillName:String(row?.名前 || kind), maximum, remaining:maximum,
-    expiresAtTurn:turn + duration, refreshedAtTurn:turn };
+    expiresAtTurn:turn + duration, refreshedAtTurn:turn, durationTurns:duration };
   return { [kind === "盾" ? "shield" : "barrier"]:maximum > 0 ? effect : null };
 }
 

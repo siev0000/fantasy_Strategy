@@ -6,6 +6,7 @@ import { COMBAT_STATUS_FIELDS, RACE_CLASS_NAME_MAP, RESISTANCE_FIELDS, SKILL_LEV
 import { buildCharacterStatusFromRules, buildUnitResistances, buildUnitSkillLevelsFromRules, rowStatusVector } from "../../composables/unitStatusUtils.js";
 import { applyMilitaryProfileToStatus } from "../../composables/militaryUnitUtils.js";
 import { buildV39EquipmentResistanceBonus, normalizeV39EquipmentItem } from "../../lib/v39-equipment-rules.js";
+import {getV39EffectiveEquipment,getV39GeneratedWeapon} from "../../lib/v39-generated-weapon.js";
 import { resolveV39MovementStatFromStatus, V39_BODY_WEAPON_BALANCE, V39_CLASS_SKILL_UNLOCK_LEVELS } from "../../lib/v39-gameplay-balance.js";
 import {applyV39SizStatusModifiers} from '../../lib/v39-siz-status-rules.js';
 import { isV39InvalidDataToken } from "../../lib/v39-class-rules.js";
@@ -379,12 +380,14 @@ export function deriveV39CharacterFromRaceClass(unit = {}) {
 }
 
 export function applyV39DerivedCharacterData(unit = {}) {
+  if (unit.generatedWeapon && !getV39GeneratedWeapon(unit)) unit={...unit,generatedWeapon:null};
   const derived = deriveV39CharacterFromRaceClass(unit);
   if (!derived.ok) return { ...unit, derivedCharacter: derived };
   const equipment = (Array.isArray(unit?.equipment) ? unit.equipment : [])
     .map(normalizeV39EquipmentItem)
     .filter(Boolean);
-  const equipmentResistances = buildV39EquipmentResistanceBonus(equipment);
+  const effectiveEquipment = getV39EffectiveEquipment({...unit,equipment});
+  const equipmentResistances = buildV39EquipmentResistanceBonus(effectiveEquipment);
   const resistances = Object.fromEntries(RESISTANCE_FIELDS.map(key => [
     key,
     number(derived.resistances?.[key]) + number(equipmentResistances?.[key])
@@ -394,7 +397,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
   for (const [key, value] of Object.entries(unit.golemBuild?.enchantment?.statusBonus || {})) {
     if (Object.hasOwn(status,key)) status[key] = number(status[key]) + number(value);
   }
-  for (const item of equipment) {
+  for (const item of effectiveEquipment) {
     for (const [key, value] of Object.entries(item?.statusBonus || {})) {
       if (Object.prototype.hasOwnProperty.call(status, key)) status[key] = number(status[key]) + number(value);
     }
@@ -408,7 +411,7 @@ export function applyV39DerivedCharacterData(unit = {}) {
   status.移動 = movement + number(derived.passiveBonuses?.status?.移動);
   if(unit.testOnly===true)status.移動=Math.max(status.移動,number(unit.testMovementMinimum));
   const skillLevels={...derived.skillLevels};
-  for(const item of equipment){
+  for(const item of effectiveEquipment){
     for(const key of SKILL_LEVEL_FIELDS)skillLevels[key]=number(skillLevels[key])+number(item.enchantBonus?.[key]);
   }
   if(unit.testOnly===true){

@@ -268,6 +268,7 @@ export const V39_CONSUMABLE_BALANCE=Object.freeze({
 });
 
 export const V39_SIZ_STATUS_BALANCE=Object.freeze({
+  largeUnitMinSiz:1050,
   minimumSiz:10,neutralSiz:170,largeReferenceSiz:1000,
   statusPercent:25,accuracyPercent:7.5,
   minimumMultiplier:0.1

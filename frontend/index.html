@@ -19,7 +19,16 @@
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#03090c;color:var(--text);touch-action:manipulation}
 button,input,select{font:inherit}
-button{color:inherit}
+button {
+  color:inherit;
+  background:#19353f;
+  border:1px solid #6aa9b8;
+  border-radius:6px;
+  cursor:pointer;
+}
+:where(dialog) button {color:var(--text);padding:6px 12px}
+:where(dialog) button:where(:focus-visible) {outline:2px solid var(--cyan);outline-offset:2px}
+:where(dialog) button:where(:disabled) {opacity:.55;cursor:not-allowed}
 .app{
   position:fixed;inset:0;
   height:100svh;

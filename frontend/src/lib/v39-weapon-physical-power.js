@@ -3,6 +3,7 @@ const number=value=>Number.isFinite(Number(value))?Number(value):0;
 
 export function resolveV39WeaponPhysicalPower(item){
   const source=item?.source||{};
+  if (item?.generated) return Object.fromEntries(V39_WEAPON_PHYSICAL_TYPES.map(type=>[type,number(source[type])]));
   const multiplier=item?.rarityMultiplier??1;
   const legacyPower=Math.round(number(source.威力)*multiplier);
   const typed=V39_WEAPON_PHYSICAL_TYPES.some(type=>source[type]!=null&&source[type]!=="");

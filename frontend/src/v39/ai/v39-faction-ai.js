@@ -20,7 +20,8 @@ import { RESEARCH_CATEGORY_ORDER, researchTreeData } from "../../lib/research-tr
 import { isResearchCompleted, inspectResearchUnlock, normalizeResearchState, resolveV39ResearchSettlement, selectResearch } from "../../lib/research-progress.js";
 import { getHexNeighborCoords, getHexOffsetNeighbors, normalizeWrappedCoordinate } from "../../lib/hex-grid.js";
 import { getHexDistance } from "../../lib/hex-grid.js";
-import { resolveV39UnitMovementStepCost } from "../../lib/v39-terrain-traversal.js";
+import { resolveV39FootprintStepCost } from "../../lib/v39-terrain-traversal.js";
+import {getV39UnitFootprint,getV39UnitFootprintDistance,v39FootprintKey} from "../../lib/v39-unit-footprint.js";
 import { applyV39SquadMovement, resolveV39SquadMovementGroup } from "../../lib/v39-squad-movement-rules.js";
 import { refreshV39FactionIntelligence, collectV39FactionVision } from "../../lib/v39-faction-intelligence-rules.js";
 import { canV39FactionAttack } from "../../lib/v39-diplomacy-rules.js";
@@ -76,13 +77,27 @@ function worldWrapEnabled(mapData) {
   return mapData?.worldWrapEnabled === true;
 }
 
-function occupiedTileKeys(state, excludedUnitIds = []) {
+function occupiedTileKeys(state,map,excludedUnitIds = []) {
   const excluded = new Set(excludedUnitIds.map(text));
   return new Set([
     ...(state?.players || []).flatMap(player => player?.factionState?.units || []),
-    ...(state?.enemies || [])
+    ...(state?.enemies || []),
+    ...(state?.neutralVillages || []).flatMap(village=>village.defenseUnits||[])
   ].filter(unit => alive(unit) && (unit.worldId||'surface')===(state.activeWorldId||'surface') && !excluded.has(unitId(unit)))
-    .map(unit => coordKey(unit?.x, unit?.y)));
+    .flatMap(unit=>getV39UnitFootprint(unit,map,state).map(v39FootprintKey)));
+}
+
+function canPlaceFormation(positions,members,occupied,map,state) {
+  const used=new Set();
+  for(const position of positions){
+    const member=members.find(unit=>unitId(unit)===position.id);
+    for(const tile of getV39UnitFootprint(member,map,state,position)){
+      const key=v39FootprintKey(tile);
+      if(used.has(key)||occupied.has(key))return false;
+      used.add(key);
+    }
+  }
+  return true;
 }
 
 function nextFormationForDirection(group, from, to, mapData) {
@@ -113,7 +128,6 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
   const busy=new Set(player.factionState.aiState?.growthPlan?.busyIds||[]);
   const units = (player?.factionState?.units || []).filter(unit => alive(unit) && !unit.tradeAssignment&&!unit.transportAssignment&&!busy.has(unit.id)&&!unit?.surveyTask&&!unit.pendingWorldExit&&(unit.worldId||'surface')===(state.activeWorldId||'surface'));
   const workers=getV39NpcResourceUnitIds(player);
-  const occupied = occupiedTileKeys(state);
   for (const unit of units) {
     if(getV39ActionBlock(unit,state.timeline?.turnNumber,'move'))continue;
     if(!returning&&garrisons.has(unit.id))continue;
@@ -126,6 +140,7 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
     if(!returning&&group.participants?.some(member=>garrisons.has(member.id)))continue;
     if(group.participants?.some(member=>player.factionState.combatRuntime?.pendingActionsByUnitId?.[member.id]?.aimAfterCast))continue;
     if (!group.ok || group.moveAp <= 0) continue;
+    const occupied=occupiedTileKeys(state,mapData,group.participantIds);
     const start = { x:group.x, y:group.y };
     if(objective.type==='victory-landmark'&&getHexDistance(start,objective)===0)continue;
     const directed = objective.x !== null && objective.y !== null && Number.isFinite(objective.x) && Number.isFinite(objective.y);
@@ -136,13 +151,12 @@ function moveAiExplorer(state, player, mapData, objective = decideAiObjective(st
     for (const target of candidates) {
       if(returning&&getHexDistance(target,objective)>=getHexDistance(unit,objective))continue;
       const positions = nextFormationForDirection(group, start, target, mapData);
-      if (!positions || new Set(positions.map(position => coordKey(position.x, position.y))).size !== positions.length) continue;
-      if (positions.some(position => occupied.has(coordKey(position.x, position.y)))) continue;
+      if (!positions || !canPlaceFormation(positions,group.participants,occupied,mapData,state)) continue;
       let cost = 0;
       let valid = true;
       for (const member of group.participants) {
         const position = positions.find(row => row.id === unitId(member));
-        const stepCost = resolveV39UnitMovementStepCost(mapData, member.x, member.y, position.x, position.y, member, state);
+        const stepCost = resolveV39FootprintStepCost(mapData,member,member,position,state);
         if (!Number.isFinite(stepCost)) { valid = false; break; }
         cost = Math.max(cost, stepCost);
       }
@@ -191,10 +205,7 @@ function findNpcScoutStep(state, player, mapData) {
     const groupKey = group.participants.map(member => member.id).sort().join('|');
     if (checkedGroups.has(groupKey)) continue;
     checkedGroups.add(groupKey);
-    const occupied = occupiedTileKeys(state, group.participants.map(member => member.id));
-    for (const village of state.neutralVillages || []) for (const guard of village.defenseUnits || []) {
-      if (alive(guard)) occupied.add(coordKey(guard.x, guard.y));
-    }
+    const occupied = occupiedTileKeys(state,mapData,group.participants.map(member=>member.id));
     const start = { x:group.x, y:group.y, members:group.participants, first:null };
     const queue = [start], visited = new Set([coordKey(start.x, start.y)]);
     for (let i = 0; i < queue.length && i < limit; i++) {
@@ -202,12 +213,11 @@ function findNpcScoutStep(state, player, mapData) {
       for (const target of getHexNeighborCoords(mapData.w, mapData.h, current.x, current.y, worldWrapEnabled(mapData))) {
         if (visited.has(target.key)) continue;
         const positions = nextFormationForDirection({ participants:current.members }, current, target, mapData);
-        if (!positions || new Set(positions.map(row => coordKey(row.x, row.y))).size !== positions.length
-          || positions.some(row => occupied.has(coordKey(row.x, row.y)))) continue;
+        if (!positions || !canPlaceFormation(positions,current.members,occupied,mapData,state)) continue;
         let cost = 0;
         for (const member of current.members) {
           const to = positions.find(row => row.id === member.id);
-          cost = Math.max(cost, resolveV39UnitMovementStepCost(mapData, member.x, member.y, to.x, to.y, member, state));
+          cost = Math.max(cost,resolveV39FootprintStepCost(mapData,member,member,to,state));
         }
         if (!Number.isFinite(cost) || (!current.first && cost > group.moveAp)) continue;
         const first = current.first || { group, target:{ ...target, positions }, cost };
@@ -275,7 +285,9 @@ function planAiCombat(state, player, objective) {
       .filter(row => !getV39ActionBlock(attacker,state.timeline?.turnNumber,'skill',row))
       .filter(row => pending?.aimAfterCast||number(attacker?.ap ?? attacker?.currentAp) >= resolveAttackApCost(row, attacker));
     for (const skillRow of rows) {
-      const range = resolveAttackRange(skillRow, attacker, window.__v39FieldRuntime?.mapData);
+      const map=window.__v39FieldRuntime?.mapData;
+      const range = resolveAttackRange(skillRow, attacker, map);
+      const distanceTo=target=>getV39UnitFootprintDistance(attacker,target,map,state);
       const foreignTargets = (state?.players || [])
         .filter(targetPlayer => targetPlayer?.id !== player?.id && canV39FactionAttack(state, player?.id, targetPlayer?.id))
         .flatMap(targetPlayer => (targetPlayer?.factionState?.units || []).map(unit => ({ ...unit, targetPlayerId:targetPlayer.id, targetType:"foreign-faction" })));
@@ -288,8 +300,8 @@ function planAiCombat(state, player, objective) {
         &&(enemy.aggressive===true||enemy.metadata?.aggressive===true||enemy.aggroTargetUnitId===attacker.id)):[];
       const targets = [...threats, ...foreignTargets, ...guardTargets]
         .filter(unit=>alive(unit)&&(unit.worldId||'surface')===(state.activeWorldId||'surface'))
-        .filter(target => getHexDistance(attacker, target) <= range)
-        .sort((left, right) => getHexDistance(attacker, left) - getHexDistance(attacker, right)
+        .filter(target => distanceTo(target) <= range)
+        .sort((left, right) => distanceTo(left) - distanceTo(right)
           || text(left?.id).localeCompare(text(right?.id), "ja"));
       const target = targets[0];
       if (!target) continue;

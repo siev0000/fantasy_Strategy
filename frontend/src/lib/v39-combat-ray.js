@@ -88,8 +88,9 @@ export function traceV39AttackRay(map, from, to, units, {length=null, ignoreUnit
     tiles.push(point);
     const structure=v39RayStructureAtStep(map,previous,point);
     if (structure) return {tiles,impact:point,reason:structure.kind,structure};
-    const candidates=units instanceof Map ? units.get(key(point)) || [] : units;
-    const occupants=candidates.filter(unit=>unit.id!==from.id && key(unit)===key(point)
+    const indexed=units instanceof Map;
+    const candidates=indexed ? units.get(key(point)) || [] : units;
+    const occupants=candidates.filter(unit=>unit.id!==from.id && (indexed||key(unit)===key(point))
       && Number(unit.hp ?? unit.currentHp)>0 && unit.state!=="死亡");
     if (occupants.some(unit=>v39UnitBlocksRay(unit,turn))) return {tiles,impact:point,reason:"遮断"};
     // 味方は通常射線を通すが、明示的な「遮断」は陣営に関係なく先に判定する。

@@ -132,7 +132,7 @@ async function openPreview(id) {
 }
 
 function installTitleEntry() {
-  const title = query("#v39-play-mode-select .v39-play-mode-options.single");
+  const title = query('#v39-play-mode-select [data-v39-title-group="tests"] .v39-play-mode-options');
   if (!title || query("[data-v39-modal-gallery-entry]")) return;
   const entry = document.createElement("button");
   entry.type = "button";

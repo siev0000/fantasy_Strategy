@@ -1,5 +1,5 @@
 import config from '../../../config/v39-restraint.json';
-import {getHexDistance} from './hex-grid.js';
+import {getV39UnitFootprintDistance} from './v39-unit-footprint.js';
 
 const n=value=>Math.max(0,Number(value)||0);
 const living=unit=>unit&&n(unit.hp??unit.currentHp)>0&&unit.state!=='死亡';
@@ -12,16 +12,18 @@ export function inspectV39Restraint(unit){
   config.stages.forEach((rule,index)=>{if(ratio>=rule.ratio){stage=index+1;penalty=rule.penalty;}});
   return {value,cap,ratio,stage,penalty};
 }
-function linked(target,actor){
-  return living(target)&&living(actor)&&target.id!==actor.id&&world(target)===world(actor)&&getHexDistance(target,actor)===1&&inspectV39Restraint(target).stage>0;
+function linked(target,actor,state){
+  const map=globalThis.window?.__v39FieldRuntime?.mapData;
+  return living(target)&&living(actor)&&target.id!==actor.id&&world(target)===world(actor)&&
+    getV39UnitFootprintDistance(target,actor,map,state)===1&&inspectV39Restraint(target).stage>0;
 }
 export function isV39GrappleMovementBlocked(unit,state){
   const id=unit?.restraint?.grapplerId;
-  return !!id&&linked(unit,units(state).find(actor=>actor.id===id));
+  return !!id&&linked(unit,units(state).find(actor=>actor.id===id),state);
 }
 export function getV39RestraintPenalty(unit,state){
   let penalty=inspectV39Restraint(unit).penalty;
-  for(const target of units(state))if(target.restraint?.grapplerId===unit?.id&&linked(target,unit))penalty=Math.max(penalty,inspectV39Restraint(target).penalty*config.grapplerPenaltyMultiplier);
+  for(const target of units(state))if(target.restraint?.grapplerId===unit?.id&&linked(target,unit,state))penalty=Math.max(penalty,inspectV39Restraint(target).penalty*config.grapplerPenaltyMultiplier);
   return penalty;
 }
 export function addV39Restraint(unit,amount,turn,grapplerId=null){
@@ -48,7 +50,7 @@ export function reconcileV39RestraintLinks(before,after){
   const clean=unit=>{
     const hold=unit.restraint;if(!hold?.grapplerId)return unit;
     const actor=current.get(hold.grapplerId),old=previous.get(hold.grapplerId);
-    if(linked(unit,actor)&&(!old||(old.x===actor.x&&old.y===actor.y&&world(old)===world(actor))))return unit;
+    if(linked(unit,actor,after)&&(!old||(old.x===actor.x&&old.y===actor.y&&world(old)===world(actor))))return unit;
     const value=Math.max(0,n(hold.value)-n(hold.grappleValue));
     return {...unit,restraint:value?{value,lastResistanceTurn:hold.lastResistanceTurn}:null};
   };

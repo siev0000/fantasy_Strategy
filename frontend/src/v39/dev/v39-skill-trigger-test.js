@@ -18,11 +18,11 @@ function createTestMap({width,height}=fixture.mapSize){
 
 export function createV39SkillTriggerFieldFixture(player,{craftEquipment=false}={}){
   const players=fixture.units.map((sample,index)=>{
-    const units=[sample,...(sample.companions||[])].map(({companions,...member})=>({
+    const units=[sample,...(sample.companions||[])].map(({companions,skillNames,passiveSkillNames,...member})=>({
       ...buildV39UnitEntity({...member,race:member.race,className:member.className,level:fixture.level}),
       worldId:'surface',testOnly:true,testMovementMinimum:100,testFlightMinimum:member.flightMinimum||0,squadId:'solo',
       hp:fixture.hp,currentHp:fixture.hp,maxHp:fixture.hp,ap:100,currentAp:100,
-      testSkillNames:[...fixture.actions.map(row=>row.名前),...(fixture.additionalSkillNames||[]),...(member.passiveSkillNames||[])]
+      testSkillNames:[...skillNames,...(passiveSkillNames||[])]
     }));
     return {...player,id:index?'trigger-test-opponent':player.id,name:index?'検証B・天使':'検証A・人族',race:sample.race,
       isPlayer:true,isNpc:false,ready:true,factionState:{...player.factionState,

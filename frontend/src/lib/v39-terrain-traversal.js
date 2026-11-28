@@ -12,6 +12,7 @@ import { canV39EnterFactionTerritory,hasV39ActiveTreaty } from "./v39-diplomacy-
 import {resolveV39DisasterMovementPenalty} from './v39-disaster-movement.js';
 import {resolveV39StormFlightLoss,resolveV39ColdWaveMovementLoss} from './v39-storm-effects.js';
 import {resolveV39GravityMovementEffect} from './v39-gravity-effects.js';
+import {getV39UnitFootprint,isV39FootprintOnMap,v39FootprintKey} from './v39-unit-footprint.js';
 
 const text = value => String(value ?? "").trim();
 const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -151,6 +152,25 @@ export function resolveV39UnitMovementStepCost(mapData, fromX, fromY, toX, toY, 
     {ownerId,isFriendlyOwner:other=>!!state&&hasV39ActiveTreaty(state,ownerId,other,'alliance')})/100;
   const spatialPercent=resolveV39SpatialDistortionPercent(unit,state,{x:fromXValue,y:fromYValue})??100;
   return cargoSpeed<=0?Number.POSITIVE_INFINITY:Math.max(0, Math.ceil(terrain.multiplier * v39HazardMovementMultiplier(mapData,unit,toXValue,toYValue) * resolveV39BaseMoveApCost(resolveV39UnitMovementValue(unit),mapData)/cargoSpeed*wallMultiplier*spatialPercent/100));
+}
+
+export function resolveV39FootprintStepCost(map, unit, from, to, state) {
+  const start=getV39UnitFootprint(unit,map,state,from);
+  if(start.length===1)return resolveV39UnitMovementStepCost(map,from.x,from.y,to.x,to.y,unit,state);
+  const destination=getV39UnitFootprint(unit,map,state,to);
+  if(!isV39FootprintOnMap(destination,map))return Infinity;
+  let cost=0;
+  for(const [i,tile] of destination.entries()){
+    if(!canUnitEnterV39Tile(map,tile.x,tile.y,unit))return Infinity;
+    cost=Math.max(cost,resolveV39UnitMovementStepCost(map,start[i].x,start[i].y,tile.x,tile.y,unit,state));
+  }
+  return cost;
+}
+
+export function canPlaceV39UnitFootprint(map,unit,tile,state,occupied) {
+  const footprint=getV39UnitFootprint(unit,map,state,tile);
+  return isV39FootprintOnMap(footprint,map)&&footprint.every(point=>
+    !occupied.has(v39FootprintKey(point))&&canUnitEnterV39Tile(map,point.x,point.y,unit));
 }
 
 export function resolveV39TerrainMoveCost(unit, terrainName, additionalPenaltyPoints = 0) {

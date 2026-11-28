@@ -12,10 +12,17 @@ import {applyV39ControlTurnAp,getV39ActionBlock,resolveV39MaxAp,standUpV39Unit,V
 import {reduceV39BlockedHealing} from '../../lib/v39-ability-damage.js';
 import {runV39ChainAttacks} from '../../lib/v39-chain-attacks.js';
 import {attachV39HitStatusPopups} from '../../lib/v39-combat-popup-rules.js';
-import {resolveV39TransformationSpec,replaceV39TransformationEffect,resolveV39TransformationMaxHp,scaleV39TransformationHp} from '../../lib/v39-transformation.js';
-import {isV39SustainedSkill,isV39SustainedTornado,moveV39SustainedTornado,v39TornadoTiles} from '../../lib/v39-sustained-effects.js';
+import {resolveV39TransformationSpec,replaceV39TransformationEffect,resolveV39TransformationMaxHp,resolveV39TransformedSiz,scaleV39TransformationHp} from '../../lib/v39-transformation.js';
+import {cancelV39SustainedEffect,isV39SustainedSkill,isV39SustainedTornado,moveV39SustainedTornado,v39TornadoTiles} from '../../lib/v39-sustained-effects.js';
 import {applyV39ForcedMovement} from '../../lib/v39-forced-movement.js';
 import {resolveV39SkillForcedMovement} from '../../lib/v39-skill-forced-movement.js';
+import {getV39UnitFootprint,getV39UnitFootprintDistance,isV39FootprintOnMap,v39FootprintAreaScale,v39UnitOccupiesTile,v39FootprintForSiz,v39MapHexDistance} from '../../lib/v39-unit-footprint.js';
+import {collectV39MovementOccupancy} from '../../lib/v39-movement-occupancy-rules.js';
+import {canUnitEnterV39Tile,resolveV39FootprintStepCost} from '../../lib/v39-terrain-traversal.js';
+import {
+  V39_GENERATED_WEAPON_SLOTS,buildV39GeneratedWeaponFollowUp,canV39PlaceGeneratedWeapon,
+  createV39GeneratedWeapon,getV39GeneratedWeapon,isV39WeaponGeneration
+} from '../../lib/v39-generated-weapon.js';
 import {applyV39SkillCounters,getV39SkillCounterBlock,markV39SkillCounterCombat} from '../../lib/v39-skill-counters.js';
 
 function mapCombatUnits(units, transform) {
@@ -74,7 +81,8 @@ function withSkillForcedMovement(state,patch,map,attacker,skillRow,combatLog,ach
 
     window.appendV39ActivityLog?.([state.activePlayerId],'スキル',formatV39SkillTriggerLog(log),log);
   }
-  const counterState=settleCombatSkillCounters(state,triggered.state,attacker,skillRow,combatLog,achievementInfo);
+  const followed=applyGeneratedWeaponFollowUp(triggered.state,attacker,skillRow,combatLog,achievementInfo.target);
+  const counterState=settleCombatSkillCounters(state,followed,attacker,skillRow,combatLog,achievementInfo);
   const recorded=recordV39CombatAchievements(state,counterState,attacker,
     [...combatLog,...(achievementInfo.wallEntries||[])],{...achievementInfo,skillRow});
   return {...patch,players:recorded.players,enemies:recorded.enemies,neutralVillages:recorded.neutralVillages,
@@ -93,7 +101,6 @@ import {inspectV39SoulCollection,collectV39Soul} from '../../lib/v39-soul-storag
 import {resolveVillageIncidentCasualties} from '../../lib/v39-village-incidents.js';
 import villageIncidentTest from '../../../../config/v39-village-incident-test.json';
 import npcDefense from '../../../../config/v39-npc-defense.json';
-import {resolveV39UnitMovementStepCost} from '../../lib/v39-terrain-traversal.js';
 import {markV39AbandonedVillage} from '../../lib/v39-abandoned-villages.js';
 
 function commitVillageCombatState(patch, options) {
@@ -429,9 +436,9 @@ function applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,{depth,at
   const chainAttacker={...attacker,combatProfile:{...attacker.combatProfile,attackCount:1}};
   runV39ChainAttacks({depth,entries:combatLog,targets,
     canSpread(origin,target){
-      if(!getHexNeighborCoords(map.w,map.h,origin.x,origin.y,map.worldWrapEnabled)
-        .some(point=>point.x===target.x&&point.y===target.y))return false;
-      return !traceV39AttackRay(map,origin,target,targets,{turn,ignoreUnits:true}).reason;
+      const source=byId.get(origin.targetId??origin.id)||origin;
+      return getV39UnitFootprint(source,map,state).some(from=>getV39UnitFootprint(target,map,state)
+        .some(to=>v39MapHexDistance(map,from,to)===1&&!traceV39AttackRay(map,from,to,targets,{turn,ignoreUnits:true}).reason));
     },
     strike(id,scale,stage,followUp){
       const target=updates.get(id)||byId.get(id);
@@ -478,6 +485,41 @@ function applyChainAttacks(state,patch,map,attacker,skillRow,combatLog,{depth,at
   });
   applyV39DeathBlade(map,attacker,newHits);
   return {...patch,players,enemies:current.enemies.map(update),neutralVillages:replaceNeutralVillageGuards(current,update)};
+}
+
+function applyGeneratedWeaponFollowUp(state, attacker, skill, entries, point) {
+  const row=buildV39GeneratedWeaponFollowUp(attacker,skill);
+  if (!row || !point) return state;
+  const targets=[...state.enemies,...state.players.flatMap(player=>player.factionState.units),...neutralVillageGuards(state)];
+  const map=activeRuntime()?.data;
+  const entry=entries.find(hit=>!hit.friendly&&hit.targetId&&hit.targetId!==attacker.id&&
+    targets.some(unit=>unit.id===hit.targetId&&v39UnitOccupiesTile(unit,point,map,state)));
+  if (!entry) return state;
+  const target=targets.find(unit=>unit.id===entry.targetId);
+  const caster=targets.find(unit=>unit.id===attacker.id);
+  if (!target || !getV39GeneratedWeapon(caster) || getV39GeneratedWeapon(caster).slot) return state;
+  const beforeHp=number(target.hp,target.currentHp);
+  if (beforeHp<=0) return state;
+  const damage=resolveAppliedAttackDamage({attacker:caster,target,skillRow:row});
+  const afterHp=Math.max(0,beforeHp-damage.total);
+  const reward=resolveV39DamageExpReward(target,beforeHp,afterHp);
+  const next={...applyDirectDamage(target,damage,row),expRewardedHpDamage:reward.nextRewardedHpDamage,
+    lastCombatTurn:currentV39TurnNumber(state)};
+  const update=unit=>unit.id===target.id?next:unit;
+  const players=state.players.map(player=>{
+    const faction=player.factionState;
+    const units=mapCombatUnits(faction.units,update);
+    if (reward.rawExp && faction.units.some(unit=>unit.id===caster.id)) {
+      const experience=distributeV39CombatExperience({...faction,units},caster.id,reward.rawExp);
+      for(const detail of experience.levelUps)queueMicrotask(()=>window.dispatchEvent(new CustomEvent("v39:unit-level-up",{detail})));
+      return {...player,factionState:experience.factionState};
+    }
+    return units===faction.units?player:{...player,factionState:{...faction,units}};
+  });
+  entries.push({...damage,targetId:target.id,targetName:target.name,x:target.x,y:target.y,beforeHp,afterHp,
+    maxHp:target.maxHp,friendly:false,generatedWeaponFollowUp:true});
+  logDamage(caster,target,row,damage);
+  return {...state,players,enemies:mapCombatUnits(state.enemies,update),neutralVillages:replaceNeutralVillageGuards(state,update)};
 }
 
 function castDurationTurns(skillRow) {
@@ -548,12 +590,43 @@ function tilesWithin(data, origin, radius, {ignoreOcclusion=false}={}) {
   return found;
 }
 
+function attackRangeTiles(data,unit,row,state) {
+  const range=resolveAttackRange(row,unit,data),arc=hasV39SkillEffect(row,'曲射');
+  const deadZone=arc?resolveV39ArcDeadZone(row,range):-1;
+  const rangeTiles=new Map();
+  for(const origin of getV39UnitFootprint(unit,data,state)){
+    for(const [key,tile] of tilesWithin(data,origin,range,{ignoreOcclusion:arc})){
+      if(tile.distance<=deadZone)continue;
+      if(!rangeTiles.has(key)||tile.distance<rangeTiles.get(key).distance)rangeTiles.set(key,{...tile,origin});
+    }
+  }
+  return rangeTiles;
+}
+
+function attackTargetTile(data,attacker,target,row,state) {
+  const range=resolveAttackRange(row,attacker,data);
+  return getV39UnitFootprint(target,data,state).map(point=>attackPointInRange(data,attacker,point,row,state,range))
+    .filter(Boolean).sort((a,b)=>a.distance-b.distance)[0];
+}
+
+function attackPointInRange(data,attacker,target,row,state,range) {
+  const arc=hasV39SkillEffect(row,'曲射'),deadZone=arc?resolveV39ArcDeadZone(row,range):-1;
+  let result;
+  for(const origin of getV39UnitFootprint(attacker,data,state)){
+    const distance=v39MapHexDistance(data,origin,target);
+    if(distance<=deadZone||distance>range||result&&distance>=result.distance)continue;
+    if(!arc&&!hasV39CaveLineOfSight(data,origin,target,{ignorePlacedWalls:true,showWall:true}))continue;
+    result={...target,distance,origin};
+  }
+  return result;
+}
+
 function directionLine(data, from, target, length,ignoreOcclusion=false) {
   return v39HexRay(data,from,target,length).filter(tile=>ignoreOcclusion||hasV39CaveLineOfSight(data,from,tile,{ignorePlacedWalls:true,showWall:true}))
     .map(tile=>({...tile,key:coordKey(tile.x,tile.y)}));
 }
 
-function buildUnblockedAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
+function buildUnblockedAreaScaleMap(data, attacker, target, skillRow, facing = 0, origin = attacker, rangeTiles) {
   if (["壁", "結界"].includes(resolveV39DefenseKind(skillRow)) || isV39SustainedTornado(skillRow)) return new Map(
     resolveV39DefenseFootprint(data, target, skillRow, facing).map(tile => [coordKey(tile.x, tile.y), 1]));
   const arc=hasV39SkillEffect(skillRow,'曲射');
@@ -563,22 +636,22 @@ function buildUnblockedAreaScaleMap(data, attacker, target, skillRow, facing = 0
     for (const [key] of tilesWithin(data, target, 1)) result.set(key, 1);
   } else if (type === "around") {
     result.clear();
-    for (const [key, tile] of tilesWithin(data, attacker, resolveAttackRange(skillRow, attacker, data),{ignoreOcclusion:arc})) {
+    for (const [key, tile] of rangeTiles) {
       if (tile.distance > 0) result.set(key, 1);
     }
   } else if (type === "line") {
     result.clear();
-    for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker, data),arc)) result.set(tile.key, 1);
+    for (const tile of directionLine(data, origin, target, resolveAttackRange(skillRow, attacker, data),arc)) result.set(tile.key, 1);
   } else if (type === "fan" || type === "front") {
-    for (const tile of directionLine(data, attacker, target, resolveAttackRange(skillRow, attacker, data))) {
+    for (const tile of directionLine(data, origin, target, resolveAttackRange(skillRow, attacker, data))) {
       result.set(tile.key, 1);
       for (const adjacent of neighbors(data, tile.x, tile.y)) {
-        if(arc||hasV39CaveLineOfSight(data,attacker,adjacent))result.set(adjacent.key, 1);
+        if(arc||hasV39CaveLineOfSight(data,origin,adjacent))result.set(adjacent.key, 1);
       }
     }
   } else if (type === "all") {
     result.clear();
-    for (const [key, tile] of tilesWithin(data, attacker, resolveAttackRange(skillRow, attacker, data),{ignoreOcclusion:arc})) {
+    for (const [key, tile] of rangeTiles) {
       if (tile.distance > 0) result.set(key, 1);
     }
   }
@@ -600,15 +673,20 @@ function combatRayUnits(state) {
 }
 
 function buildAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
-  if(hasV39SkillEffect(skillRow,'組み付き')&&getHexDistance(attacker,target)!==1)return new Map();
   const state=window.getV39GameState?.({includeWorlds:false});
+  const attackRange=resolveAttackRange(skillRow,attacker,data);
+  const radial=['around','all'].includes(resolveAreaType(skillRow));
+  const range=radial?attackRangeTiles(data,attacker,skillRow,state):null;
+  const targetTile=range?.get(coordKey(target.x,target.y))||attackPointInRange(data,attacker,target,skillRow,state,attackRange);
+  if(!targetTile||hasV39SkillEffect(skillRow,'組み付き')&&targetTile.distance!==1)return new Map();
+  let origin={...targetTile.origin,id:attacker.id};
   const units=new Map(),turn=currentV39TurnNumber(state);
   const owner=state?.players?.find(player=>player.factionState?.units?.some(unit=>unit.id===attacker.id));
   const village=state?.neutralVillages?.find(row=>row.defenseUnits?.some(unit=>unit.id===attacker.id));
   const friendlyIds=new Set((owner?.factionState?.units || village?.defenseUnits || []).map(unit=>unit.id));
   const ignoreFriendly=unit=>friendlyIds.has(unit.id) || (!!attacker.nestId && unit.nestId===attacker.nestId);
-  for (const unit of combatRayUnits(state)) {
-    const key=coordKey(unit.x,unit.y);
+  for (const unit of combatRayUnits(state)) for(const tile of getV39UnitFootprint(unit,data,state)) {
+    const key=coordKey(tile.x,tile.y);
     if (!units.has(key)) units.set(key,[]);
     units.get(key).push(unit);
   }
@@ -616,40 +694,54 @@ function buildAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
   const piercing=hasV39SkillEffect(skillRow,"貫通")&&!support;
   const splash=resolveSplashSpec(skillRow).value>0;
   const arcDeadZone=resolveV39ArcDeadZone(skillRow,resolveAttackRange(skillRow,attacker,data));
-  if(hasV39SkillEffect(skillRow,'曲射')&&getHexDistance(attacker,target)<=arcDeadZone)return new Map();
-  const ray=traceV39AttackRay(data,attacker,target,units,{turn,ignoreFirstTiles:arcDeadZone,ignoreUnit:ignoreFriendly,ignoreUnits:support||piercing||splash,
-    length:piercing ? resolveAttackRange(skillRow,attacker,data) : null});
+  const traceOptions={turn,ignoreFirstTiles:arcDeadZone,ignoreUnit:ignoreFriendly,ignoreUnits:support||piercing||splash};
+  let ray=traceV39AttackRay(data,origin,target,units,{...traceOptions,length:piercing?attackRange:null});
+  if(coordKey(ray.impact.x,ray.impact.y)!==coordKey(target.x,target.y)){
+    for(const candidate of getV39UnitFootprint(attacker,data,state)){
+      if(candidate.x===origin.x&&candidate.y===origin.y)continue;
+      const distance=v39MapHexDistance(data,candidate,target);
+      if(distance>attackRange||hasV39SkillEffect(skillRow,'曲射')&&distance<=arcDeadZone)continue;
+      const alternateOrigin={...candidate,id:attacker.id};
+      const alternate=traceV39AttackRay(data,alternateOrigin,target,units,traceOptions);
+      if(alternate.impact.x!==target.x||alternate.impact.y!==target.y)continue;
+      origin=alternateOrigin;
+      ray=piercing?traceV39AttackRay(data,origin,target,units,{...traceOptions,length:attackRange}):alternate;
+      break;
+    }
+  }
   let result;
   if (support) {
     result=coordKey(ray.impact.x,ray.impact.y)===coordKey(target.x,target.y)
-      ? buildUnblockedAreaScaleMap(data,attacker,target,skillRow,facing) : new Map();
+      ? buildUnblockedAreaScaleMap(data,attacker,target,skillRow,facing,origin,range) : new Map();
   } else if (piercing) result=new Map(ray.tiles.map(tile=>[coordKey(tile.x,tile.y),
-    resolveAttackRangeScale(skillRow,attacker,getHexDistance(attacker,tile),data)]));
+    resolveAttackRangeScale(skillRow,attacker,v39MapHexDistance(data,origin,tile),data)]));
   else {
-    result=buildUnblockedAreaScaleMap(data,attacker,ray.impact,skillRow,facing);
-    const rangeScale=resolveAttackRangeScale(skillRow,attacker,getHexDistance(attacker,ray.impact),data);
+    result=buildUnblockedAreaScaleMap(data,attacker,ray.impact,skillRow,facing,origin,range);
+    const rangeScale=resolveAttackRangeScale(skillRow,attacker,v39MapHexDistance(data,origin,ray.impact),data);
     for (const [key,scale] of result) result.set(key,scale*rangeScale);
   }
-  const blastCenter=piercing && getHexDistance(attacker,ray.impact)>=getHexDistance(attacker,target) ? target : ray.impact;
-  if (piercing && splash) for (const [key,scale] of buildUnblockedAreaScaleMap(data,attacker,blastCenter,{...skillRow,範囲:"単体"},facing)) {
-    const rangeScale=resolveAttackRangeScale(skillRow,attacker,getHexDistance(attacker,blastCenter),data);
+  const blastCenter=piercing && v39MapHexDistance(data,origin,ray.impact)>=v39MapHexDistance(data,origin,target) ? target : ray.impact;
+  if (piercing && splash) for (const [key,scale] of buildUnblockedAreaScaleMap(data,attacker,blastCenter,{...skillRow,範囲:"単体"},facing,origin)) {
+    const rangeScale=resolveAttackRangeScale(skillRow,attacker,v39MapHexDistance(data,origin,blastCenter),data);
     result.set(key,Math.max(result.get(key)||0,scale*rangeScale));
   }
   if(hasV39SkillEffect(skillRow,'曲射'))for(const key of [...result.keys()]){
-    const [x,y]=key.split(',').map(Number);if(getHexDistance(attacker,{x,y})<=arcDeadZone)result.delete(key);
+    const [x,y]=key.split(',').map(Number);
+    if(v39MapHexDistance(data,range?.get(key)?.origin||origin,{x,y})<=arcDeadZone)result.delete(key);
   }
   result.blockingStructures=new Set();
   result.structureScales=new Map();
   result.blockedUnitKeys=new Set();
   if (!support) for (const key of [...result.keys()]) {
     const [x,y]=key.split(",").map(Number),point={x,y};
-    const check=traceV39AttackRay(data,attacker,point,units,{turn,ignoreFirstTiles:arcDeadZone,ignoreUnit:ignoreFriendly,ignoreUnits:piercing||splash});
+    const contactOrigin=radial?{...(range.get(key)?.origin||origin),id:attacker.id}:origin;
+    const check=traceV39AttackRay(data,contactOrigin,point,units,{turn,ignoreFirstTiles:arcDeadZone,ignoreUnit:ignoreFriendly,ignoreUnits:piercing||splash});
     if (coordKey(check.impact.x,check.impact.y)!==key) { result.delete(key); continue; }
     if(['瓦礫','地形'].includes(check.reason))result.blockedUnitKeys.add(key);
     const structures=[check.structure];
     // 爆心からの広がりも壁・結界・遮断を回り込まない。
     if (splash && key!==coordKey(blastCenter.x,blastCenter.y)) {
-      const spreadOrigin=['地形','瓦礫'].includes(ray.reason)?ray.tiles.at(-2)||attacker:blastCenter;
+      const spreadOrigin=['地形','瓦礫'].includes(ray.reason)?ray.tiles.at(-2)||origin:blastCenter;
       const spread=traceV39AttackRay(data,spreadOrigin,point,units,{turn,ignoreUnits:true});
       if (coordKey(spread.impact.x,spread.impact.y)!==key) { result.delete(key); continue; }
       structures.push(spread.structure);
@@ -661,14 +753,15 @@ function buildAreaScaleMap(data, attacker, target, skillRow, facing = 0) {
   }
   result.impact=ray.impact;
   result.ray=ray;
+  result.origin=origin;
+  result.footprintScale=unit=>v39FootprintAreaScale(unit,result,data,state);
   if(!support)result.guardAssignments=resolveV39GuardAssignments(state,data,result,attacker,resolveAttackRange);
   return result;
 }
 
 function unitAreaScale(area, unit) {
   if(area.guardAssignments){const hits=area.guardAssignments.get(unit.id)||[];return hits.length?hits:undefined;}
-  const key=coordKey(unit.x,unit.y);
-  return area.blockedUnitKeys?.has(key) ? undefined : area.get(key);
+  return area.footprintScale?.(unit);
 }
 
 function destroyGraphics() {
@@ -933,6 +1026,86 @@ function canTargetOwnTile(skillRow, unit, data) {
     .some(wall => wall.kind === "壁" && wall.hp > 0 && v39DefenseCovers(wall,unit));
 }
 
+function updateGeneratedWeapon(state, player, unit, weapon, ap = currentAp(unit), row = null) {
+  const turn = currentV39TurnNumber(state);
+  const faction = player.factionState;
+  const runtime = faction.combatRuntime ?? {};
+  const updates = row ? {lastActionTurn:turn,lastUsedAttack:row.名前} : {};
+  const next = {
+    ...(row ? spendSupportSkillCounters(unit,unit,row,turn) : unit),...updates,
+    generatedWeapon:weapon,ap,currentAp:ap,actionPoint:ap
+  };
+  const cooldown = row && cooldownDurationTurns(row);
+  const combatRuntime = cooldown > 0 ? {...runtime,cooldownsByUnitId:{...runtime.cooldownsByUnitId,
+    [unit.id]:{...runtime.cooldownsByUnitId?.[unit.id],[row.名前]:resolveV39DeadlineTurn(turn,cooldown)}}} : runtime;
+  const players = state.players.map(owner=>owner.id === player.id ? {...owner,factionState:{
+    ...faction,combatRuntime,units:faction.units.map(member=>member.id===unit.id?next:member)
+  }} : owner);
+  window.setV39GameState({players},{reason:row?"weapon-generation":"generated-weapon-change"});
+}
+
+function generateWeapon(state, player, unit, row, slot) {
+  const turn = currentV39TurnNumber(state);
+  const apCost = resolveAttackApCost(row,unit);
+  const timing = unitRuntimeState(player.factionState,unit,row,turn);
+  if (timing.pending || timing.cooldownRemainingTurns>0 || isV39UnitWaiting(unit,turn) || currentAp(unit)<apCost ||
+    getV39ActionBlock(unit,turn,"skill",row) || number(unit.hp,unit.currentHp)<=0 ||
+    !isV39UnitInWorld(unit,state.activeWorldId)) return false;
+  const weapon = createV39GeneratedWeapon(row,terrainAdjusted(unit),slot);
+  if (!weapon) return false;
+  updateGeneratedWeapon(state,player,unit,weapon,currentAp(unit)-apCost,row);
+  return true;
+}
+
+function openGeneratedWeaponSlots(unit, skillName = "") {
+  if (document.getElementById("v39-generated-weapon-picker")) return false;
+  const dialog=document.createElement("dialog");
+  dialog.id="v39-generated-weapon-picker";
+  dialog.style.cssText="width:min(24rem,calc(100% - 24px));padding:12px;border:1px solid #55737c;border-radius:8px;background:#101e25;color:#edf5f4";
+  dialog.setAttribute("aria-label",skillName || "生成した武器の持ち替え");
+  const heading=document.createElement("h3");
+  heading.textContent="生成した武器を持つ枠";
+  dialog.append(heading);
+  for (const slot of V39_GENERATED_WEAPON_SLOTS) {
+    const button=document.createElement("button");
+    const held=unit.equipment?.find(item=>item.slot===slot);
+    button.type="button";
+    button.style.cssText="display:block;width:100%;margin:5px 0;min-height:34px";
+    button.textContent=slot ? (held ? `${slot}（${held.name}を一時保管）` : slot) : "装備しない（追撃用）";
+    button.disabled=!canV39PlaceGeneratedWeapon(unit,slot);
+    button.addEventListener("click",()=>{
+      const state=window.getV39GameState({includeWorlds:false});
+      const player=state.players.find(owner=>owner.id===state.activePlayerId);
+      const current=player?.factionState?.units.find(member=>member.id===unit.id);
+      if (!current || state.timeline.phase!=="player" || window.isV39MapInputLocked?.() ||
+        window.isV39TerritoryPlanning?.() || !isV39UnitInWorld(current,state.activeWorldId)) return;
+      if (skillName) {
+        const row=resolveAttackRows(current).find(action=>action.名前===skillName&&isV39WeaponGeneration(action));
+        if (!row || !generateWeapon(state,player,current,row,slot)) {
+          showToast("武器を生成できません。APと発動条件を確認してください");
+          return;
+        }
+      } else {
+        const currentWeapon=getV39GeneratedWeapon(current);
+        if (!currentWeapon || !canV39PlaceGeneratedWeapon(current,slot)) return;
+        updateGeneratedWeapon(state,player,current,{...currentWeapon,slot});
+      }
+      dialog.close();
+      renderActionPanel();
+    });
+    dialog.append(button);
+  }
+  const cancel=document.createElement("button");
+  cancel.type="button";cancel.textContent="戻る";
+  cancel.addEventListener("click",()=>dialog.close());
+  dialog.append(cancel);
+  dialog.addEventListener("keydown",event=>{if(event.key==="Escape")event.stopPropagation();});
+  dialog.addEventListener("close",()=>dialog.remove(),{once:true});
+  document.body.append(dialog);
+  dialog.showModal();
+  return true;
+}
+
 function startAttack() {
   if(window.isV39TerritoryPlanning?.()){window.showV39TurnBanner?.('計画を確定して戦闘・探索へ進んでください');return false;}
   if(window.isV39MapInputLocked?.())return false;
@@ -980,14 +1153,13 @@ function startAttack() {
     showToast(parseV39TurnCount(skillRow.CT)<=1?"このターンは使用済みです":`CT中です。残り${timing.cooldownRemainingTurns}ターン`);
     return false;
   }
+  if (isV39WeaponGeneration(skillRow)) return openGeneratedWeaponSlots(unit,skillRow.名前);
   if(!releaseCast&&isV39CastingMagic(skillRow)&&castDurationTurns(skillRow)>0){
     return queueCombatCast({unitId:text(unit.id),skillName:text(skillRow.名前),skillRow},unit,state.players.find(p=>p.id===state.activePlayerId),state);
   }
   const range = resolveAttackRange(skillRow, unit, ctx.data);
-  const rangeTiles = tilesWithin(ctx.data, unit, range,{ignoreOcclusion:hasV39SkillEffect(skillRow,'曲射')});
-  const arcDeadZone=resolveV39ArcDeadZone(skillRow,range);
-  if(hasV39SkillEffect(skillRow,'曲射'))for(const [key,tile] of rangeTiles)if(tile.distance<=arcDeadZone)rangeTiles.delete(key);
-  if (!canTargetOwnTile(skillRow,unit,ctx.data)) rangeTiles.delete(coordKey(unit.x, unit.y));
+  const rangeTiles = attackRangeTiles(ctx.data,unit,skillRow,state);
+  if (!canTargetOwnTile(skillRow,unit,ctx.data))for(const tile of getV39UnitFootprint(unit,ctx.data,state))rangeTiles.delete(coordKey(tile.x,tile.y));
   const support=isV39SupportSkill(skillRow,unit)||!!resolveV39TileTransformEffect(skillRow,TERRAIN_DATA_ROWS);
   for (const tile of rangeTiles.values()) tile.rangeScale=support ? 1 : resolveAttackRangeScale(skillRow,unit,tile.distance,ctx.data);
   attackSession = { playerId:state.activePlayerId,worldId:state.activeWorldId,turnNumber:state.timeline.turnNumber,
@@ -1367,7 +1539,8 @@ function strikeSustainedTornado(state,map,ownerId,unitId,effect) {
   const keys=new Set(tiles.map(tile=>coordKey(tile.x,tile.y)));
   const entries=[],hits=[];
   const strike=unit=>{
-    if(number(unit.hp,unit.currentHp)<=0||!isV39UnitInWorld(unit,effect.area.worldId)||!keys.has(coordKey(unit.x,unit.y)))return unit;
+    if(number(unit.hp,unit.currentHp)<=0||!isV39UnitInWorld(unit,effect.area.worldId)
+      ||!getV39UnitFootprint(unit,map,state).some(tile=>keys.has(coordKey(tile.x,tile.y))))return unit;
     const damage=resolveAppliedAttackDamage({attacker:caster,target:unit,skillRow:effect.skillRow});
     entries.push({targetId:unit.id,targetName:unit.name,x:unit.x,y:unit.y,beforeHp:number(unit.hp,unit.currentHp),afterHp:Math.max(0,number(unit.hp,unit.currentHp)-damage.total),maxHp:unit.maxHp,...damage});
     if(damage.hitResults?.some(hit=>hit.hit))hits.push(unit.id);
@@ -1448,15 +1621,16 @@ function performAttack(target, session = attackSession, options = {}) {
     showToast("使用済み、またはCT中のスキルです");
     return false;
   }
+  if (isV39WeaponGeneration(session.skillRow)) return generateWeapon(state,player,attacker,session.skillRow,"");
   const rangeTiles = session.rangeTiles instanceof Map
     ? session.rangeTiles
-    : tilesWithin(ctx.data, attacker, resolveAttackRange(session.skillRow, attacker, ctx.data),{ignoreOcclusion:hasV39SkillEffect(session.skillRow,'曲射')});
+    : attackRangeTiles(ctx.data,attacker,session.skillRow,state);
   const adjustedAttacker = terrainAdjusted(attacker);
   const revivalSpec = resolveV39RevivalSpec(session.skillRow);
   const transformSpec = resolveV39TileTransformEffect(session.skillRow, TERRAIN_DATA_ROWS);
   const supportSkill = isV39SupportSkill(session.skillRow, adjustedAttacker);
   const defenseKind = resolveV39DefenseKind(session.skillRow);
-  if (!canTargetOwnTile(session.skillRow,attacker,ctx.data)) rangeTiles.delete(coordKey(attacker.x, attacker.y));
+  if (!canTargetOwnTile(session.skillRow,attacker,ctx.data))for(const tile of getV39UnitFootprint(attacker,ctx.data,state))rangeTiles.delete(coordKey(tile.x,tile.y));
   if (!rangeTiles.has(targetKey)) {
     showToast("射程外です");
     if (options.clearPending && !session?.releaseCast) clearPendingAction(player.id, text(attacker.id), "cast-target-invalid");
@@ -1482,7 +1656,7 @@ function performAttack(target, session = attackSession, options = {}) {
     showToast("宣戦していない勢力には攻撃できません");
     return false;
   }
-  const targetVillage=!supportSkill&&state.neutralVillages.find(village=>village.defenseUnits?.some(unit=>isV39UnitInWorld(unit,state.activeWorldId)&&number(unit.hp??unit.currentHp)>0&&coordKey(unit.x,unit.y)===coordKey(target.x,target.y)));
+  const targetVillage=!supportSkill&&state.neutralVillages.find(village=>village.defenseUnits?.some(unit=>isV39UnitInWorld(unit,state.activeWorldId)&&number(unit.hp??unit.currentHp)>0&&v39UnitOccupiesTile(unit,target,ctx.data,state)));
   if(targetVillage&&!isV39VillageHostileToPlayer(targetVillage,player.id)){showToast('この村とは敵対していません。村の会話から襲撃を選択してください');return false;}
   const sustained = isV39SustainedSkill(session.skillRow);
   const hpCost = sustained ? Math.max(0, Number(session.skillRow.HP消費) || 0) : 0;
@@ -1515,11 +1689,27 @@ function performAttack(target, session = attackSession, options = {}) {
     return cell&&cell.hp<cell.maxHp;
   });
   const supportTargets = supportSkill&&!forestRestoration
-    ? player.factionState.units.filter(unit => isV39UnitInWorld(unit,state.activeWorldId) && number(unit?.hp, unit?.currentHp) > 0 && areaScale.has(coordKey(unit.x, unit.y)))
+    ? player.factionState.units.filter(unit => isV39UnitInWorld(unit,state.activeWorldId) && number(unit?.hp, unit?.currentHp) > 0 && areaScale.footprintScale(unit)!==undefined)
     : [];
   if (supportSkill && !supportTargets.length && !forestRestorationTarget && !["壁", "結界"].includes(defenseKind)) {
     showToast(forestRestoration?"対象位置に回復可能な森がありません":"対象位置に生存中の味方がいません");
     return false;
+  }
+  const transformation = resolveV39TransformationSpec(session.skillRow);
+  if(transformation?.sizeSpec){
+    const reserved=new Set();
+    for(const unit of supportTargets){
+      const footprint=v39FootprintForSiz(unit,resolveV39TransformedSiz(unit.status?.SIZ??unit.SIZ,transformation.sizeSpec),ctx.data);
+      if(footprint.length===1)continue;
+      const occupied=collectV39MovementOccupancy(state,[unit.id],ctx.data).stopBlocked;
+      const keys=footprint.map(tile=>coordKey(tile.x,tile.y));
+      if(!isV39FootprintOnMap(footprint,ctx.data)||footprint.some((tile,i)=>reserved.has(keys[i])||occupied.has(keys[i])||
+        !canUnitEnterV39Tile(ctx.data,tile.x,tile.y,unit))){
+        showToast("大型化に必要な3マスが空いていません");
+        return false;
+      }
+      keys.forEach(key=>reserved.add(key));
+    }
   }
   drawAttackArea(areaScale);
   const combatWallLog = [];
@@ -1529,7 +1719,7 @@ function performAttack(target, session = attackSession, options = {}) {
     skillRow:session.skillRow, attacker,hitEntries:supportSkill?[]:combatLog,
     areaTiles:[...areaScale.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),
     fitArea:["壁","結界"].includes(defenseKind),
-    attackerTile:{ x:attacker.x, y:attacker.y },
+    attackerTile:areaScale.origin,
     tileX:target.x,
     tileY:target.y,
     splash:resolveV39DefenseKind(session.skillRow) ? 0 : resolveSplashSpec(session.skillRow).value
@@ -1593,7 +1783,7 @@ function performAttack(target, session = attackSession, options = {}) {
   }
   const nextVillages=replaceNeutralVillageGuards(state,guard=>{
     const hit=villageDamageById.get(guard.id);if(!hit)return guard;
-    return {...applyDirectDamage(guard,hit.damage,session.skillRow,{directTarget:exposesDirectTarget&&coordKey(guard.x,guard.y)===coordKey(target.x,target.y)}),expRewardedHpDamage:hit.rewarded,lastCombatTurn:currentV39TurnNumber(state)};
+    return {...applyDirectDamage(guard,hit.damage,session.skillRow,{directTarget:exposesDirectTarget&&v39UnitOccupiesTile(guard,target,ctx.data,state)}),expRewardedHpDamage:hit.rewarded,lastCombatTurn:currentV39TurnNumber(state)};
   });
   const deathTurn = currentV39TurnNumber(state);
   const deathPatch = (unit, hp) => {
@@ -1637,7 +1827,6 @@ function performAttack(target, session = attackSession, options = {}) {
   const activeEffectsByUnitId = { ...(runtime.activeEffectsByUnitId || {}) };
   const activeDurationTurns = effectDurationTurns(session.skillRow);
   const timedModifiers = resolveSkillTimedModifiers(session.skillRow);
-  const transformation = resolveV39TransformationSpec(session.skillRow);
   const healing = hasV39SkillEffect(session.skillRow,'状態解除')?0:resolveSkillHealing(session.skillRow, adjustedAttacker);
   const grantedGuard = hasV39SkillEffect(session.skillRow,'守護')?0:resolveSkillGuard(session.skillRow, adjustedAttacker, { isCounter:!!options.isCounter });
   const supportTargetIds = new Set(supportTargets.map(unit => text(unit.id)));
@@ -1646,7 +1835,7 @@ function performAttack(target, session = attackSession, options = {}) {
     const targetUnit=player.factionState.units.find(unit=>text(unit.id)===unitId);
     const previousTransformation=active.find(effect=>effect?.stackGroup==='transformation');
     const baseMaxHp=number(previousTransformation?.baseMaxHp,targetUnit?.maxHp);
-    const nextEffect={ skillName:text(session.skillRow?.名前),stackGroup:transformation?'transformation':activeDurationTurns===1?'oneTurn':'persistent', expiresAtTurn:sustained?Number.MAX_SAFE_INTEGER:resolveV39DeadlineTurn(currentV39TurnNumber(state), activeDurationTurns), modifiers:timedModifiers, ...(session.skillRow?.条件==='搭乗'?{boardingOnly:true}:{}), ...(sustained?{sustained:true,sustainOwnerId:text(attacker.id),skillRow:session.skillRow}:{}), ...(transformation?{appearance:transformation.appearance,form:transformation.form,system:text(session.skillRow?.系統),sizeSpec:transformation.sizeSpec,baseMaxHp}:{}), ...(isV39TimedWeaponEnhancement(session.skillRow)?{skillRow:session.skillRow,judgeValue:Number(adjustedAttacker?.status?.HP)||0}:{}) };
+    const nextEffect={ skillName:text(session.skillRow?.名前),stackGroup:transformation?'transformation':activeDurationTurns===1?'oneTurn':'persistent', expiresAtTurn:sustained?Number.MAX_SAFE_INTEGER:resolveV39DeadlineTurn(currentV39TurnNumber(state), activeDurationTurns), modifiers:timedModifiers, ...(session.skillRow?.条件==='搭乗'?{boardingOnly:true}:{}), ...(sustained?{sustained:true,sustainOwnerId:text(attacker.id),skillRow:session.skillRow}:{durationTurns:activeDurationTurns}), ...(transformation?{appearance:transformation.appearance,form:transformation.form,system:text(session.skillRow?.系統),sizeSpec:transformation.sizeSpec,baseMaxHp}:{}), ...(isV39TimedWeaponEnhancement(session.skillRow)?{skillRow:session.skillRow,judgeValue:Number(adjustedAttacker?.status?.HP)||0}:{}) };
     activeEffectsByUnitId[unitId] = transformation?replaceV39TransformationEffect(active,nextEffect):[...active.filter(effect=>text(effect?.skillName)!==nextEffect.skillName),nextEffect];
   }
   const nextPlayers = state.players.map((row) => ({
@@ -1716,7 +1905,7 @@ function performAttack(target, session = attackSession, options = {}) {
   if(!supportSkill)applyV39AttackGroundDamage(ctx.data,areaScale,attacker,session.skillRow,currentV39TurnNumber(state),state);
   applyV39DeathBlade(ctx.data,attacker,combatLog);
   commitVillageCombatState(withSkillForcedMovement(state,{ ...clearDestroyedWallFacilities(state,ctx.data,resolvedPlayers), enemies:nextEnemies,neutralVillages:nextVillages },ctx.data,attacker,session.skillRow,combatLog,
-    {isCounter:options.isCounter,support:supportSkill,supportTargetIds:[...supportTargetIds],wallEntries:combatWallLog,terrainReports:areaScale.achievementTerrainReports}), { reason:"combat-attack" });
+    {isCounter:options.isCounter,support:supportSkill,supportTargetIds:[...supportTargetIds],wallEntries:combatWallLog,terrainReports:areaScale.achievementTerrainReports,target}), { reason:"combat-attack" });
   commitV39AttackFacilityDamage(areaScale);
   const forestHealingReports=applyV39ForestHealing(ctx.data,areaScale,attacker,session.skillRow);
   if(!supportSkill)applyV39AttackIgnition(ctx.data,areaScale,attacker,session.skillRow,currentV39TurnNumber(state));
@@ -1730,7 +1919,7 @@ function performAttack(target, session = attackSession, options = {}) {
     && ["ユニット","遮断"].includes(areaScale.ray?.reason);
   const ownBlocker = stoppedByUnit && player.factionState.units.find(unit =>
     isV39UnitInWorld(unit,state.activeWorldId) && number(unit.hp,unit.currentHp) > 0
-    && coordKey(unit.x,unit.y) === coordKey(target.x,target.y));
+    && v39UnitOccupiesTile(unit,target,ctx.data,state));
   const obstruction = stoppedByUnit ? {
     x:target.x, y:target.y,
     message:"射線遮断",
@@ -1782,13 +1971,13 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   if(!hasV39SkillWeapon(attacker,skillRow) || getV39ActionBlock(attacker,currentV39TurnNumber(state),'skill',skillRow))return false;
   if(isAttackBlockedByCast(state,attacker,skillRow))return false;
   if (!isCounter && remainingV39Turns(state.enemyCombatRuntime?.cooldownsByEnemyId?.[text(attacker.id)]?.[text(skillRow?.名前)], currentV39TurnNumber(state)) > 0) return false;
-  const range = resolveAttackRange(skillRow, attacker, ctx.data);
-  if (!tilesWithin(ctx.data, attacker, range,{ignoreOcclusion:hasV39SkillEffect(skillRow,'曲射')}).has(coordKey(targetUnit.x, targetUnit.y))) return false;
+  const targetTile=attackTargetTile(ctx.data,attacker,targetUnit,skillRow,state);
+  if (!targetTile) return false;
   const apCost = apPaid?0:resolveAttackApCost(skillRow, attacker);
   if (!apPaid && currentAp(attacker) < apCost) return false;
   const defenseKind = resolveV39DefenseKind(skillRow);
   if (defenseKind || hasV39SkillEffect(skillRow,"遮断")) {
-    if (!buildAreaScaleMap(ctx.data,attacker,targetUnit,skillRow).size) return false;
+    if (!buildAreaScaleMap(ctx.data,attacker,targetTile,skillRow).size) return false;
     const turn = currentV39TurnNumber(state);
     if (["壁", "結界"].includes(defenseKind)) {
       const placed = createV39DefenseStructure(ctx.data, targetUnit, skillRow,
@@ -1818,18 +2007,18 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
     });
     return true;
   }
-  const areaScale = buildAreaScaleMap(ctx.data, attacker, targetUnit, skillRow);
+  const areaScale = buildAreaScaleMap(ctx.data, attacker, targetTile, skillRow);
   if (!areaScale.size) return false;
-  targetUnit=combatRayUnits(state).find(unit=>coordKey(unit.x,unit.y)===coordKey(areaScale.impact.x,areaScale.impact.y)
+  targetUnit=combatRayUnits(state).find(unit=>v39UnitOccupiesTile(unit,areaScale.impact,ctx.data,state)
     && number(unit.hp,unit.currentHp)>0)||{...areaScale.impact,id:""};
   const stealthBreakTurn = currentV39TurnNumber(state);
   const combatLog = [];
   const exposesDirectTarget = resolveAreaType(skillRow) === "single" && resolveSplashSpec(skillRow).value <= 0;
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
       skillRow, attacker,hitEntries:combatLog,
-      attackerTile:{ x:attacker.x, y:attacker.y },
-      tileX:targetUnit.x,
-      tileY:targetUnit.y,
+      attackerTile:areaScale.origin,
+      tileX:areaScale.impact.x,
+      tileY:areaScale.impact.y,
       areaTiles:[...areaScale.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),
       splash:resolveSplashSpec(skillRow).value
     });
@@ -1958,7 +2147,7 @@ function performEnemyAttack({ enemyId, targetUnitId, skillRow, apPaid = false, i
   applyV39AttackGroundDamage(ctx.data,areaScale,attacker,skillRow,currentV39TurnNumber(state),state);
   applyV39DeathBlade(ctx.data,attacker,combatLog);
   commitVillageCombatState(withSkillForcedMovement(state,{ ...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages, enemyNests, enemyCombatRuntime },ctx.data,attacker,skillRow,combatLog,
-    {isCounter,terrainReports:areaScale.achievementTerrainReports}), { reason:"enemy-combat-attack" });
+    {isCounter,terrainReports:areaScale.achievementTerrainReports,target:targetUnit}), { reason:"enemy-combat-attack" });
   commitV39AttackFacilityDamage(areaScale);
   applyV39AttackIgnition(ctx.data,areaScale,attacker,skillRow,currentV39TurnNumber(state));
   const total = combatLog.reduce((sum, entry) => sum+entry.total, 0);
@@ -1985,8 +2174,9 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, t
   if(remainingV39Turns(attacker.skillCooldownsByName?.[text(skillRow?.名前)],currentV39TurnNumber(state))>0)return false;
   const defenseApCost=resolveAttackApCost(skillRow,attacker);
   if(currentAp(attacker)<defenseApCost)return false;
-  if (getHexDistance(attacker, target) > resolveAttackRange(skillRow, attacker, ctx.data)) return false;
-  const area=buildAreaScaleMap(ctx.data,attacker,target,skillRow);
+  const targetTile=attackTargetTile(ctx.data,attacker,target,skillRow,state);
+  if(!targetTile)return false;
+  const area=buildAreaScaleMap(ctx.data,attacker,targetTile,skillRow);
   if (!area.size) return false;
   const entries=[];
   damagePlacedWalls(ctx.data,area,attacker,skillRow,entries);
@@ -2012,14 +2202,14 @@ function performNeutralVillageGuardAttack({ villageId, guardId, targetEnemyId, t
       : guard
   ));
   if (!suppressEffect && window.__v39SuppressCombatEffects !== true) void window.playV39MapEffect?.({
-    skillRow, attacker,hitEntries:entries, attackerTile:{ x:attacker.x, y:attacker.y }, tileX:area.impact.x, tileY:area.impact.y,
+    skillRow, attacker,hitEntries:entries, attackerTile:area.origin, tileX:area.impact.x, tileY:area.impact.y,
     areaTiles:[...area.keys()].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};}),splash:resolveSplashSpec(skillRow).value
   });
   placeV39SkillFog(ctx.data,area,skillRow,currentV39TurnNumber(state));
   applyV39AttackGroundDamage(ctx.data,area,attacker,skillRow,currentV39TurnNumber(state),state);
   applyV39DeathBlade(ctx.data,attacker,entries);
   commitVillageCombatState(withSkillForcedMovement(state,{...clearDestroyedWallFacilities(state,ctx.data,players), enemies, neutralVillages,players },ctx.data,attacker,skillRow,entries,
-    {isCounter,terrainReports:area.achievementTerrainReports}), { reason:"neutral-village-defense-attack" });
+    {isCounter,terrainReports:area.achievementTerrainReports,target:targetTile}), { reason:"neutral-village-defense-attack" });
   commitV39AttackFacilityDamage(area);
   applyV39AttackIgnition(ctx.data,area,attacker,skillRow,currentV39TurnNumber(state));
   const total=entries.reduce((sum,entry)=>sum+entry.total,0);
@@ -2068,17 +2258,18 @@ function runNeutralVillageDefenseTurn() {
         const skill=target&&!retreat?resolveAttackRows(guard).find(row=>!isV39SupportSkill(row,guard)
           &&currentAp(guard)>=resolveAttackApCost(row,guard)
           &&remainingV39Turns(guard.skillCooldownsByName?.[text(row.名前)],turn)<=0
-          &&getHexDistance(guard,target)<=resolveAttackRange(row,guard,map)):null;
+          &&getV39UnitFootprintDistance(guard,target,map,state)<=resolveAttackRange(row,guard,map)):null;
         if(skill&&performNeutralVillageGuardAttack({villageId:village.id,guardId:guard.id,targetEnemyId:target.id,skillRow:skill})){attacks++;continue;}
         const stationed=garrisonIds.has(guard.id);
         const goal=target&&!retreat&&!stationed?target:village;
         if(stationed&&isV39GarrisonAtHome(guard,village))break;
         if(!target&&getHexDistance(guard,village)<=1)break;
-        const occupied=new Set([...state.enemies,...state.players.flatMap(p=>p.factionState.units),...neutralVillageGuards(state)]
-          .filter(u=>Number(u.hp??u.currentHp)>0).map(u=>u.x+','+u.y));
-        const next=getHexNeighborCoords(map.w,map.h,guard.x,guard.y).filter(tile=>!occupied.has(tile.key)&&getHexDistance(tile,village)<=npcDefense.villageDefenseRadius
+        const occupied=collectV39MovementOccupancy(state,[guard.id],map).stopBlocked;
+        const next=getHexNeighborCoords(map.w,map.h,guard.x,guard.y).filter(tile=>getV39UnitFootprint(guard,map,state,tile)
+          .every(point=>!occupied.has(coordKey(point.x,point.y))&&canUnitEnterV39Tile(map,point.x,point.y,guard))
+          &&getHexDistance(tile,village)<=npcDefense.villageDefenseRadius
           &&getHexDistance(tile,goal)<getHexDistance(guard,goal))
-          .map(tile=>({...tile,cost:resolveV39UnitMovementStepCost(map,guard.x,guard.y,tile.x,tile.y,guard)}))
+          .map(tile=>({...tile,cost:resolveV39FootprintStepCost(map,guard,guard,tile,state)}))
           .filter(tile=>tile.cost<=currentAp(guard)).sort((a,b)=>getHexDistance(a,goal)-getHexDistance(b,goal)||a.cost-b.cost)[0];
         if(!next)break;
         const ap=Math.max(0,currentAp(guard)-next.cost);patchGuard({x:next.x,y:next.y,position:[next.x,next.y],ap,currentAp:ap,actionPoint:ap,lastMovedTurn:turn});moves++;
@@ -2108,7 +2299,10 @@ function executeCounterAction({ attackerSide, attackerId, targetId } = {}) {
     return performEnemyAttack({ enemyId:text(attacker.id), targetUnitId:text(target.id), skillRow, apPaid:false, isCounter:true });
   }
   const player = state.players.find((row) => row?.factionState?.units?.some((unit) => text(unit.id) === text(attacker.id)));
-  return performAttack({ x:target.x, y:target.y }, {
+  const map=activeRuntime()?.data;
+  const targetTile=map&&attackTargetTile(map,attacker,target,skillRow,state);
+  if(!targetTile)return false;
+  return performAttack(targetTile, {
     playerId:player?.id,
     unitId:text(attacker.id),
     skillName:text(skillRow.名前),
@@ -2212,6 +2406,29 @@ function install() {
     return;
   }
   installStyles();
+  document.addEventListener("click",event=>{
+    const button=event.target.closest?.("[data-v39-generated-weapon-move]");
+    if (!button || window.isV39MapInputLocked?.() || window.isV39TerritoryPlanning?.()) return;
+    const state=window.getV39GameState({includeWorlds:false});
+    const player=state.players.find(owner=>owner.id===state.activePlayerId);
+    const unit=player?.factionState?.units.find(member=>member.id===button.dataset.v39GeneratedWeaponMove);
+    if (!getV39GeneratedWeapon(unit) || state.timeline.phase!=="player" || !isV39UnitInWorld(unit,state.activeWorldId)) return;
+    openGeneratedWeaponSlots(unit);
+  });
+  document.addEventListener("click",event=>{
+    const button=event.target.closest?.("[data-v39-sustain-cancel]");
+    if (!button || window.isV39MapInputLocked?.() || window.isV39TerritoryPlanning?.()) return;
+    const state=window.getV39GameState({includeWorlds:false});
+    if (state.timeline.phase!=="player") return;
+    const player=state.players.find(owner=>owner.id===state.activePlayerId);
+    const {v39SustainUnit:unitId,v39SustainKey:key,v39SustainCancel:skillName}=button.dataset;
+    const unit=player?.factionState.units.find(member=>member.id===unitId);
+    if (!unit || !isV39UnitInWorld(unit,state.activeWorldId)) return;
+    const factionState=cancelV39SustainedEffect(player,unitId,key,skillName,currentV39TurnNumber(state));
+    if (factionState) window.setV39GameState({
+      players:state.players.map(owner=>owner===player?{...owner,factionState}:owner)
+    },{reason:"sustained-effect-cancel"});
+  });
   techniqueList.addEventListener('click',event=>{
     const button=event.target.closest?.('[data-v39-cast-release],[data-v39-cast-cancel]');
     if(!button)return;
@@ -2311,11 +2528,19 @@ window.addEventListener("v39:tile-selected", (event) => {
       .find(unit => text(unit?.id) === text(targetUnitId))
       || state?.enemies?.find(unit => text(unit?.id) === text(targetUnitId))
       || neutralVillageGuards(state).find(unit=>text(unit.id)===text(targetUnitId));
-    const point = target && Number.isFinite(Number(target.x)) && Number.isFinite(Number(target.y))
+    const owner=state?.players.find(p=>p.id===playerId),caster=owner?.factionState?.units?.find(u=>u.id===attackerId),pending=owner?.factionState?.combatRuntime?.pendingActionsByUnitId?.[attackerId];
+    const map=activeRuntime()?.data;
+    const targetAtFootprint=map&&caster&&targetUnit&&skillRow
+      ? attackTargetTile(map,caster,targetUnit,pending?.skillRow||skillRow,state) : null;
+    const point = targetAtFootprint || (target && Number.isFinite(Number(target.x)) && Number.isFinite(Number(target.y))
       ? target
-      : targetUnit ? { x:targetUnit.x, y:targetUnit.y } : null;
+      : targetUnit ? { x:targetUnit.x, y:targetUnit.y } : null);
     if (!point || !text(playerId) || !text(attackerId) || !skillRow) return false;
-    const owner=state.players.find(p=>p.id===playerId),caster=owner?.factionState?.units?.find(u=>u.id===attackerId),pending=owner?.factionState?.combatRuntime?.pendingActionsByUnitId?.[attackerId];
+    if (caster && isV39WeaponGeneration(skillRow)) {
+      const free=V39_GENERATED_WEAPON_SLOTS.find(slot=>slot&&canV39PlaceGeneratedWeapon(caster,slot)
+        && !caster.equipment?.some(item=>item.slot===slot));
+      return generateWeapon(state,owner,caster,skillRow,free || "");
+    }
     if(pending?.aimAfterCast){
       if(!describeV39Cast(pending,state.timeline.turnNumber).ready)return false;
       return performAttack(point,{playerId,unitId:attackerId,skillName:pending.skillName,skillRow:pending.skillRow,releaseCast:true},{apPaid:true,clearPending:true});

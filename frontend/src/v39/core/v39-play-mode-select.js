@@ -5,8 +5,9 @@ import {openV39AudioSettings} from "../ui/v39-audio-settings.js";
 const PLAY_MODE_OPTIONS = Object.freeze({
   "single-normal":{ label:"通常プレイ", description:"テストデータを使わず、新規ゲームとして開始します。" },
   "single-test":{ label:"テストプレイ", description:"通常プレイと同じ流れ・ルールで開始し、テストデータとテスト操作を追加します。" },
-  multiplayer:{ label:"通常プレイ", description:"ルームを作成または参加し、テストデータなしで開始します。" }
+  multiplayer:{ label:"マルチプレイ", description:"ルームを作成するか、既存のルームに参加します。" }
 });
+const TITLE_GROUP_STORAGE_KEY = "v39-title-menu-groups-v1";
 
 let modal = null;
 let selectedPlayMode = "";
@@ -19,22 +20,40 @@ function createStyles() {
   const style = document.createElement("style");
   style.id = "v39-play-mode-select-style";
   style.textContent = `
-#v39-play-mode-select{position:fixed;inset:0;z-index:10140;display:none;place-items:center;padding:14px;background:rgba(1,5,8,.84);backdrop-filter:blur(3px)}#v39-play-mode-select.open{display:grid}.v39-play-mode-dialog{width:min(560px,100%);max-height:calc(100dvh - 28px);overflow:auto;padding:18px;border:1px solid #4b666d;border-radius:12px;background:linear-gradient(180deg,#142126,#0a1216);box-shadow:0 20px 56px rgba(0,0,0,.6);color:#e8efec}.v39-play-mode-dialog h2{margin:0;font-size:var(--font-heading)}.v39-play-mode-dialog>p{margin:6px 0 14px;color:#a5b7ba;font-size:var(--font-secondary)}.v39-play-mode-group{display:grid;gap:8px;margin-top:10px}.v39-play-mode-group h3{margin:0;color:#c6d6d8;font-size:var(--font-size-14)}.v39-play-mode-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.v39-play-mode-options.single button{min-height:116px}.v39-play-mode-options.multiplayer{grid-template-columns:1fr}.v39-play-mode-options button{min-height:104px;display:grid;align-content:center;gap:8px;border:1px solid #4c6971;border-radius:10px;background:#13262c;color:#eaf4f2;padding:14px;text-align:left}.v39-play-mode-options button:hover{border-color:#76cad7;background:#17343b}.v39-play-mode-options strong{font-size:var(--font-size-18)}.v39-play-mode-options small{color:#a7c0c3;font-size:var(--font-compact);line-height:1.5}@media(max-width:500px){.v39-play-mode-dialog{padding:15px;border-radius:8px}.v39-play-mode-options{grid-template-columns:1fr}.v39-play-mode-options button{min-height:88px}}
-`;
-  style.textContent += `
-.v39-play-mode-dialog .v39-play-mode-reference {
-  width:100%; min-height:38px; margin-top:12px; padding:6px 10px;
-  border:1px solid #4c6971; border-radius:8px; background:#13262c; color:#eaf4f2;
-  font:inherit; text-align:left;
-}
-.v39-play-mode-dialog .v39-play-mode-reference:is(:hover,:focus-visible) { border-color:#76cad7; background:#17343b; }
-.v39-play-mode-settings:not([hidden]) { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:6px; }
-.v39-play-mode-settings .v39-play-mode-reference { margin-top:0; }
-.v39-play-mode-reference-status { display:block; margin-top:4px; color:#efaa96; }
+#v39-play-mode-select{position:fixed;inset:0;z-index:10140;display:none;place-items:center;padding:14px;background:rgba(1,5,8,.84);backdrop-filter:blur(3px)}
+#v39-play-mode-select.open{display:grid}
+.v39-play-mode-dialog{width:min(560px,100%);height:min(640px,calc(100dvh - 28px));overflow:auto;scrollbar-gutter:stable;padding:16px;border:1px solid #4b666d;border-radius:10px;background:linear-gradient(180deg,#142126,#0a1216);box-shadow:0 20px 56px rgba(0,0,0,.6);color:#e8efec}
+.v39-play-mode-dialog h2{margin:0 0 10px;font-size:var(--font-heading)}
+.v39-play-mode-group{margin-top:6px;border:1px solid #47616a;border-radius:7px;background:#102127}
+.v39-play-mode-group>summary{padding:8px 10px;cursor:pointer;font-weight:700;color:#d8f2f5}
+.v39-play-mode-group[open]>summary{border-bottom:1px solid #47616a}
+.v39-play-mode-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:7px}
+.v39-play-mode-options button{min-height:48px;min-width:0;display:grid;align-content:center;gap:3px;border:1px solid #4c6971;border-radius:7px;background:#13262c;color:#eaf4f2;padding:7px;text-align:left;overflow-wrap:anywhere}
+.v39-play-mode-options button:is(:hover,:focus-visible){border-color:#76cad7;background:#17343b}
+.v39-play-mode-options strong{font-size:var(--font-body)}
+.v39-play-mode-options small{color:#a7c0c3;font-size:var(--font-secondary);line-height:1.35}
+.v39-play-mode-settings button{min-height:36px}
+.v39-play-mode-reference-status { display:block; margin:0 8px 6px; color:#efaa96; overflow-wrap:anywhere; }
 .v39-play-mode-reference-status:empty { display:none; }
 [data-v39-fixed-map-status] { white-space:pre-line; }
 `;
   document.head.appendChild(style);
+}
+
+function restoreTitleGroups(root) {
+  const groups = [...root.querySelectorAll("[data-v39-title-group]")];
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(TITLE_GROUP_STORAGE_KEY) || "null");
+  } catch {}
+  for (const group of groups) {
+    const open = saved?.[group.dataset.v39TitleGroup];
+    if (typeof open === "boolean") group.open = open;
+  }
+  for (const group of groups) group.addEventListener("toggle", () => {
+    const state = Object.fromEntries(groups.map(item => [item.dataset.v39TitleGroup, item.open]));
+    try { localStorage.setItem(TITLE_GROUP_STORAGE_KEY, JSON.stringify(state)); } catch {}
+  });
 }
 
 function createModal() {
@@ -45,43 +64,46 @@ function createModal() {
   modal.innerHTML = `
     <section class="v39-play-mode-dialog" role="dialog" aria-modal="true" aria-labelledby="v39-play-mode-title">
       <h2 id="v39-play-mode-title">プレイ形式を選択</h2>
-      <p>ゲーム開始設定の前に、遊び方を選択してください。</p>
-      <section class="v39-play-mode-group">
-        <div class="v39-play-mode-options multiplayer">
+      <details class="v39-play-mode-group" data-v39-title-group="play" open>
+        <summary>ゲーム開始</summary>
+        <div class="v39-play-mode-options">
           <button type="button" data-v39-start-load><strong>セーブデータから再開</strong><small>保存したゲームを読み込みます。</small></button>
-        </div>
-        <input id="v39-start-save-file" type="file" accept="application/json,.json" hidden>
-        <output id="v39-start-save-status" role="status"></output>
-      </section>
-      <section class="v39-play-mode-group">
-        <h3>シングルプレイ</h3>
-        <div class="v39-play-mode-options single">
+          <button type="button" data-v39-play-mode="multiplayer"><strong>${PLAY_MODE_OPTIONS.multiplayer.label}</strong><small>${PLAY_MODE_OPTIONS.multiplayer.description}</small></button>
           <button type="button" data-v39-play-mode="single-normal"><strong>${PLAY_MODE_OPTIONS["single-normal"].label}</strong><small>${PLAY_MODE_OPTIONS["single-normal"].description}</small></button>
           <button type="button" data-v39-play-mode="single-test"><strong>${PLAY_MODE_OPTIONS["single-test"].label}</strong><small>${PLAY_MODE_OPTIONS["single-test"].description}</small></button>
+        </div>
+        <input id="v39-start-save-file" type="file" accept="application/json,.json" hidden>
+        <output id="v39-start-save-status" class="v39-play-mode-reference-status" role="status"></output>
+      </details>
+      <details class="v39-play-mode-group" data-v39-title-group="maps" open>
+        <summary>固定マップ</summary>
+        <div class="v39-play-mode-options">
           <button type="button" data-v39-start-fixed-map><strong>固定マップで開始</strong><small>固定マップのJSONを選び、ターン1から始めます。</small></button>
           <button type="button" data-v39-edit-fixed-map><strong>固定マップ作成</strong><small>地形と勢力を配置し、JSONに保存します。</small></button>
-          <button type="button" data-v39-test-tools><strong>テスト操作</strong><small>召喚・呼集、輸送・道具・支援、侵入・再巣化などの専用テストを選択します。</small></button>
-          <button type="button" data-v39-cave-test><strong>洞窟生成テスト</strong><small>洞窟の形状・出入口・モンスター配置を確認します。</small></button>
         </div>
         <input id="v39-start-fixed-map-file" type="file" accept="application/json,.json" hidden>
         <output class="v39-play-mode-reference-status" data-v39-fixed-map-status role="status"></output>
-      </section>
-      <section class="v39-play-mode-group">
-        <h3>マルチプレイ</h3>
-        <div class="v39-play-mode-options multiplayer">
-          <button type="button" data-v39-play-mode="multiplayer"><strong>${PLAY_MODE_OPTIONS.multiplayer.label}</strong><small>${PLAY_MODE_OPTIONS.multiplayer.description}</small></button>
+      </details>
+      <details class="v39-play-mode-group" data-v39-title-group="tests" open>
+        <summary>テスト</summary>
+        <div class="v39-play-mode-options">
+          <button type="button" data-v39-test-tools><strong>テスト操作</strong><small>召喚・輸送などの専用テストを選択します。</small></button>
+          <button type="button" data-v39-cave-test><strong>洞窟生成テスト</strong><small>洞窟の形状・出入口・モンスター配置を確認します。</small></button>
         </div>
-      </section>
-      <button type="button" class="v39-play-mode-reference" data-v39-start-settings aria-expanded="false" aria-controls="v39-start-settings">設定</button>
-      <div id="v39-start-settings" class="v39-play-mode-settings" hidden>
-        <button type="button" class="v39-play-mode-reference" data-v39-equipment-icon-reference>アイコン設定</button>
-        <button type="button" class="v39-play-mode-reference" data-v39-start-enchantment-colors>付与カラー設定</button>
-        <button type="button" class="v39-play-mode-reference" data-v39-start-audio data-audio-se="open">音量設定</button>
-        <button type="button" class="v39-play-mode-reference" data-v39-start-name-generator>名前作成</button>
-      </div>
-      <output class="v39-play-mode-reference-status" data-v39-start-name-generator-status role="status"></output>
-      <output class="v39-play-mode-reference-status" data-v39-equipment-icon-reference-status role="status"></output>
+      </details>
+      <details class="v39-play-mode-group" data-v39-title-group="settings">
+        <summary>設定</summary>
+        <div id="v39-start-settings" class="v39-play-mode-options v39-play-mode-settings">
+          <button type="button" data-v39-equipment-icon-reference>アイコン設定</button>
+          <button type="button" data-v39-start-enchantment-colors>付与カラー設定</button>
+          <button type="button" data-v39-start-audio data-audio-se="open">音量設定</button>
+          <button type="button" data-v39-start-name-generator>名前作成</button>
+        </div>
+        <output class="v39-play-mode-reference-status" data-v39-start-name-generator-status role="status"></output>
+        <output class="v39-play-mode-reference-status" data-v39-equipment-icon-reference-status role="status"></output>
+      </details>
     </section>`;
+  restoreTitleGroups(modal);
   document.body.appendChild(modal);
   const saveInput = modal.querySelector("#v39-start-save-file");
   saveInput.addEventListener("change", async () => {
@@ -104,12 +126,6 @@ function createModal() {
       saveInput.value = "";
       buttons.forEach(button => { button.disabled = false; });
     }
-  });
-  const settingsButton = modal.querySelector("[data-v39-start-settings]");
-  const settingsMenu = modal.querySelector("#v39-start-settings");
-  settingsButton.addEventListener("click", () => {
-    settingsMenu.hidden = !settingsMenu.hidden;
-    settingsButton.setAttribute("aria-expanded", String(!settingsMenu.hidden));
   });
   modal.querySelector("[data-v39-start-enchantment-colors]").addEventListener("click", () => {
     void openV39EnchantmentColorSettings();

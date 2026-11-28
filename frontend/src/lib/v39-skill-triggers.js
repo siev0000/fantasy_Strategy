@@ -16,7 +16,7 @@ import config from '../../../config/v39-skill-triggers.json';
 import { addV39Bleeding, reduceV39Bleeding, tickV39Bleeding } from './v39-bleeding.js';
 import { computeAttackDamage, resolveV39HarmfulEffectPower, resolveV39StateInfliction, resolveV39StaggerDamage, resolvesV39Knockdown, resolveAttackPower, resolveAttackRange, resolveSkillHealing, isV39FireSkill, isV39SupportSkill } from './v39-combat-engine.js';
 import { resolveSkillBasePower } from './skill-power.js';
-import { getHexDistance } from './hex-grid.js';
+import {getV39UnitFootprintDistance} from './v39-unit-footprint.js';
 import { resolveV39CorpseLifetimeTurns } from './v39-corpse-lifetime.js';
 import {isV39CastAttackLocked} from './v39-casting-rules.js';
 
@@ -175,7 +175,7 @@ function executeEvents(ctx, events, random, {map,allowCounters=true}={}){
       let target=ctx.units.get(text(targetId));
       if(!alive(target) || (actor.worldId||'surface')!==(target.worldId||'surface'))continue;
       const range=resolveAttackRange(row,actor);
-      if(Number.isFinite(actor.x) && Number.isFinite(target.x) && getHexDistance(actor,target)>range)continue;
+      if(Number.isFinite(actor.x) && Number.isFinite(target.x) && getV39UnitFootprintDistance(actor,target,map,ctx.state)>range)continue;
       const effect=text(row.効果);
       const triggeredAttack=effect==='回復'?null:resolveV39TriggeredAttack(row,event);
       if(effect!=='回復'&&!triggeredAttack)continue;
@@ -387,7 +387,7 @@ export function applyV39SkillTriggerCombat(before, after, attacker, row, entries
     const grapple=effects.includes('組み付き');
     const otherHold=[...ctx.units.values()].some(unit=>unit.id!==id&&unit.restraint?.grapplerId===attacker.id&&inspectV39Restraint(unit).stage);
     const occupied=target.restraint?.grapplerId&&target.restraint.grapplerId!==attacker.id;
-    if(Number(row.拘束)>0&&(!grapple||(!otherHold&&!occupied&&getHexDistance(attacker,target)===1))){
+    if(Number(row.拘束)>0&&(!grapple||(!otherHold&&!occupied&&getV39UnitFootprintDistance(attacker,target,map,after)===1))){
       const source=resolveV39CurrentUnitAbilities(attacker,{state:after});
       const receiver=resolveV39CurrentUnitAbilities(target,{state:after});
       const resistance={...receiver,status:{...receiver.status,防御:Math.max(Number(receiver.status?.攻撃)||0,Number(receiver.status?.防御)||0)}};

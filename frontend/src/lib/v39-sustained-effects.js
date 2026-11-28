@@ -1,5 +1,6 @@
 import {scaleV39TransformationHp} from './v39-transformation.js';
 import {resolveV39DefenseFootprint,v39DefenseNeighbors} from './v39-defense-rules.js';
+import {getV39GeneratedWeapon} from './v39-generated-weapon.js';
 
 export const isV39SustainedSkill = row => String(row?.効果時間 ?? '').trim() === '持続';
 export const isV39SustainedTornado = row => isV39SustainedSkill(row) && String(row?.効果 ?? '').split(/[\s/／,，、|]+/u).includes('竜巻');
@@ -16,6 +17,28 @@ export function v39SustainCost(row) {
     ap: Math.ceil(Math.max(0, Number(row?.AP消費) || 0) / 2),
     hp: Math.ceil(Math.max(0, Number(row?.HP消費) || 0) / 2)
   };
+}
+
+export function cancelV39SustainedEffect(player, unitId, key, skillName, turn) {
+  const faction=player.factionState;
+  const target=faction.units.find(unit=>unit.id===unitId);
+  if (!target || Number(target.hp??target.currentHp)<=0) return null;
+  const replaceUnit=next=>faction.units.map(unit=>unit.id===unitId?next:unit);
+  if (key==='weapon') {
+    if (getV39GeneratedWeapon(target)?.name!==skillName) return null;
+    return {...faction,units:replaceUnit({...target,generatedWeapon:null})};
+  }
+  const runtime=faction.combatRuntime||{},effects=runtime.activeEffectsByUnitId?.[unitId]||[];
+  const index=Number(key),effect=effects[index];
+  if (!effect?.sustained || effect.skillName!==skillName || effect.expiresAtTurn&&effect.expiresAtTurn<=turn
+    || !faction.units.some(unit=>unit.id===(effect.sustainOwnerId||unitId))) return null;
+  const activeEffectsByUnitId={...runtime.activeEffectsByUnitId};
+  const remaining=effects.filter((_,i)=>i!==index);
+  if (remaining.length) activeEffectsByUnitId[unitId]=remaining;
+  else delete activeEffectsByUnitId[unitId];
+  const units=effect.stackGroup==='transformation'&&effect.baseMaxHp
+    ? replaceUnit(scaleV39TransformationHp(target,effect.baseMaxHp)) : faction.units;
+  return {...faction,units,combatRuntime:{...runtime,activeEffectsByUnitId}};
 }
 
 export function advanceV39SustainedEffects(player) {
@@ -49,6 +72,16 @@ export function advanceV39SustainedEffects(player) {
     else delete effectsById[targetId];
     if (restoreMaxHp)unitById.set(targetId,scaleV39TransformationHp(unitById.get(targetId),restoreMaxHp));
   }
-  const units=(faction?.units || []).map(unit=>unitById.get(unit.id));
+  const units=(faction?.units || []).map(({id})=>{
+    const unit=unitById.get(id);
+    if (!unit.generatedWeapon) return unit;
+    const weapon=getV39GeneratedWeapon(unit);
+    const {ap:cost}=v39SustainCost({AP消費:weapon?.activationAp});
+    const ap=Number(unit.ap ?? unit.currentAp)||0;
+    changed=true;
+    if (!weapon || ap<cost) return {...unit,generatedWeapon:null};
+    return {...unit,ap:ap-cost,currentAp:ap-cost,actionPoint:ap-cost,
+      sustainApPaid:(Number(unit.sustainApPaid)||0)+cost};
+  });
   return changed ? { ...player, factionState:{...faction,units,combatRuntime:{...runtime,activeEffectsByUnitId:effectsById}} } : player;
 }

@@ -10,6 +10,8 @@ import { getV39BossFusionCandidates } from "../../lib/v39-boss-fusion-rules.js";
 import {V39_GUARDIAN_ONLY_SPECIES} from '../../lib/v39-victory-guardian-candidates.js';
 import {V39_FUSION_MATERIAL_GROUPS} from '../../lib/v39-fusion-material-types.js';
 import {resolveV39EnemyMemberCount,resolveV39EnemyCombatProfile} from '../../lib/v39-enemy-formation.js';
+import {getV39UnitFootprint,v39FootprintKey} from '../../lib/v39-unit-footprint.js';
+import {canPlaceV39UnitFootprint} from '../../lib/v39-terrain-traversal.js';
 
 const SAFE_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.safeRadius;
 const LOW_LEVEL_DISTANCE_FROM_BASE = V39_START_AREA_BALANCE.beginnerRadius;
@@ -538,6 +540,14 @@ export function createV39EventEnemy({ id, name, race, className, level, x, y, me
   };
 }
 
+function reserveEnemySpawn(data,unit,occupied) {
+  const tiles=getV39UnitFootprint(unit,data);
+  if(tiles.length>1&&!canPlaceV39UnitFootprint(data,unit,unit,null,occupied))return false;
+  if(tiles.some(tile=>occupied.has(v39FootprintKey(tile))))return false;
+  for(const tile of tiles)occupied.add(v39FootprintKey(tile));
+  return true;
+}
+
 function spawnStrongGroup(data, settlements, candidate, selection, level, enemies, occupied, w, h, wrapEnabled, random, climateAt) {
   const plan = buildStrongGroupPlan(selection, random);
   const groupId = `strong-group-${candidate.x}-${candidate.y}`;
@@ -558,10 +568,9 @@ function spawnStrongGroup(data, settlements, candidate, selection, level, enemie
     territoryCenterY:candidate.y,
     territoryRadius
   }, random);
-  if (!boss) return { boss:null, minionCount:0, expectedMinionCount:plan.minionCount };
+  if (!boss||!reserveEnemySpawn(data,boss,occupied))return { boss:null,minionCount:0,expectedMinionCount:plan.minionCount };
 
   enemies.push(boss);
-  occupied.add(coordKey(candidate.x, candidate.y));
   if (plan.groupType !== "群体" || plan.minionCount <= 0) {
     return { boss, minionCount:0, expectedMinionCount:0 };
   }
@@ -594,9 +603,8 @@ function spawnStrongGroup(data, settlements, candidate, selection, level, enemie
       territoryCenterY:candidate.y,
       territoryRadius
     });
-    if (!minion) continue;
+    if (!minion||!reserveEnemySpawn(data,minion,occupied))continue;
     enemies.push(minion);
-    occupied.add(coordKey(minionCandidate.x, minionCandidate.y));
     minionCount += 1;
   }
 
@@ -753,9 +761,8 @@ function collectEnemySpawnPlan(data, settlements, weather) {
     const level = chooseEnemyLevel(selection, random);
     if (level === null) continue;
     const enemy = createEnemy(selection, candidate, level, enemies.length);
-    if (!enemy) continue;
+    if (!enemy||!reserveEnemySpawn(data,enemy,occupied))continue;
     enemies.push(enemy);
-    occupied.add(coordKey(candidate.x, candidate.y));
     normalSpawned += 1;
   }
 

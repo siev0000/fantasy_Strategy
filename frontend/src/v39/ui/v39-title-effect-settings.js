@@ -2,23 +2,15 @@ function element(id) {
   return document.getElementById(id);
 }
 function ensureTitleEntry() {
-  const modal = element("v39-play-mode-select");
-  const dialog = modal?.querySelector(".v39-play-mode-dialog");
-  if (!(dialog instanceof HTMLElement) || element("v39-title-effect-settings-entry")) return;
+  const settings = element("v39-start-settings");
+  if (!(settings instanceof HTMLElement) || element("v39-title-effect-settings-open")) return;
 
-  const section = document.createElement("section");
-  section.id = "v39-title-effect-settings-entry";
-  section.className = "v39-play-mode-group";
-  section.innerHTML = `
-    <h3>設定</h3>
-    <div class="v39-play-mode-options multiplayer">
-      <button type="button" id="v39-title-effect-settings-open">
-        <strong>エフェクト設定</strong>
-        <small>色・グラデーション・Scale・JSON入出力をゲーム開始前に調整します。</small>
-      </button>
-    </div>`;
-  dialog.appendChild(section);
-  element("v39-title-effect-settings-open")?.addEventListener("click", openFromTitle);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "v39-title-effect-settings-open";
+  button.textContent = "エフェクト設定";
+  button.addEventListener("click", openFromTitle);
+  settings.appendChild(button);
 }
 
 function openFromTitle() {
@@ -35,13 +27,8 @@ function closeTitleSettings() {
 }
 
 function install() {
-  const style = document.createElement("style");
-  style.id = "v39-title-effect-settings-style";
-  style.textContent = `#v39-title-effect-settings-entry{margin-top:10px}
-    #v39-title-effect-settings-entry .v39-play-mode-options{grid-template-columns:1fr}`;
-  document.head.appendChild(style);
   ensureTitleEntry();
-  window.addEventListener("v39:bootstrap-complete", ensureTitleEntry);
+  window.addEventListener("v39:play-mode-opened", ensureTitleEntry);
   window.openV39TitleEffectSettings = openFromTitle;
   window.closeV39TitleEffectSettings = closeTitleSettings;
 }

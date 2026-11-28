@@ -270,21 +270,30 @@ const speed=derived.status.速度;
 assert.equal(m.applyV39DerivedCharacterData(derived).status.速度,speed,'derived recalculation does not double subtract');
 console.log('PASS: ability damage/curse, floors, full-HP recovery, curse recovery, persistent max/stacking and derived idempotence.');
 
+const testMembers=new Map(fixture.units.flatMap(unit=>[unit,...unit.companions].map(member=>[member.id,member])));
+const assignedActions=new Set();
 for(const player of field.players){
  for(const unit of player.factionState.units.filter(unit=>unit.testSkillNames)){
   const names=m.getV39UnitTestTechniques(unit).map(row=>row.name);
   for(const name of unit.testSkillNames)assert.ok(names.includes(name),'fixture skill resolves: '+name);
-  for(const row of fixture.actions)assert.ok(names.includes(row.名前),unit.id+' has '+row.名前);
-  const olderUnit={...unit,testSkillNames:unit.testSkillNames.filter(name=>!['検証・竜変身','検証・玄武変身','竜化中攻撃（検証）','変身中防御（検証）'].includes(name))};
-  const refreshed=m.getV39UnitTestTechniques(olderUnit).map(row=>row.name);
-  assert.ok(refreshed.includes('検証・竜変身')&&refreshed.includes('検証・玄武変身'),'existing skill-test units receive added actions');
-  if(unit.id==='trigger-test-a')assert.ok(refreshed.includes('竜化中攻撃（検証）')&&refreshed.includes('変身中防御（検証）'),'existing skill-test leader receives added passives');
+  const member=testMembers.get(unit.id);
+  if(member){
+   assert.deepEqual(new Set(names),new Set([...member.skillNames,...(member.passiveSkillNames||[])]));
+   member.skillNames.forEach(name=>assignedActions.add(name));
+   const olderUnit={...unit,testSkillNames:fixture.actions.map(row=>row.名前)};
+   assert.deepEqual(m.getV39UnitTestTechniques(olderUnit).map(row=>row.name),names);
+  }
   assert.equal(new Set(names).size,names.length,'no duplicated fixture skills');
  }
 }
+for(const name of [...fixture.actions.map(row=>row.名前),...fixture.additionalSkillNames]){
+ assert.ok(assignedActions.has(name),'fixture action has an assigned unit: '+name);
+}
+const generatorSkills=m.getV39UnitTestTechniques(equipmentTeam.find(unit=>unit.id==='trigger-test-a3')).map(row=>row.name);
+assert.ok(generatorSkills.includes('魔力の剣')&&generatorSkills.includes('検証・生成武器追撃'));
 assert.ok(fixture.actions.some(row=>row.効果==='速度ダメージ'&&row.呪い===50));
 assert.ok(fixture.actions.some(row=>row.効果==='呪い回復'));
-console.log('PASS: complete test skill catalog resolves on all six field units.');
+console.log('PASS: the complete test skill catalog is distributed by role, including in older fixture saves.');
 
 const requests=[];window.playV39MapEffect=request=>requests.push(request);
 const reactionLog=bleed.logs.find(log=>log.entry);
@@ -423,15 +432,19 @@ const buffUnit={id:'buff-view',x:2,y:3,hp:100,guard:20,guardExpiresAtTurn:12,
  abilityDamage:{速度:10},abilityCurses:{攻撃:7},bleeding:{value:20,remainingTurns:3}};
 window.getV39GameState=()=>({activeWorldId:'surface',timeline:{turnNumber:10},players:[{id:'p',factionState:{units:[buffUnit],combatRuntime:{activeEffectsByUnitId:{'buff-view':[
  {skillName:'弱い強化',modifiers:{攻撃:20},expiresAtTurn:14},
- {skillName:'強い強化',modifiers:{攻撃:30},expiresAtTurn:12},
+ {skillName:'強い強化',modifiers:{攻撃:30},expiresAtTurn:12,durationTurns:4},
  {skillName:'短期強化',modifiers:{攻撃:10},expiresAtTurn:11,stackGroup:'oneTurn'},
- {skillName:'変身試験',modifiers:{防御:10},expiresAtTurn:13,stackGroup:'transformation'},
+ {skillName:'変身試験',modifiers:{防御:10},expiresAtTurn:13,durationTurns:4,stackGroup:'transformation'},
  {skillName:'弱体試験',modifiers:{精神:-10},expiresAtTurn:13},
  {skillName:'期限切れ強化',modifiers:{攻撃:100},expiresAtTurn:9}
 ]}}}}]});
 const buffMarkup=m.renderV39UnitConditions(buffUnit),parts=buffMarkup.split('data-v39-detail-section="状態異常・弱体"');
-assert.ok(parts[0].includes('強化・保護'));assert.ok(parts[0].includes('攻撃+20（待機中）'));assert.ok(parts[0].includes('攻撃+30（適用中）'));
-assert.ok(parts[0].includes('残り2T'));assert.ok(parts[0].includes('1ターン強化'));assert.ok(parts[0].includes('変身・別枠'));
+assert.ok(parts[0].includes('強化・保護'));
+assert.match(parts[0],/is-waiting"[^>]*>攻撃\+20</);
+assert.match(parts[0],/is-applied"[^>]*>攻撃\+30</);
+assert.match(parts[0],/v39-status-effect-duration">2\/4<\/small>\s*<span class="v39-status-effect-body"><strong>強い強化<\/strong><span class="v39-status-effect-values">/);
+assert.match(parts[0],/v39-status-effect-duration">1\/1<\/small>\s*<span class="v39-status-effect-body"><strong>短期強化/);
+assert.match(parts[0],/v39-status-effect-duration">3\/4<\/small>\s*<span class="v39-status-effect-body"><strong>変身試験/);
 assert.ok(parts[0].includes('防護盾'));assert.ok(parts[0].includes('盾 0/50'));assert.ok(parts[0].includes('障壁 30/40'));
 assert.ok(!buffMarkup.includes('期限切れ強化'));assert.ok(!parts[0].includes('能力ダメージ：速度'));
 assert.ok(parts[1].includes('能力ダメージ：速度'));assert.ok(parts[1].includes('呪い：攻撃'));assert.ok(parts[1].includes('出血'));
@@ -451,6 +464,8 @@ const currentMarkup=m.renderV39UnitAbility(currentUnit,{mapData:null,fieldIds:tr
 assert.match(currentMarkup,/id="detailAtk">140</);assert.match(currentMarkup,/id="detailMov">40</);
 assert.match(currentMarkup,/<span>隠密<\/span><span class="v39-ability-value"><b>15<\/b>/);
 assert.ok(currentMarkup.includes('炎耐性 +25'));
+assert.match(currentMarkup,/data-v39-resistance-detail="基礎 \+5 \/ 一時補正 \+20"/);
+assert.match(currentMarkup,/<span class="v39-resistance-name">炎耐性<\/span><b>\+25<\/b><\/button>/);
 assert.equal(currentUnit.status.攻撃,100);assert.equal(currentUnit.skillLevels.隠密,10);
 currentState.timeline.turnNumber=2;
 assert.equal(m.resolveV39CurrentUnitAbilities(currentUnit,{state:currentState,mapData:null}).status.攻撃,120,'expired strongest buff yields to remaining weak buff');
@@ -466,8 +481,8 @@ console.log('PASS: ability/skill/resistance/movement displays use the same curre
  assert.equal(display.deltas.status.攻撃,30);assert.equal(display.deltas.status.速度,-20);
  assert.equal(display.deltas.skillLevels.隠密,5);assert.equal(display.deltas.resistances.炎耐性,10);
  const markup=m.renderV39UnitAbility(viewUnit,{mapData:null,fieldIds:true});
- assert.match(markup,/id="detailAtk">130<\/b><small class="v39-ability-delta is-up"[^>]*>\(\+30\)/);
- assert.match(markup,/id="detailSpd">30<\/b><small class="v39-ability-delta is-down"[^>]*>\(-20\)/);
+ assert.match(markup,/id="detailAtk">130<\/b><small class="v39-ability-delta is-up"[^>]*>\+30<\/small>/);
+ assert.match(markup,/id="detailSpd">30<\/b><small class="v39-ability-delta is-down"[^>]*>-20<\/small>/);
  const permanent={...viewUnit,id:'constant',status:{攻撃:150},skillLevels:{},abilityDamage:{},abilityDamageAppliedDeltas:{status:{},skillLevels:{}}};
  assert.ok(!m.renderV39UnitAbility(permanent,{mapData:null}).includes('class="v39-ability-delta '),'constant base/passive values have no temporary annotation');
  const floored=m.applyAbilityDamage({id:'floor',status:{速度:15,APP:-5},skillLevels:{},abilityDamage:{速度:30,APP:10}});

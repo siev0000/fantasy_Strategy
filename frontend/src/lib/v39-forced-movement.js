@@ -8,6 +8,7 @@ import {getHexOffsetNeighbors,getHexDistance} from './hex-grid.js';
 import {v39HexRay} from './v39-combat-ray.js';
 import {collectV39MovementOccupancy} from './v39-movement-occupancy-rules.js';
 import {applyV39DisasterDamage} from './v39-disaster-damage.js';
+import {getV39UnitFootprint,isV39FootprintOnMap} from './v39-unit-footprint.js';
 const key=point=>`${point.x},${point.y}`;
 const alive=unit=>unit.state!=='死亡'&&Number(unit.hp??unit.currentHp)>0;
 export const V39_FORCED_MOVEMENT_DEFAULTS=defaults;
@@ -46,27 +47,30 @@ export function applyV39ForcedMovement(state,map,requests,random=Math.random){
   const occupied=collectV39MovementOccupancy(state,[],map).stopBlocked;
   const records=[],byOriginal=new Map(),counts=new Map();
   const present=unit=>alive(unit)&&(unit.worldId||world)===world;
+  const footprint=(unit,at=unit)=>getV39UnitFootprint(unit,map,state,at);
+  const tiles=unit=>footprint(unit).map(key);
   const register=(unit,owner={})=>{
     const record={unit,owner};records.push(record);byOriginal.set(unit,record);
-    if(present(unit))counts.set(key(unit),(counts.get(key(unit))||0)+1);
+    if(present(unit))for(const tile of tiles(unit))counts.set(tile,(counts.get(tile)||0)+1);
   };
   for(const player of state.players||[])for(const unit of player.factionState?.units||[])register(unit,{playerId:player.id});
   for(const unit of state.enemies||[])register(unit);
   for(const village of state.neutralVillages||[])for(const unit of village.defenseUnits||[])register(unit,{neutralVillageId:village.id});
   const staticBlocked=new Set([...occupied].filter(tile=>!counts.has(tile)));
   const replace=(record,unit)=>{
-    if(present(record.unit)){
-      const tile=key(record.unit),remaining=(counts.get(tile)||1)-1;counts.set(tile,remaining);
+    if(present(record.unit))for(const tile of tiles(record.unit)){
+      const remaining=(counts.get(tile)||1)-1;counts.set(tile,remaining);
       if(!remaining&&!staticBlocked.has(tile))occupied.delete(tile);
     }
     record.unit=unit;
-    if(present(unit)){counts.set(key(unit),(counts.get(key(unit))||0)+1);occupied.add(key(unit));}
+    if(present(unit))for(const tile of tiles(unit)){counts.set(tile,(counts.get(tile)||0)+1);occupied.add(tile);}
   };
   const move=record=>{
     const {unit,owner}=record;
     if(!alive(unit)||(unit.worldId||world)!==world)return unit;
+    const ownTiles=new Set(tiles(unit));
     const options=eligible.filter(request=>(!request.worldId||request.worldId===world)
-      &&(request.targetIds?.includes(unit.id)||request.targetKeys?.includes(key(unit))))
+      &&(request.targetIds?.includes(unit.id)||request.targetKeys?.some(tile=>ownTiles.has(tile))))
       .map(request=>({request,...inspectV39ForcedMovement(unit,request,map)})).sort((a,b)=>b.effectivePower-a.effectivePower);
     const selected=options[0];if(!selected?.effectivePower)return unit;
     const {request,distance}=selected;
@@ -74,9 +78,13 @@ export function applyV39ForcedMovement(state,map,requests,random=Math.random){
     // A sub-tile impulse still checks the adjacent obstacle, without moving into a free tile.
     for(const point of resolveV39ForcedMovementPath(map,unit,request,Math.max(1,distance),random)){
       const previous=path.at(-1)||from;
-      if(!canUnitEnterV39Tile(map,point.x,point.y,unit)||v39WallStepHeight(map,previous,point)>0){wallCollision=true;break;}
-      if(occupied.has(key(point))){
-        collision=records.find(other=>other!==record&&present(other.unit)&&key(other.unit)===key(point));
+      const fromTiles=footprint(unit,previous),toTiles=footprint(unit,point);
+      if(!isV39FootprintOnMap(toTiles,map)||toTiles.some((tile,i)=>!canUnitEnterV39Tile(map,tile.x,tile.y,unit)||v39WallStepHeight(map,fromTiles[i],tile)>0)){
+        wallCollision=true;break;
+      }
+      const blocked=toTiles.map(key).find(tile=>occupied.has(tile)&&(!ownTiles.has(tile)||counts.get(tile)>1||staticBlocked.has(tile)));
+      if(blocked){
+        collision=records.find(other=>other!==record&&present(other.unit)&&tiles(other.unit).includes(blocked));
         break;
       }
       if(!distance)break;

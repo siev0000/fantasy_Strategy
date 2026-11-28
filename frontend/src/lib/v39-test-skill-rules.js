@@ -4,6 +4,8 @@ import { getGameDataRows } from "./game-data-registry.js";
 
 const text = (value, fallback = "") => String(value ?? "").trim() || fallback;
 const TEST_MODE_STORAGE_KEY = "v39-display-settings-v1";
+const skillTriggerMembers = new Map(triggerFixture.units.flatMap(unit =>
+  [unit,...(unit.companions || [])].map(member => [member.id,member])));
 
 function storedTestModeEnabled() {
   if (typeof localStorage === "undefined") return false;
@@ -49,13 +51,10 @@ export function getV39TestSkillRows() {
 
 export function getV39UnitTestSkillRows(unit) {
   if (!isV39TestSkillModeEnabled()) return [];
-  const names = new Set((Array.isArray(unit?.testSkillNames) ? unit.testSkillNames : []).map(text).filter(Boolean));
-  // The skill-test field stores names when it starts. Include newly added fixture
-  // actions for an already running or loaded skill-test unit as well.
-  if (unit?.testOnly === true && /^trigger-test-(?:a|b)(?:\d+)?$/.test(text(unit.id))) {
-    for (const row of triggerFixture.actions) names.add(text(row?.名前));
-    if(text(unit.id)==='trigger-test-a')for(const name of triggerFixture.units[0]?.passiveSkillNames||[])names.add(text(name));
-  }
+  const member = unit?.testOnly === true ? skillTriggerMembers.get(text(unit.id)) : null;
+  // Reapply the current assignment when loading an older fixture save.
+  const assigned = member ? [...member.skillNames,...(member.passiveSkillNames || [])] : unit?.testSkillNames;
+  const names = new Set(Array.isArray(assigned) ? assigned : []);
   if (!names.size) return [];
   return getV39TestSkillRows().filter(row => names.has(text(row?.名前)));
 }
