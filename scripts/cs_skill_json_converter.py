@@ -407,10 +407,157 @@ def project_cs_row(row, headers):
     return {legacy:row.get(columns[name]) for legacy,name in CS_LEGACY_COLUMNS.items()}
 
 
+# Design migration is a staging-only path until the runtime and batch are verified.
+DESIGN_FIELDS = frozenset(ATTACK_POWER_FIELDS) | frozenset(
+    "威力 音 精神攻撃 盲目 怯み 出血 拘束 幻覚 疲労 呪い 麻痺 燃焼 体幹 ガード".split()
+)
+DESIGN_BASE = {"独立": (40, 50, 70, 90), "加算": (20, 25, 35, 45), "牽制": (20, 25, 35, 45)}
+MAGIC_BASE = (50, 75, 85, 100, 110, 125, 135)
+MAGIC_TIER = (1, 2, 2, 3, 3, 4, 4)
+HIT_PERCENT = (100, 60, 45, 35, 30, 25, 22, 20)
+
+
+def load_design_effects(xlsx):
+    if "用語辞書" not in xlsx.sheet_targets:
+        return {}
+    return {_clean_text(row.get(1)): row.get(3) for i, row in xlsx.sheet_rows("用語辞書")
+            if i > 1 and _clean_text(row.get(1))}
+
+
+def calculate_design_power(parsed, detail, effect_name, effect_rates):
+    """Return staging fields and calculation audit. Never infer a missing Tier or Rank."""
+    from decimal import Decimal, ROUND_HALF_UP
+    out = dict(parsed)
+    mode = out.get("攻撃タイプ")
+    warnings = []
+    factors = []
+    def warn(message):
+        if message not in warnings:
+            warnings.append(message)
+    def factor(name, value):
+        factors.append((name, Decimal(str(value))))
+    def integer(key, low, high):
+        v = out.get(key)
+        if isinstance(v, bool) or not isinstance(v, int) or not low <= v <= high:
+            raise ValueError(f"{key} must be an integer in {low}..{high}: {v!r}")
+        return v
+    if mode == "魔法":
+        rank = integer("Rank", 1, 7)
+        tier = MAGIC_TIER[rank - 1]
+        if "Tier" in out and out["Tier"] != tier:
+            raise ValueError("Rank and Tier conflict")
+        base = MAGIC_BASE[rank - 1]
+    elif mode in DESIGN_BASE:
+        tier = integer("Tier", 1, 4)
+        if "Rank" in out:
+            raise ValueError("non-magic attack has Rank")
+        base = DESIGN_BASE[mode][tier - 1]
+    else:
+        raise ValueError(f"unknown attack type: {mode!r}")
+    # Recovery on drain skills is a separate fixed value, not an attack allocation.
+    parts = {k: v for k, v in out.items() if k in DESIGN_FIELDS
+             and type(v) in (int, float) and v > 0}
+    if not parts or sum(Decimal(str(v)) for v in parts.values()) != 100:
+        raise ValueError(f"allocation must total 100: {parts!r}")
+    if len(parts) > 5:
+        warn("six or more power components require review")
+    distance = Decimal(0)
+    for key in ("射程", "射程補正"):
+        value = out.get(key)
+        if value is None:
+            continue
+        if type(value) in (int, float) and value >= 0:
+            if key != "射程" or mode not in ("加算", "牽制"):
+                distance += Decimal(str(value))
+        else:
+            warn(f"unsupported range notation {key}:{value}")
+    if mode in ("加算", "牽制") and "射程" in out:
+        warn("absolute range on equipment-dependent attack requires review")
+    total = max(Decimal(0), Decimal(base) - distance)
+    factor("複合", Decimal(1) + Decimal("0.1") * (len(parts) - 1))
+    if out.get("追加威力"):
+        factor("追加威力", Decimal(1) - Decimal("0.08") * tier)
+    accuracy = re.fullmatch(r"-(\d+(?:\.\d+)?)%", str(out.get("命中", "")))
+    if accuracy:
+        factor("命中低下", Decimal(1) + Decimal(accuracy[1]) / 100)
+    elif type(out.get("命中")) in (int, float) and out["命中"] < 0:
+        warn("flat accuracy penalty is not a confirmed percentage")
+    waits = [out[k] for k in ("待機", "待機時間", "溜め") if k in out]
+    if waits:
+        match = re.fullmatch(r"(\d+)(?:[tT])?", str(waits[0]))
+        if len(waits) != 1 or not match:
+            warn(f"ambiguous wait: {waits!r}")
+        else:
+            turns = max(0, int(match[1]) - (1 if mode == "魔法" else 0))
+            factor("追加待機", Decimal(1) + Decimal("0.5") * turns)
+    hit = out.get("攻撃回数", 1)
+    if re.search(r"(?:^|\s)攻撃回数[+-]", detail):
+        warn("additive hit count requires runtime review")
+    elif type(hit) is int and 1 <= hit <= 8:
+        if hit > 1:
+            per_hit = HIT_PERCENT[hit - 1]
+            if mode in ("加算", "牽制"):
+                expected = f"-{100 - per_hit}%"
+                if "全威力" not in out:
+                    out["全威力"] = expected
+                elif out["全威力"] != expected:
+                    warn(f"existing all-power multiplier {out['全威力']} differs from {expected}")
+            elif "全威力" in out:
+                warn("explicit all-power and multihit overlap; existing percentage retained")
+            else:
+                factor("多段", Decimal(per_hit) / 100)
+    else:
+        warn(f"unsupported hit count: {hit!r}")
+    if any(k in out for k in ("炸裂", "着弾範囲")):
+        # The unit and shape of old radius fields vary; do not guess the conversion.
+        warn("blast shape/radius correction needs review")
+    if out.get("条件") or out.get("使用制約"):
+        warn("individual use condition multiplier needs review")
+    if "全力" in out:
+        warn("全力 has no confirmed design multiplier")
+    component_factors = {}
+    effects = list(dict.fromkeys(e for e in re.split(r"[/／]", str(out.get("効果", ""))) + [effect_name] if e))
+    for effect in effects:
+        rate = effect_rates.get(effect)
+        if effect == "曲射" and accuracy:
+            warn("curve and accuracy penalty overlap; no extra curve modifier")
+        if type(rate) in (int, float) and 0 <= rate <= 1:
+            factor("効果:" + effect, rate)
+        elif rate == "体幹+20%":
+            component_factors["体幹"] = Decimal("1.2")
+        elif rate == "命中-15%":
+            warn("curve hit penalty needs runtime review")
+        elif rate != "-":
+            warn(f"unconfirmed effect correction: {effect}")
+    for _, multiplier in factors:
+        total *= multiplier
+    for key, allocation in parts.items():
+        out[key] = int((total * Decimal(str(allocation)) / 100 * component_factors.get(key, Decimal(1)))
+                       .quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    # Preserve source notation in the audit, but expose actual power in detail too.
+    tokens = []
+    replaced = set()
+    for token in _split_tokens(detail):
+        match = re.fullmatch(r"([^:\s]+):(.+)", token) or re.fullmatch(r"(.+?)([+-])(?:\d|\.).*", token)
+        key = match[1] if match else None
+        if key in parts:
+            if key not in replaced:
+                tokens.append(f"{key}+{out[key]}")
+                replaced.add(key)
+        else:
+            tokens.append(token)
+    if "全威力" in out and "全威力" not in parsed:
+        tokens.append("全威力" + str(out["全威力"]))
+    return out, " ".join(tokens), {"source": detail, "tier": tier, "base": base,
+        "allocation": parts, "factors": [(name, str(value)) for name, value in factors],
+        "power": {k: out[k] for k in parts}, "warnings": warnings}
+
+
 def row_to_skill(
     row_no: int,
     row: Dict[int, Any],
     effect_descriptions: Dict[str, str],
+    design_effects: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
     # CS: A Lv / B スキル名 / C ルビ / D 系統 / E 行動 / F HP / G AP /
     #     H データ / I 効果 / J 効果説明 / K 取得条件 / N アニメ
@@ -427,6 +574,18 @@ def row_to_skill(
 
     detail = _clean_text(row.get(8))
     parsed, duplicate_fields, unparsed = parse_data_field(detail)
+    if "攻撃タイプ" in parsed:
+        if design_effects is None:
+            raise ValueError(f"CS row {row_no}: design allocation requires --design-preview")
+        try:
+            parsed, detail, audit = calculate_design_power(parsed, detail, _clean_text(row.get(9)), design_effects)
+        except ValueError as exc:
+            raise ValueError(f"CS row {row_no} ({name}): {exc}") from exc
+        if action != "A":
+            audit["warnings"].append(f"attack type on action {action}: verify classification")
+        info["design_power"] = audit
+        if audit["warnings"]:
+            info["warnings"].append({"design_review": audit["warnings"]})
 
     record: Dict[str, Any] = {
         "名前": name,
@@ -483,6 +642,7 @@ def convert(
     cs_sheet: str = "CS",
     effect_sheet: str = "効果",
     duplicate_mode: str = "first",
+    design_preview: bool = False,
 ) -> Dict[str, Any]:
     records: List[Dict[str, Any]] = []
     golem_additions: List[Dict[str, Any]] = []
@@ -491,6 +651,7 @@ def convert(
 
     with XlsxReader(input_path) as xlsx:
         effects = load_effect_descriptions(xlsx, effect_sheet)
+        design_effects = load_design_effects(xlsx) if design_preview else None
         output_check_header_row, output_check_col = _find_header_column(
             xlsx, cs_sheet, "出力確認"
         )
@@ -516,7 +677,7 @@ def convert(
                 })
                 continue
 
-            rec, info = row_to_skill(row_no, project_cs_row(row, headers), effects)
+            rec, info = row_to_skill(row_no, project_cs_row(row, headers), effects, design_effects)
             if rec is not None and trigger_col is not None and _clean_text(row.get(trigger_col)):
                 rec["発動"] = _clean_text(row.get(trigger_col))
             infos.append(info)
@@ -612,6 +773,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--duplicates", choices=("first", "error", "all"), default="first",
         help="同名重複: first=先頭採用, error=内容差があれば停止, all=全部出力",
     )
+    p.add_argument("--design-preview", action="store_true", help="検証用: 明示攻撃タイプの配分を計算する（本番出力に使用しない）")
     return p
 
 
@@ -619,6 +781,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     input_path = Path(args.input)
     output_path = Path(args.output)
+    if args.design_preview and (output_path == DEFAULT_OUTPUT or "data/source/export/json" in output_path.resolve().as_posix()):
+        print("ERROR: --design-preview requires an explicit staging output outside runtime data", file=sys.stderr)
+        return 2
     if not input_path.exists():
         print(f"ERROR: 入力ファイルがありません: {input_path}", file=sys.stderr)
         return 2
@@ -629,6 +794,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             cs_sheet=args.sheet,
             effect_sheet=args.effect_sheet,
             duplicate_mode=args.duplicates,
+            design_preview=args.design_preview,
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
